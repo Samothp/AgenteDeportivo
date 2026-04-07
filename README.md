@@ -30,8 +30,8 @@ Proyecto para crear un agente de análisis de datasets deportivos, enfocado en p
 Para ver todas las competiciones disponibles, ejecuta:
 
 ```python
-from src.api_client import FootballDataAPI
-api = FootballDataAPI()
+from src.api_client import SportsDBAPI
+api = SportsDBAPI()
 competitions = api.get_competitions()
 print(competitions)
 ```
@@ -83,24 +83,24 @@ pip install -r requirements.txt
 
 ## Configuración para datos reales
 
-Para usar datos reales de competiciones, necesitas una API key gratuita de Football-Data.org:
+Para usar datos reales de competiciones con TheSportsDB:
 
-1. Regístrate gratis en: https://www.football-data.org/client/register
-2. Obtén tu API key
+1. Puedes usar la key pública de pruebas `123` (limitada)
+2. Opcionalmente, crea tu propia API key en: https://www.thesportsdb.com
 3. Crea un archivo `.env` en la raíz del proyecto:
 
 ```
-FOOTBALL_DATA_API_KEY=tu_api_key_aqui
+THESPORTSDB_API_KEY=tu_api_key_aqui
 ```
 
 O configura la variable de entorno:
 
 ```bash
 # Windows
-set FOOTBALL_DATA_API_KEY=tu_api_key_aqui
+set THESPORTSDB_API_KEY=tu_api_key_aqui
 
 # Linux/Mac
-export FOOTBALL_DATA_API_KEY=tu_api_key_aqui
+export THESPORTSDB_API_KEY=tu_api_key_aqui
 ```
 
 ## Datos recibidos desde la API

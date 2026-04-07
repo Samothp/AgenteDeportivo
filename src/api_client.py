@@ -1,99 +1,196 @@
-import requests
-import pandas as pd
-from typing import Optional
-from pathlib import Path
-
-
-import requests
-import pandas as pd
-from typing import Optional
-from pathlib import Path
 import os
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+import requests
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
 load_dotenv()
 
 
-class FootballDataAPI:
-    """Cliente para la API gratuita de Football-Data.org"""
+class SportsDBAPI:
+    """Cliente para TheSportsDB (https://www.thesportsdb.com)."""
 
-    BASE_URL = "https://api.football-data.org/v4"
+    BASE_URL = "https://www.thesportsdb.com/api/v1/json"
+
+    # Compatibilidad con IDs históricos usados por el proyecto.
+    COMPETITION_MAP = {
+        2014: 4335,  # La Liga
+        2021: 4328,  # Premier League
+        2002: 4331,  # Bundesliga
+        2019: 4332,  # Serie A
+        2015: 4334,  # Ligue 1
+        2017: 4344,  # Primeira Liga
+    }
 
     def __init__(self, api_key: Optional[str] = None):
-        # Intentar obtener API key del entorno
-        self.api_key = api_key or os.getenv('FOOTBALL_DATA_API_KEY')
-        if not self.api_key:
-            raise ValueError(
-                "Se requiere una API key de Football-Data.org. "
-                "Regístrate gratis en https://www.football-data.org/client/register "
-                "y configura la variable de entorno FOOTBALL_DATA_API_KEY o pásala como parámetro."
+        self.api_key = (
+            api_key
+            or os.getenv('THESPORTSDB_API_KEY')
+            or os.getenv('SPORTSDB_API_KEY')
+            or '078593'
+        )
+
+    def _get_json(self, endpoint: str, params: dict) -> dict:
+        url = f"{self.BASE_URL}/{self.api_key}/{endpoint}"
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        return response.json()
+
+    def _resolve_league_id(self, competition_id: int) -> int:
+        return self.COMPETITION_MAP.get(competition_id, competition_id)
+
+    def _season_to_range(self, season: Optional[str]) -> str:
+        # Acepta "2025" y lo convierte a "2025-2026" para TheSportsDB.
+        if not season:
+            return '2025-2026'
+        season = str(season).strip()
+        if '-' in season:
+            return season
+        try:
+            start_year = int(season)
+        except ValueError:
+            return season
+        return f"{start_year}-{start_year + 1}"
+
+    def _extract_scored_rows(self, events: list, league_id: int, season_label: str) -> list:
+        rows = []
+        for event in events:
+            home_score = event.get('intHomeScore')
+            away_score = event.get('intAwayScore')
+
+            # Solo partidos jugados (con marcador disponible).
+            if home_score is None or away_score is None:
+                continue
+
+            rows.append({
+                'date': event.get('strTimestamp') or event.get('dateEvent'),
+                'local_team': event.get('strHomeTeam'),
+                'visitante_team': event.get('strAwayTeam'),
+                'goles_local': int(home_score),
+                'goles_visitante': int(away_score),
+                'status': event.get('strStatus') or 'FINISHED',
+                'competition': event.get('strLeague') or str(league_id),
+                'season': event.get('strSeason') or season_label,
+            })
+        return rows
+
+    def _get_eventsseason_rows(self, league_id: int, season_label: str) -> list:
+        params = {
+            'id': league_id,
+            's': season_label,
+        }
+
+        data = self._get_json('eventsseason.php', params)
+        events = data.get('events') or []
+        return self._extract_scored_rows(events, league_id, season_label)
+
+    def _get_events_by_round_rows(self, league_id: int, season_label: str, max_round: int = 38) -> list:
+        all_rows = []
+        for round_number in range(1, max_round + 1):
+            params = {
+                'id': league_id,
+                'r': round_number,
+                's': season_label,
+            }
+
+            try:
+                data = self._get_json('eventsround.php', params)
+            except requests.HTTPError as error:
+                status_code = error.response.status_code if error.response is not None else None
+                if status_code == 429:
+                    # Con límites de cuota devolvemos lo recuperado hasta el momento.
+                    break
+                raise
+
+            events = data.get('events') or []
+            all_rows.extend(self._extract_scored_rows(events, league_id, season_label))
+
+        # Deduplicar por fecha/equipos/marcador para evitar repetidos entre endpoints.
+        seen = set()
+        unique_rows = []
+        for row in all_rows:
+            key = (
+                str(row.get('date')),
+                row.get('local_team'),
+                row.get('visitante_team'),
+                row.get('goles_local'),
+                row.get('goles_visitante'),
             )
-        self.headers = {"X-Auth-Token": self.api_key}
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_rows.append(row)
+        return unique_rows
 
     def get_matches(self, competition_id: int = 2014, season: Optional[str] = None) -> pd.DataFrame:
         """
-        Obtiene partidos de una competición específica.
+        Obtiene partidos de una competición usando TheSportsDB.
 
         Args:
-            competition_id: ID de la competición (2014 = La Liga, 2021 = Premier League, etc.)
-            season: Temporada en formato YYYY (ej: '2023')
+            competition_id: ID de competición (admite IDs legacy del proyecto o idLeague de TheSportsDB)
+            season: Temporada en formato YYYY o YYYY-YYYY
 
         Returns:
-            DataFrame con los partidos
+            DataFrame con estructura homogénea para el agente
         """
-        url = f"{self.BASE_URL}/competitions/{competition_id}/matches"
-        params = {}
-        if season:
-            params['season'] = season
+        league_id = self._resolve_league_id(competition_id)
+        season_label = self._season_to_range(season)
+        rows = []
 
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
+        try:
+            rows = self._get_eventsseason_rows(league_id, season_label)
+        except requests.HTTPError as error:
+            status_code = error.response.status_code if error.response is not None else None
+            if status_code != 429:
+                raise
 
-        data = response.json()
-        matches = data.get('matches', [])
+        # Con key pública 123 evitamos expansión por jornadas para no agotar cuota.
+        can_expand_rounds = self.api_key not in ('123',)
+        if can_expand_rounds:
+            try:
+                round_rows = self._get_events_by_round_rows(league_id, season_label)
+                if len(round_rows) > len(rows):
+                    rows = round_rows
+            except requests.HTTPError:
+                pass
 
-        # Convertir a DataFrame
-        df_data = []
-        for match in matches:
-            df_data.append({
-                'date': match['utcDate'],
-                'local_team': match['homeTeam']['name'],
-                'visitante_team': match['awayTeam']['name'],
-                'goles_local': match['score']['fullTime']['home'] or 0,
-                'goles_visitante': match['score']['fullTime']['away'] or 0,
-                'status': match['status'],
-                'competition': data['competition']['name'],
-                'season': data.get('filters', {}).get('season', 'unknown')
-            })
+        df = pd.DataFrame(rows)
+        if df.empty:
+            return pd.DataFrame(
+                columns=[
+                    'date', 'local_team', 'visitante_team', 'goles_local',
+                    'goles_visitante', 'status', 'competition', 'season'
+                ]
+            )
 
-        df = pd.DataFrame(df_data)
-        df['date'] = pd.to_datetime(df['date'])
-
-        # Filtrar solo partidos terminados
-        df = df[df['status'] == 'FINISHED'].copy()
-
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
         return df
 
     def get_competitions(self) -> pd.DataFrame:
-        """Obtiene lista de competiciones disponibles"""
-        url = f"{self.BASE_URL}/competitions"
-        response = requests.get(url, headers=self.headers)
+        """Obtiene ligas disponibles en TheSportsDB (solo fútbol/soccer)."""
+        url = f"{self.BASE_URL}/{self.api_key}/all_leagues.php"
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
 
         data = response.json()
-        competitions = data.get('competitions', [])
+        leagues = data.get('leagues') or []
 
-        df_data = []
-        for comp in competitions:
-            df_data.append({
-                'id': comp['id'],
-                'name': comp['name'],
-                'code': comp['code'],
-                'area': comp['area']['name']
+        rows = []
+        for league in leagues:
+            sport = league.get('strSport')
+            if sport and sport.lower() not in {'soccer', 'football'}:
+                continue
+            rows.append({
+                'id': int(league.get('idLeague')) if str(league.get('idLeague', '')).isdigit() else league.get('idLeague'),
+                'name': league.get('strLeague'),
+                'sport': sport,
+                'alternate': league.get('strLeagueAlternate'),
             })
 
-        return pd.DataFrame(df_data)
+        return pd.DataFrame(rows)
 
 
 def fetch_real_matches(competition_id: int = 2014, season: str = '2023', output_path: Optional[str] = None) -> pd.DataFrame:
@@ -101,24 +198,15 @@ def fetch_real_matches(competition_id: int = 2014, season: str = '2023', output_
     Función de conveniencia para obtener partidos reales y opcionalmente guardarlos.
 
     Args:
-        competition_id: ID de la competición
-        season: Temporada
+        competition_id: ID de la competición (legacy o idLeague de TheSportsDB)
+        season: Temporada (YYYY o YYYY-YYYY)
         output_path: Si se proporciona, guarda el CSV en esta ruta
 
     Returns:
         DataFrame con los partidos
     """
-    try:
-        api = FootballDataAPI()
-        df = api.get_matches(competition_id, season)
-    except ValueError as e:
-        print(f"Error de configuración: {e}")
-        print("Para usar datos reales, sigue estos pasos:")
-        print("1. Regístrate gratis en: https://www.football-data.org/client/register")
-        print("2. Obtén tu API key gratuita")
-        print("3. Configura la variable de entorno: set FOOTBALL_DATA_API_KEY=tu_api_key")
-        print("4. O crea un archivo .env con: FOOTBALL_DATA_API_KEY=tu_api_key")
-        raise
+    api = SportsDBAPI()
+    df = api.get_matches(competition_id, season)
 
     if output_path:
         output_file = Path(output_path)
@@ -129,9 +217,12 @@ def fetch_real_matches(competition_id: int = 2014, season: str = '2023', output_
     return df
 
 
-# IDs de competiciones comunes (sin API key requerida):
-# 2014: La Liga (España)
-# 2021: Premier League (Inglaterra)
-# 2002: Bundesliga (Alemania)
-# 2019: Serie A (Italia)
-# 2015: Ligue 1 (Francia)
+# IDs legacy soportados por compatibilidad:
+# 2014: La Liga (4335 en TheSportsDB)
+# 2021: Premier League (4328 en TheSportsDB)
+# 2002: Bundesliga (4331 en TheSportsDB)
+# 2019: Serie A (4332 en TheSportsDB)
+# 2015: Ligue 1 (4334 en TheSportsDB)
+
+# Alias para compatibilidad con código/documentación previa.
+FootballDataAPI = SportsDBAPI

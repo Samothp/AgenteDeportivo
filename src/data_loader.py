@@ -141,10 +141,21 @@ def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Opt
             print("Obteniendo datos reales de la API...")
             from .api_client import fetch_real_matches
             df = fetch_real_matches(competition_id or 2014, season or '2023')
-            # Guardar para uso futuro
-            path.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(path, index=False)
-            print(f"Datos guardados en: {csv_path}")
+
+            if df.empty:
+                if path.exists():
+                    print("La API devolvió 0 partidos. Usando último CSV local disponible.")
+                    df = pd.read_csv(path)
+                else:
+                    raise ValueError(
+                        "La API devolvió 0 partidos para esta consulta. "
+                        "Puede ser un límite temporal de cuota; intenta de nuevo o usa una API key propia."
+                    )
+            else:
+                # Guardar para uso futuro
+                path.parent.mkdir(parents=True, exist_ok=True)
+                df.to_csv(path, index=False)
+                print(f"Datos guardados en: {csv_path}")
         else:
             raise FileNotFoundError(f'No se encontró el archivo: {csv_path}. Usa fetch_real=True para obtener datos reales.')
     else:

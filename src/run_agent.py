@@ -18,8 +18,27 @@ def parse_args():
     return parser.parse_args()
 
 
+def ensure_inside_folder(file_path: str, folder_path: str) -> str:
+    output = Path(file_path)
+    folder = Path(folder_path)
+
+    if output.is_absolute() and output.parent == folder:
+        return str(output)
+    if not output.is_absolute() and output.parent == folder:
+        return str(output)
+
+    if output.parent == folder.parent or output.parent == Path('.') or output.parent == Path('reports'):
+        return str(folder / output.name)
+
+    return str(output)
+
+
 def main():
     args = parse_args()
+    args.output = ensure_inside_folder(args.output, args.visual)
+    if args.html_output:
+        args.html_output = ensure_inside_folder(args.html_output, args.visual)
+
     agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team)
 
     if args.clean_reports:

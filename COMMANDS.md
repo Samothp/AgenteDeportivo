@@ -19,15 +19,27 @@ python -m src.run_agent --data data/example_matches.csv --output reports/informe
 python -m src.run_agent --data data/example_matches.csv --output reports/informe.txt --visual reports --html-output reports/informe.html
 ```
 
-## Obtener datos reales de la API
+## Obtener datos reales de la API (TheSportsDB)
 
 ```bash
 python -m src.run_agent --fetch-real --competition 2014 --season 2025 --output reports/laliga_2025.txt --html-output reports/laliga_2025.html --visual reports/laliga_2025
 ```
 
 - `--fetch-real` : obtén datos desde la API en lugar de usar un CSV local
-- `--competition` : ID de la competición (`2014` = La Liga)
-- `--season` : temporada en formato `YYYY`
+- `--competition` : ID legacy de la competición (`2014` = La Liga, `2021` = Premier) o `idLeague` de TheSportsDB
+- `--season` : temporada en formato `YYYY` (se transforma a `YYYY-YYYY+1` en TheSportsDB)
+
+Configuración recomendada de API key:
+
+```bash
+# Windows
+set THESPORTSDB_API_KEY=078593
+
+# Linux/Mac
+export THESPORTSDB_API_KEY=078593
+```
+
+> Si no defines variable de entorno, el cliente usa `123` por defecto como key pública de pruebas.
 
 > Nota: algunos datos opcionales como posesión o tarjetas pueden no estar disponibles en todos los conjuntos de datos/API. El informe mostrará esos valores como "No disponible" cuando no estén presentes.
 
@@ -54,6 +66,8 @@ python scripts/get_current_season.py
 Este script obtiene la temporada actual de La Liga y guarda los datos en:
 
 - `data/laliga_actual.csv`
+
+La fuente de datos para este flujo es TheSportsDB.
 
 Luego puedes generar un informe completo con:
 
