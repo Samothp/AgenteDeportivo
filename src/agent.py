@@ -11,6 +11,7 @@ from .analysis import (
     compute_match_detail,
     compute_matchday_summary,
     compute_overall_metrics,
+    compute_player_profile,
     compute_player_rankings,
     compute_standings,
     compute_team_record,
@@ -31,6 +32,8 @@ from .visualizer import (
     plot_match_stats_bar,
     plot_matchday_goals,
     plot_matchday_xg,
+    plot_player_bar,
+    plot_player_radar,
     plot_possession_distribution,
     plot_shots_comparison,
     plot_temporal_evolution,
@@ -40,7 +43,7 @@ from .visualizer import (
 
 
 class SportsAgent:
-    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None):
+    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None, player: Optional[str] = None):
         self.data_path = data_path
         self.fetch_real = fetch_real
         self.competition_id = competition_id
@@ -49,6 +52,7 @@ class SportsAgent:
         self.team = team
         self.matchday = matchday
         self.match_id = match_id
+        self.player = player
         self.data: Optional[pd.DataFrame] = None
         self.full_data: Optional[pd.DataFrame] = None
         self.available_optional_columns: set[str] = set()
@@ -63,6 +67,8 @@ class SportsAgent:
         self.matchday_summary: dict = {}
         self.match_detail: dict = {}  # ficha técnica del partido (solo modo Partido)
         self.liga_summary: dict = {}  # resumen completo de liga (solo modo Liga)
+        self.player_profile: dict = {}  # perfil del jugador (solo modo Jugador)
+        self.player_rankings_raw: Optional[pd.DataFrame] = None  # CSV jugadores cargado
 
     def load_data(self):
         if self.seasons and len(self.seasons) > 1:
@@ -122,6 +128,25 @@ class SportsAgent:
             self.filter_by_matchday()
             self.matchday_summary = compute_matchday_summary(self.data, self.full_data if self.full_data is not None else self.data, self.matchday)
             self.metrics = compute_overall_metrics(self.data)
+            self.top_scorers = top_scoring_teams(self.data)
+            self.top_defenders = top_defensive_teams(self.data)
+            self.highlights = match_highlights(self.data)
+            return self.metrics
+
+        # Modo Jugador: --team + --player
+        if self.team and self.player:
+            df_players = load_player_stats(
+                self.team,
+                competition_id=self.competition_id or 2014,
+                season=self.season or '2025-2026',
+                fetch_real=self.fetch_real,
+                verbose=self.fetch_real,
+            )
+            self.player_rankings_raw = df_players
+            self.player_profile = compute_player_profile(df_players, self.player)
+            self.player_rankings = compute_player_rankings(df_players)
+            self.filter_by_team()
+            self.metrics = compute_overall_metrics(self.data, team=self.team)
             self.top_scorers = top_scoring_teams(self.data)
             self.top_defenders = top_defensive_teams(self.data)
             self.highlights = match_highlights(self.data)
@@ -852,6 +877,166 @@ class SportsAgent:
         report_file.write_text('\n'.join(html), encoding='utf-8')
         return str(report_file)
 
+    def _generate_player_report(self, output_path: Optional[str] = None) -> str:
+        """Informe de texto para el modo Jugador."""
+        p = self.player_profile
+        lines: List[str] = []
+
+        if not p.get('found'):
+            msg = f'No se encontró al jugador: {self.player}'
+            if output_path:
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_text(msg, encoding='utf-8')
+            return msg
+
+        title = f'INFORME DE JUGADOR — {p["player_name"]}  |  {p["team"]}'
+        lines.append(title)
+        lines.append('=' * len(title))
+        lines.append(f'Posición:    {p["position"]}')
+        lines.append(f'Temporada:   {p["season"]}')
+        lines.append('')
+
+        lines.append('Estadísticas de temporada')
+        lines.append('-------------------------')
+        lines.append(f'  Partidos jugados:     {p["appearances"]}')
+        lines.append(f'  Goles:                {p["goals"]}')
+        lines.append(f'  Asistencias:          {p["assists"]}')
+        lines.append(f'  Goles + Asistencias:  {p["ga"]}')
+        lines.append(f'  Tiros a puerta:       {p["shots_on_target"]}')
+        lines.append(f'  Tarjetas amarillas:   {p["yellow_cards"]}')
+        lines.append(f'  Tarjetas rojas:       {p["red_cards"]}')
+        lines.append('')
+
+        lines.append('Rendimiento por partido')
+        lines.append('-----------------------')
+        lines.append(f'  Goles/PJ:             {p["goles_por_partido"]:.3f}')
+        lines.append(f'  Asistencias/PJ:       {p["asistencias_por_partido"]:.3f}')
+        lines.append(f'  G+A/PJ:               {p["ga_por_partido"]:.3f}')
+        lines.append(f'  % partidos con gol:   {p["pct_partidos_con_gol"]:.1f}%')
+        lines.append(f'  % partidos con G+A:   {p["pct_partidos_con_ga"]:.1f}%')
+        lines.append('')
+
+        lines.append('Ranking en el equipo')
+        lines.append('--------------------')
+        lines.append(f'  Pos. goleadores:      #{p["ranking_goles"]}')
+        lines.append(f'  Pos. asistentes:      #{p["ranking_asistencias"]}')
+        lines.append('')
+
+        top_g = p.get('compañeros_goleadores')
+        if top_g is not None and not top_g.empty:
+            lines.append('Top 5 goleadores del equipo')
+            lines.extend(top_g.to_string(index=False).splitlines())
+            lines.append('')
+
+        top_a = p.get('compañeros_asistentes')
+        if top_a is not None and not top_a.empty:
+            lines.append('Top 5 asistentes del equipo')
+            lines.extend(top_a.to_string(index=False).splitlines())
+            lines.append('')
+
+        report_text = '\n'.join(lines)
+        if output_path:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(output_path).write_text(report_text, encoding='utf-8')
+        return report_text
+
+    def _generate_player_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
+        """Informe HTML para el modo Jugador."""
+        p = self.player_profile
+        report_file = Path(output_path)
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+
+        if not p.get('found'):
+            report_file.write_text(f'<p>No se encontró al jugador: {self.player}</p>', encoding='utf-8')
+            return str(report_file)
+
+        image_folder_path = Path(image_folder) if image_folder else report_file.parent
+        image_folder_path.mkdir(parents=True, exist_ok=True)
+        images = self.save_visual_report(str(image_folder_path))
+        relative_images = [
+            Path(os.path.relpath(img, start=report_file.parent)).as_posix()
+            for img in images if img
+        ]
+
+        top_g = p.get('compañeros_goleadores')
+        top_a = p.get('compañeros_asistentes')
+
+        html = [
+            '<!DOCTYPE html>',
+            '<html lang="es">',
+            '<head>',
+            '  <meta charset="UTF-8">',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+            f'  <title>{p["player_name"]} — {p["team"]}</title>',
+            '  <style>',
+            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
+            '    h1 { color: #1f4e79; } h2 { color: #2c7bb6; border-bottom: 2px solid #d0e4f7; padding-bottom: 4px; }',
+            '    .header-box { background: #1f4e79; color: white; border-radius: 12px; padding: 20px 28px; margin-bottom: 24px; }',
+            '    .header-box h1 { color: white; margin: 0 0 8px 0; }',
+            '    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 24px; }',
+            '    .kpi { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }',
+            '    .kpi .val { font-size: 2em; font-weight: bold; color: #1f4e79; }',
+            '    .kpi .lbl { font-size: 0.82em; color: #666; margin-top: 4px; }',
+            '    .rank-badge { display: inline-block; background: #e4efff; border-radius: 20px; padding: 3px 14px; font-weight: bold; color: #1f4e79; margin: 4px; }',
+            '    table { width: 100%; border-collapse: collapse; margin: 10px 0 20px 0; font-size: 0.9em; }',
+            '    th, td { padding: 7px 10px; border: 1px solid #d7dbe3; text-align: center; }',
+            '    th { background: #e4efff; }',
+            '    td.left { text-align: left; }',
+            '    img { max-width: 100%; border-radius: 8px; margin: 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
+            '    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }',
+            '  </style>',
+            '</head>',
+            '<body>',
+            f'  <div class="header-box">',
+            f'    <h1>{p["player_name"]}</h1>',
+            f'    <p>{p["team"]} &nbsp;|&nbsp; {p["position"]} &nbsp;|&nbsp; Temporada {p["season"]}</p>',
+            '  </div>',
+
+            '  <div class="kpi-grid">',
+            f'    <div class="kpi"><div class="val">{p["appearances"]}</div><div class="lbl">PJ</div></div>',
+            f'    <div class="kpi"><div class="val">{p["goals"]}</div><div class="lbl">Goles</div></div>',
+            f'    <div class="kpi"><div class="val">{p["assists"]}</div><div class="lbl">Asistencias</div></div>',
+            f'    <div class="kpi"><div class="val">{p["ga"]}</div><div class="lbl">G+A</div></div>',
+            f'    <div class="kpi"><div class="val">{p["shots_on_target"]}</div><div class="lbl">Tiros a puerta</div></div>',
+            f'    <div class="kpi"><div class="val">{p["yellow_cards"]}</div><div class="lbl">Amarillas</div></div>',
+            f'    <div class="kpi"><div class="val">{p["red_cards"]}</div><div class="lbl">Rojas</div></div>',
+            '  </div>',
+
+            '  <h2>Rendimiento por partido</h2>',
+            '  <div class="kpi-grid">',
+            f'    <div class="kpi"><div class="val">{p["goles_por_partido"]:.2f}</div><div class="lbl">Goles/PJ</div></div>',
+            f'    <div class="kpi"><div class="val">{p["asistencias_por_partido"]:.2f}</div><div class="lbl">Asist/PJ</div></div>',
+            f'    <div class="kpi"><div class="val">{p["ga_por_partido"]:.2f}</div><div class="lbl">G+A/PJ</div></div>',
+            f'    <div class="kpi"><div class="val">{p["pct_partidos_con_gol"]:.0f}%</div><div class="lbl">% con gol</div></div>',
+            f'    <div class="kpi"><div class="val">{p["pct_partidos_con_ga"]:.0f}%</div><div class="lbl">% con G+A</div></div>',
+            '  </div>',
+
+            '  <h2>Ranking en el equipo</h2>',
+            f'  <p><span class="rank-badge">#{p["ranking_goles"]} goleador</span>'
+            f' <span class="rank-badge">#{p["ranking_asistencias"]} asistente</span></p>',
+        ]
+
+        if top_g is not None and not top_g.empty:
+            html.extend([
+                '  <h2>Top 5 goleadores del equipo</h2>',
+                top_g.to_html(index=False, classes='dataframe', border=0),
+            ])
+        if top_a is not None and not top_a.empty:
+            html.extend([
+                '  <h2>Top 5 asistentes del equipo</h2>',
+                top_a.to_html(index=False, classes='dataframe', border=0),
+            ])
+
+        if relative_images:
+            html.extend(['  <h2>Gráficos</h2>', '  <div class="charts">'])
+            for img in relative_images:
+                html.append(f'    <img src="{img}" alt="Gráfico de jugador">')
+            html.append('  </div>')
+
+        html.extend(['</body>', '</html>'])
+        report_file.write_text('\n'.join(html), encoding='utf-8')
+        return str(report_file)
+
     def generate_report(self, output_path: Optional[str] = None) -> str:
         if not self.metrics:
             raise ValueError('Ejecute analyze() antes de generar el informe.')
@@ -863,6 +1048,9 @@ class SportsAgent:
 
         if self.matchday is not None and self.matchday_summary:
             return self._generate_matchday_report(output_path)
+
+        if self.player_profile:
+            return self._generate_player_report(output_path)
 
         if self.liga_summary:
             return self._generate_liga_report(output_path)
@@ -1077,6 +1265,9 @@ class SportsAgent:
 
         if self.matchday is not None and self.matchday_summary:
             return self._generate_matchday_html_report(output_path, image_folder=image_folder)
+
+        if self.player_profile:
+            return self._generate_player_html_report(output_path, image_folder=image_folder)
 
         if self.liga_summary:
             return self._generate_liga_html_report(output_path, image_folder=image_folder)
@@ -1397,6 +1588,17 @@ class SportsAgent:
             xg_path = plot_matchday_xg(self.data, str(report_folder / 'matchday_xg.png'))
             if xg_path:
                 paths.append(xg_path)
+            return paths
+
+        # Modo Jugador: barras + radar del jugador
+        if self.player_profile and self.player_profile.get('found'):
+            paths = []
+            bar_path = plot_player_bar(self.player_profile, str(report_folder / 'player_bar.png'))
+            if bar_path:
+                paths.append(bar_path)
+            radar_path = plot_player_radar(self.player_profile, str(report_folder / 'player_radar.png'))
+            if radar_path:
+                paths.append(radar_path)
             return paths
 
         # Modo Liga: gráficos de clasificación, goles y rendimiento

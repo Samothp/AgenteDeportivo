@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Optional
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
 import pandas as pd
 
@@ -508,6 +509,96 @@ def plot_home_away_performance(home_away: pd.DataFrame, output_path: str) -> Opt
     ax.legend()
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_player_bar(profile: dict, output_path: str) -> Optional[str]:
+    """Barras comparativas: stats del jugador vs media del equipo (top 5)."""
+    comp_df = profile.get('compañeros_goleadores')
+    if comp_df is None or comp_df.empty:
+        return None
+    pj = profile['appearances']
+    if pj == 0:
+        return None
+
+    player = profile['player_name']
+    metrics_labels = ['Goles/PJ', 'Asist/PJ', 'G+A/PJ', 'Tiros/PJ']
+    player_vals = [
+        profile['goles_por_partido'],
+        profile['asistencias_por_partido'],
+        profile['ga_por_partido'],
+        round(profile['shots_on_target'] / pj, 3),
+    ]
+    team_pj_mean = max(float(comp_df['PJ'].mean()), 1)
+    team_vals = [
+        round(float(comp_df['Goles'].mean()) / team_pj_mean, 3),
+        round(float(comp_df['Asistencias'].mean()) / team_pj_mean, 3),
+        round((float(comp_df['Goles'].mean()) + float(comp_df['Asistencias'].mean())) / team_pj_mean, 3),
+        0,
+    ]
+
+    x = np.arange(len(metrics_labels))
+    width = 0.35
+    fig, ax = plt.subplots(figsize=(8, 5))
+    bars1 = ax.bar(x - width / 2, player_vals, width, label=player, color='#1f77b4')
+    ax.bar(x + width / 2, team_vals, width, label='Media equipo (top 5)', color='#aec7e8')
+    for bar in bars1:
+        h = bar.get_height()
+        if h > 0:
+            ax.text(bar.get_x() + bar.get_width() / 2, h + 0.005, f'{h:.2f}', ha='center', va='bottom', fontsize=8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(metrics_labels, fontsize=9)
+    ax.set_ylabel('Por partido')
+    ax.set_title(f'{player} — estadísticas por partido vs equipo', fontsize=11)
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_player_radar(profile: dict, output_path: str) -> Optional[str]:
+    """Radar chart con métricas del jugador normalizadas vs el equipo."""
+    comp_df = profile.get('compañeros_goleadores')
+    if comp_df is None or comp_df.empty:
+        return None
+    pj = profile['appearances']
+    if pj == 0:
+        return None
+
+    player = profile['player_name']
+    metrics = ['Goles', 'Asistencias', 'G+A', 'Tiros\na puerta', '% partidos\ncon gol']
+    player_vals_raw = [
+        float(profile['goals']),
+        float(profile['assists']),
+        float(profile['ga']),
+        float(profile['shots_on_target']),
+        float(profile['pct_partidos_con_gol']),
+    ]
+    team_maxes = [
+        max(float(comp_df['Goles'].max()), 1),
+        max(float(comp_df['Asistencias'].max()), 1),
+        max(float((comp_df['Goles'] + comp_df['Asistencias']).max()), 1),
+        max(float(comp_df['Goles'].max()), 1),
+        100.0,
+    ]
+    norm = [min(v / m, 1.0) for v, m in zip(player_vals_raw, team_maxes)]
+
+    N = len(metrics)
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
+    norm_closed = norm + norm[:1]
+    angles_closed = angles + angles[:1]
+
+    fig, ax = plt.subplots(figsize=(6, 6), subplot_kw={'projection': 'polar'})
+    ax.plot(angles_closed, norm_closed, 'o-', linewidth=2, color='#1f77b4', label=player)
+    ax.fill(angles_closed, norm_closed, alpha=0.25, color='#1f77b4')
+    ax.set_thetagrids(np.degrees(angles), metrics, fontsize=9)
+    ax.set_ylim(0, 1)
+    ax.set_yticklabels([])
+    ax.set_title(f'Perfil — {player}', fontsize=12, pad=20)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     return output_path
 

@@ -927,3 +927,105 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
         'records':              records,
         'home_away':            home_away,
     }
+
+
+def compute_player_profile(df_players: pd.DataFrame, player_name: str) -> Dict:
+    """Perfil de rendimiento individual de un jugador.
+
+    Busca al jugador por nombre (insensible a mayúsculas, coincidencia parcial).
+    Devuelve sus stats de temporada, ratios calculados y posición en el ranking
+    del equipo (goleadores y asistentes).
+
+    Returns:
+        Dict con:
+          found (bool), player_name, team, position, season,
+          appearances, goals, assists, ga, shots_on_target,
+          yellow_cards, red_cards,
+          goles_por_partido, asistencias_por_partido, ga_por_partido,
+          ranking_goles (int, posición dentro del equipo),
+          ranking_asistencias (int),
+          compañeros_goleadores (DataFrame top 5 del equipo),
+          compañeros_asistentes (DataFrame top 5 del equipo),
+          pct_partidos_con_gol (float),
+          pct_partidos_con_ga (float),
+    """
+    if df_players.empty:
+        return {'found': False}
+
+    mask = df_players['player_name'].str.contains(player_name, case=False, na=False)
+    matches = df_players[mask]
+    if matches.empty:
+        return {'found': False, 'player_name': player_name}
+
+    # Si hay varias coincidencias, tomamos la de más apariciones
+    row = matches.sort_values('appearances', ascending=False).iloc[0]
+
+    pj         = int(row.get('appearances', 0))
+    goals      = int(row.get('goals', 0))
+    assists    = int(row.get('assists', 0))
+    ga         = int(row.get('goals_assists', goals + assists))
+    sot        = int(row.get('shots_on_target', 0))
+    yellows    = int(row.get('yellow_cards', 0))
+    reds       = int(row.get('red_cards', 0))
+    team       = str(row.get('team', '-'))
+    position   = str(row.get('position', '-'))
+    season     = str(row.get('season', '-'))
+
+    goles_pp  = round(goals / pj, 3) if pj > 0 else 0.0
+    asist_pp  = round(assists / pj, 3) if pj > 0 else 0.0
+    ga_pp     = round(ga / pj, 3) if pj > 0 else 0.0
+    pct_gol   = round(goals / pj * 100, 1) if pj > 0 else 0.0
+    pct_ga    = round(ga / pj * 100, 1) if pj > 0 else 0.0
+
+    # Rankings dentro del equipo (mismo equipo, sin contar al propio jugador primero)
+    df_team = df_players[df_players['team'] == team].copy()
+
+    def _rank(df: pd.DataFrame, col: str, val: int) -> int:
+        ranked = df.sort_values(col, ascending=False).reset_index(drop=True)
+        for i, r in ranked.iterrows():
+            if r['player_name'] == row['player_name']:
+                return int(i) + 1
+        return -1
+
+    ranking_goles     = _rank(df_team, 'goals', goals)
+    ranking_asistencias = _rank(df_team, 'assists', assists)
+
+    def _translate_pos(pos: str) -> str:
+        return _POS_ES.get(str(pos).strip().upper(), str(pos))
+
+    def _top5(df: pd.DataFrame, col: str) -> pd.DataFrame:
+        top = df.sort_values(col, ascending=False).head(5)
+        return pd.DataFrame({
+            'Jugador':     top['player_name'].values,
+            'Pos':         [_translate_pos(p) for p in top['position'].values],
+            'PJ':          top['appearances'].values,
+            'Goles':       top['goals'].values,
+            'Asistencias': top['assists'].values,
+        }).reset_index(drop=True)
+
+    compañeros_goleadores  = _top5(df_team, 'goals')
+    compañeros_asistentes  = _top5(df_team, 'assists')
+
+    return {
+        'found':                    True,
+        'player_name':              str(row['player_name']),
+        'team':                     team,
+        'position':                 _translate_pos(position),
+        'season':                   season,
+        'appearances':              pj,
+        'goals':                    goals,
+        'assists':                  assists,
+        'ga':                       ga,
+        'shots_on_target':          sot,
+        'yellow_cards':             yellows,
+        'red_cards':                reds,
+        'goles_por_partido':        goles_pp,
+        'asistencias_por_partido':  asist_pp,
+        'ga_por_partido':           ga_pp,
+        'pct_partidos_con_gol':     pct_gol,
+        'pct_partidos_con_ga':      pct_ga,
+        'ranking_goles':            ranking_goles,
+        'ranking_asistencias':      ranking_asistencias,
+        'compañeros_goleadores':    compañeros_goleadores,
+        'compañeros_asistentes':    compañeros_asistentes,
+    }

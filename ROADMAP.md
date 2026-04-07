@@ -13,7 +13,7 @@ Estado actual: ✅ implementado · 🔲 pendiente
 | **Jornada**| `--jornada 10`           | ✅     |
 | **Partido**| `--match-id 2279399`     | ✅     |
 | **Liga**   | *(ninguno extra)*        | ✅     |
-| **Jugador**| `--player "Vedat Muriqi"`| 🔲     |
+| **Jugador**| `--player "Vedat Muriqi"`| ✅     |
 
 ---
 
@@ -180,9 +180,18 @@ python -m src.run_agent --competition 2014 --season 2025 --match-id 2279399 \
 
 ---
 
-## Fase 4 — Reporte Jugador 🔲
+## Fase 4 — Reporte Jugador ✅ (completado)
 
-**Propósito:** ficha de rendimiento individual de un jugador durante la temporada.  
+> Commit → `feat(jugador): reporte de jugador con perfil, rankings y graficos`
+
+**Implementado:**
+- `compute_player_profile()` en `analysis.py`
+- `plot_player_bar()` y `plot_player_radar()` en `visualizer.py`
+- `_generate_player_report()`, `_generate_player_html_report()` en `agent.py`
+- Argumento `--player` en `run_agent.py`
+- Modo Jugador activado cuando se combinan `--team` y `--player`
+
+<!-- spec original -->  
 **Filtro:** `--player <nombre>` (búsqueda parcial en el CSV de jugadores ESPN).
 
 ### Secciones propuestas
@@ -229,9 +238,9 @@ python -m src.run_agent --competition 2014 --season 2025 \
 | Prioridad | Fase | Complejidad | Valor | Estado |
 |-----------|------|-------------|-------|--------|
 | 1 | **Jornada** | Baja — datos 100% en DB | Alto — uso frecuente | ✅ |
-| 2 | **Partido** | Media — radar chart nuevo | Alto — ficha detallada | 🔄 |
-| 3 | **Liga** | Media — tabla clasificación + rankings multi-equipo | Alto — visión global | 🔲 |
-| 4 | **Jugador** | Media — datos ya disponibles (ESPN) | Medio — datos limitados | 🔲 |
+| 2 | **Partido** | Media — radar chart nuevo | Alto — ficha detallada | ✅ |
+| 3 | **Liga** | Media — tabla clasificación + rankings multi-equipo | Alto — visión global | ✅ |
+| 4 | **Jugador** | Media — datos ya disponibles (ESPN) | Medio — datos limitados | ✅ |
 
 ---
 
