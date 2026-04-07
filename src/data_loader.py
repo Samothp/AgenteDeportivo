@@ -136,6 +136,19 @@ def get_db_path(competition_id: int, season: str) -> Path:
     return Path(f"data/db_{competition_id}_{season_norm}.csv")
 
 
+def list_available_teams(competition_id: int, season: str) -> List[str]:
+    """Devuelve la lista ordenada de equipos presentes en la DB local.
+
+    Retorna lista vacía si la DB no existe todavía.
+    """
+    db_path = get_db_path(competition_id, season)
+    if not db_path.exists():
+        return []
+    df = pd.read_csv(db_path, usecols=['local_team', 'visitante_team'])
+    teams = pd.concat([df['local_team'], df['visitante_team']]).dropna().unique()
+    return sorted(teams.tolist())
+
+
 def normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
     mapping = {}
     for column in df.columns:

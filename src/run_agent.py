@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 
 from .agent import SportsAgent
@@ -15,6 +16,7 @@ def parse_args():
     parser.add_argument('--competition', type=int, default=2014, help='ID de competición para datos reales (2014=La Liga, 2021=Premier League)')
     parser.add_argument('--season', default='2023', help='Temporada para datos reales (formato YYYY)')
     parser.add_argument('--team', default=None, help='Equipo para filtrar el análisis (ej. Mallorca)')
+    parser.add_argument('--list-teams', action='store_true', help='Lista los equipos disponibles en la DB local para la competition+season indicada y termina')
     return parser.parse_args()
 
 
@@ -35,6 +37,20 @@ def ensure_inside_folder(file_path: str, folder_path: str) -> str:
 
 def main():
     args = parse_args()
+
+    # --list-teams: mostrar equipos disponibles y salir
+    if args.list_teams:
+        from .data_loader import list_available_teams
+        teams = list_available_teams(args.competition, args.season)
+        if not teams:
+            print(f'No hay DB local para competition={args.competition} season={args.season}.')
+            print('Usa --fetch-real para descargar los datos primero.')
+            sys.exit(1)
+        print(f'Equipos disponibles (competition={args.competition}, season={args.season}):')
+        for name in teams:
+            print(f'  {name}')
+        sys.exit(0)
+
     args.output = ensure_inside_folder(args.output, args.visual)
     if args.html_output:
         args.html_output = ensure_inside_folder(args.html_output, args.visual)

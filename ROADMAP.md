@@ -25,7 +25,7 @@
 ## Prioridad Media
 
 ### ✅ 3. Listado de equipos disponibles (`--list-teams`)
-**Estado:** Pendiente  
+**Estado:** Completado  
 **Objetivo:** Mostrar qué equipos hay en la DB para una competición y temporada dadas, evitando errores de tipeo al usar `--team`.  
 **Cambios previstos:**
 - `run_agent.py` → argumento `--list-teams` que solo imprime los equipos y termina
