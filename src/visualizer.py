@@ -331,3 +331,102 @@ def plot_matchday_xg(df: pd.DataFrame, output_path: str) -> Optional[str]:
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
     return output_path
+
+
+def plot_match_stats_bar(stats: list, local: str, visitante: str, output_path: str) -> Optional[str]:
+    """Barras horizontales enfrentadas al estilo TV (local izquierda, visitante derecha)."""
+    import numpy as np
+
+    # Filtrar solo stats numéricas y que ambos tengan valor
+    rows = [s for s in stats if s['local'] != '-' and s['visitante'] != '-']
+    if not rows:
+        return None
+
+    labels   = [r['stat'] for r in rows]
+    vals_l   = [float(r['local'])    for r in rows]
+    vals_v   = [float(r['visitante']) for r in rows]
+    ventajas = [r['ventaja']         for r in rows]
+
+    n = len(labels)
+    y = np.arange(n)
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(10, max(4, n * 0.45)))
+
+    bar_l = ax.barh(y,  vals_l,  align='center', color='#2e86de', alpha=0.85, label=local)
+    bar_v = ax.barh(y, [-v for v in vals_v], align='center', color='#e74c3c', alpha=0.85, label=visitante)
+
+    # Etiquetas de valor
+    for i, (vl, vv) in enumerate(zip(vals_l, vals_v)):
+        ax.text( vl + max(vals_l) * 0.02, i,  f'{vl:.0f}', va='center', ha='left',  fontsize=8)
+        ax.text(-vv - max(vals_v) * 0.02, i,  f'{vv:.0f}', va='center', ha='right', fontsize=8)
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=8)
+    ax.axvline(0, color='black', linewidth=0.8)
+    ax.set_xlabel('')
+    ax.set_title(f'Estadísticas del partido\n{local}  vs  {visitante}', fontsize=11)
+
+    # Ocultar ticks negativos en el eje X (usando FixedLocator para evitar warning)
+    from matplotlib.ticker import FixedLocator, FixedFormatter
+    xticks = ax.get_xticks()
+    ax.xaxis.set_major_locator(FixedLocator(xticks))
+    ax.xaxis.set_major_formatter(FixedFormatter([str(abs(int(t))) for t in xticks]))
+    ax.tick_params(axis='x', labelsize=7)
+
+    ax.legend(loc='lower right', fontsize=8)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_match_radar(stats: list, local: str, visitante: str, output_path: str) -> Optional[str]:
+    """Radar chart (spider) comparando local vs visitante en métricas clave."""
+    import numpy as np
+
+    # Métricas para el radar (máximo 8, ambos deben tener valor)
+    RADAR_STATS = [
+        'Tiros a puerta', 'xG', 'Posesión %', 'Corners',
+        'Precisión pases %', 'Paradas portero',
+    ]
+    rows = {r['stat']: r for r in stats if r['local'] != '-' and r['visitante'] != '-'}
+    selected = [s for s in RADAR_STATS if s in rows]
+    if len(selected) < 3:
+        return None
+
+    vals_l = [float(rows[s]['local'])    for s in selected]
+    vals_v = [float(rows[s]['visitante']) for s in selected]
+
+    # Normalizar 0-1 por stat
+    def _norm(vl, vv):
+        total = vl + vv
+        if total == 0:
+            return 0.5, 0.5
+        return vl / total, vv / total
+
+    norm_l, norm_v = zip(*[_norm(vl, vv) for vl, vv in zip(vals_l, vals_v)])
+    norm_l = list(norm_l) + [norm_l[0]]
+    norm_v = list(norm_v) + [norm_v[0]]
+
+    angles = np.linspace(0, 2 * np.pi, len(selected), endpoint=False).tolist()
+    angles += angles[:1]
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(6, 6), subplot_kw={'polar': True})
+
+    ax.plot(angles, norm_l, 'o-', linewidth=2, color='#2e86de', label=local)
+    ax.fill(angles, norm_l, alpha=0.2, color='#2e86de')
+    ax.plot(angles, norm_v, 'o-', linewidth=2, color='#e74c3c', label=visitante)
+    ax.fill(angles, norm_v, alpha=0.2, color='#e74c3c')
+
+    ax.set_thetagrids(np.degrees(angles[:-1]), selected, fontsize=8)
+    ax.set_ylim(0, 1)
+    ax.set_yticklabels([])
+    ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=9)
+    ax.set_title('Comparativa métricas clave', fontsize=11, pad=15)
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return output_path

@@ -544,3 +544,196 @@ def compute_matchday_summary(df_jornada: pd.DataFrame, df_all: pd.DataFrame, jor
         'xg_surprise':              xg_surprise,
         'standings':                standings,
     }
+
+
+_COMPETITION_NAME_MAP = {
+    'spanish la liga':          'La Liga',
+    'spanish primera division': 'La Liga',
+    'primera division':         'La Liga',
+    'english premier league':   'Premier League',
+    'german bundesliga':        'Bundesliga',
+    'italian serie a':          'Serie A',
+    'french ligue 1':           'Ligue 1',
+    'dutch eredivisie':         'Eredivisie',
+    'portuguese primeira liga': 'Primeira Liga',
+    'uefa champions league':    'Champions League',
+    'uefa europa league':       'Europa League',
+}
+
+def _normalize_competition(name: str) -> str:
+    """Devuelve el nombre normalizado de la competición (sin prefijo de país)."""
+    key = name.strip().lower()
+    return _COMPETITION_NAME_MAP.get(key, name)
+
+
+def compute_match_detail(df: pd.DataFrame, match_id: int) -> Dict:
+    """Ficha técnica completa de un partido específico.
+
+    Args:
+        df: DataFrame completo con todos los partidos.
+        match_id: Valor de la columna id_event.
+
+    Returns:
+        Dict con todos los datos del partido y análisis narrativo automático.
+        Claves principales: local, visitante, goles_local, goles_visitante,
+        resultado, fecha, jornada, estadio, arbitro, espectadores, competition,
+        season, video_highlights, stats (lista de dicts comparativos),
+        narrativa, contexto_local (pos en tabla), contexto_visitante.
+        Lanza ValueError si el match_id no existe.
+    """
+    matches = df[df['id_event'] == match_id]
+    if matches.empty:
+        raise ValueError(f'No se encontró el partido con id_event={match_id}')
+    row = matches.iloc[0]
+
+    def _val(col: str):
+        v = row.get(col)
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return None
+        return v
+
+    def _int(col: str) -> Optional[int]:
+        v = _val(col)
+        return int(v) if v is not None else None
+
+    def _float(col: str) -> Optional[float]:
+        v = _val(col)
+        return round(float(v), 1) if v is not None else None
+
+    gl = int(row['goles_local'])
+    gv = int(row['goles_visitante'])
+    local     = str(row['local_team'])
+    visitante = str(row['visitante_team'])
+
+    if gl > gv:
+        resultado = 'local'
+    elif gl < gv:
+        resultado = 'visitante'
+    else:
+        resultado = 'empate'
+
+    # Tabla de stats cara a cara
+    STAT_DEFS = [
+        ('Tiros totales',         'shots_local',              'shots_visitante'),
+        ('Tiros a puerta',        'shots_on_target_local',    'shots_on_target_visitante'),
+        ('Tiros fuera',           'shots_off_target_local',   'shots_off_target_visitante'),
+        ('Tiros bloqueados',      'shots_blocked_local',      'shots_blocked_visitante'),
+        ('xG',                    'xg_local',                 'xg_visitante'),
+        ('Posesión %',            'posesion_local',           'posesion_visitante'),
+        ('Corners',               'corners_local',            'corners_visitante'),
+        ('Faltas',                'faltas_local',             'faltas_visitante'),
+        ('Fueras de juego',       'fueras_de_juego_local',    'fueras_de_juego_visitante'),
+        ('Paradas portero',       'paradas_local',            'paradas_visitante'),
+        ('Pases',                 'pases_local',              'pases_visitante'),
+        ('Pases precisos',        'pases_precisos_local',     'pases_precisos_visitante'),
+        ('Precisión pases %',     'precision_pases_local',    'precision_pases_visitante'),
+        ('Tarjetas amarillas',    'amarillas_local',          'amarillas_visitante'),
+        ('Tarjetas rojas',        'rojas_local',              'rojas_visitante'),
+    ]
+    stats = []
+    for label, col_l, col_v in STAT_DEFS:
+        vl = _val(col_l)
+        vv = _val(col_v)
+        if vl is None and vv is None:
+            continue
+        vl_disp = f'{float(vl):.0f}' if vl is not None else '-'
+        vv_disp = f'{float(vv):.0f}' if vv is not None else '-'
+        # Ventaja: quién es mayor (para posesión y precisión pases, mayor = mejor local/visit)
+        if vl is not None and vv is not None:
+            vl_f, vv_f = float(vl), float(vv)
+            if label in ('Faltas', 'Fueras de juego'):
+                advantage = 'local' if vl_f < vv_f else ('visitante' if vv_f < vl_f else 'equal')
+            else:
+                advantage = 'local' if vl_f > vv_f else ('visitante' if vv_f > vl_f else 'equal')
+        else:
+            advantage = 'equal'
+        stats.append({'stat': label, 'local': vl_disp, 'visitante': vv_disp, 'ventaja': advantage})
+
+    # Análisis narrativo automático
+    frases = []
+    pos_l = _float('posesion_local')
+    pos_v = _float('posesion_visitante')
+    if pos_l is not None:
+        dom = local if pos_l >= 50 else visitante
+        frases.append(f'{dom} dominó la posesión ({pos_l:.0f}% vs {pos_v:.0f}%).')
+
+    xg_l = _float('xg_local')
+    xg_v = _float('xg_visitante')
+    if xg_l is not None:
+        if gl > gv and xg_l < xg_v:
+            frases.append(
+                f'{local} ganó pese a generar menos peligro según el xG'
+                f' ({xg_l} vs {xg_v}), una victoria algo sorprendente.'
+            )
+        elif gl < gv and xg_l > xg_v:
+            frases.append(
+                f'{visitante} ganó pese a generar menos peligro según el xG'
+                f' ({xg_v} vs {xg_l}), un resultado inesperado.'
+            )
+        elif xg_l is not None:
+            frases.append(
+                f'El xG respaldó el resultado: {local} {xg_l} — {xg_v} {visitante}.'
+            )
+
+    shots_l = _int('shots_on_target_local')
+    shots_v = _int('shots_on_target_visitante')
+    if shots_l is not None:
+        if shots_l > shots_v:
+            frases.append(f'{local} fue más peligroso con {shots_l} tiros a puerta frente a {shots_v}.')
+        elif shots_v > shots_l:
+            frases.append(f'{visitante} fue más incisivo con {shots_v} tiros a puerta frente a {shots_l}.')
+
+    par_l = _int('paradas_local')
+    par_v = _int('paradas_visitante')
+    if par_l is not None and par_l >= 6:
+        frases.append(f'El portero de {local} realizó {par_l} paradas clave.')
+    if par_v is not None and par_v >= 6:
+        frases.append(f'El portero de {visitante} realizó {par_v} paradas clave.')
+
+    if not frases:
+        frases.append('Partido sin datos técnicos suficientes para el análisis narrativo.')
+
+    narrativa = ' '.join(frases)
+
+    # Contexto en la liga (posición antes del partido = clasificación hasta jornada - 1)
+    jornada_num = _int('jornada')
+    contexto_local     = None
+    contexto_visitante = None
+    if jornada_num is not None and jornada_num > 1:
+        standings_prev = compute_standings(df, up_to_jornada=jornada_num - 1)
+        if not standings_prev.empty:
+            row_l = standings_prev[standings_prev['Equipo'] == local]
+            row_v = standings_prev[standings_prev['Equipo'] == visitante]
+            if not row_l.empty:
+                r = row_l.iloc[0]
+                contexto_local = {
+                    'pos': int(r['Pos']), 'pts': int(r['PTS']),
+                    'pj': int(r['PJ']), 'gf': int(r['GF']), 'gc': int(r['GC']),
+                }
+            if not row_v.empty:
+                r = row_v.iloc[0]
+                contexto_visitante = {
+                    'pos': int(r['Pos']), 'pts': int(r['PTS']),
+                    'pj': int(r['PJ']), 'gf': int(r['GF']), 'gc': int(r['GC']),
+                }
+
+    return {
+        'match_id':          match_id,
+        'local':             local,
+        'visitante':         visitante,
+        'goles_local':       gl,
+        'goles_visitante':   gv,
+        'resultado':         resultado,
+        'fecha':             str(_val('date') or '-'),
+        'jornada':           jornada_num,
+        'estadio':           str(_val('estadio') or '-'),
+        'arbitro':           str(_val('arbitro') or '-'),
+        'espectadores':      _int('espectadores'),
+        'competition':       _normalize_competition(str(_val('competition') or '-')),
+        'season':            str(_val('season') or '-'),
+        'video_highlights':  _val('video_highlights'),
+        'stats':             stats,
+        'narrativa':         narrativa,
+        'contexto_local':    contexto_local,
+        'contexto_visitante': contexto_visitante,
+    }

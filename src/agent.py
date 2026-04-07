@@ -7,6 +7,7 @@ import pandas as pd
 
 from .analysis import (
     compute_league_comparison,
+    compute_match_detail,
     compute_matchday_summary,
     compute_overall_metrics,
     compute_player_rankings,
@@ -22,6 +23,8 @@ from .visualizer import (
     plot_attendance,
     plot_card_statistics,
     plot_goals_distribution,
+    plot_match_radar,
+    plot_match_stats_bar,
     plot_matchday_goals,
     plot_matchday_xg,
     plot_possession_distribution,
@@ -32,26 +35,28 @@ from .visualizer import (
 
 
 class SportsAgent:
-    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None):
+    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None):
         self.data_path = data_path
         self.fetch_real = fetch_real
         self.competition_id = competition_id
         self.season = season
-        self.seasons = seasons  # lista de temporadas para análisis multi-temporada
+        self.seasons = seasons
         self.team = team
         self.matchday = matchday
+        self.match_id = match_id
         self.data: Optional[pd.DataFrame] = None
-        self.full_data: Optional[pd.DataFrame] = None  # datos de toda la liga (antes de filtrar)
+        self.full_data: Optional[pd.DataFrame] = None
         self.available_optional_columns: set[str] = set()
         self.metrics: dict = {}
-        self.league_metrics: dict = {}  # métricas de la liga completa para comparativa
-        self.league_comparison: list = []  # filas de comparativa equipo vs liga
-        self.team_record: dict = {}  # historial W/D/L del equipo
+        self.league_metrics: dict = {}
+        self.league_comparison: list = []
+        self.team_record: dict = {}
         self.top_scorers: Optional[pd.DataFrame] = None
         self.top_defenders: Optional[pd.DataFrame] = None
         self.highlights: Optional[pd.DataFrame] = None
-        self.player_rankings: dict = {}  # goleadores, asistentes, combinado
-        self.matchday_summary: dict = {}  # resumen de la jornada (solo modo Jornada)
+        self.player_rankings: dict = {}
+        self.matchday_summary: dict = {}
+        self.match_detail: dict = {}  # ficha técnica del partido (solo modo Partido)
 
     def load_data(self):
         if self.seasons and len(self.seasons) > 1:
@@ -95,10 +100,21 @@ class SportsAgent:
         if self.data is None:
             raise ValueError('Datos no cargados. Ejecute load_data() primero.')
 
+        # Modo Partido: ficha técnica de un partido específico
+        if self.match_id is not None:
+            self.match_detail = compute_match_detail(self.data, self.match_id)
+            # Rellenar metrics mínimas para no romper generate_report/save_visual_report
+            match_row = self.data[self.data['id_event'] == self.match_id]
+            self.metrics = compute_overall_metrics(match_row)
+            self.top_scorers = top_scoring_teams(match_row)
+            self.top_defenders = top_defensive_teams(match_row)
+            self.highlights = match_highlights(match_row)
+            return self.metrics
+
         # Modo Jornada: filtrar por número de jornada y generar resumen
         if self.matchday is not None:
             self.filter_by_matchday()
-            self.matchday_summary = compute_matchday_summary(self.data, self.full_data, self.matchday)
+            self.matchday_summary = compute_matchday_summary(self.data, self.full_data if self.full_data is not None else self.data, self.matchday)
             self.metrics = compute_overall_metrics(self.data)
             self.top_scorers = top_scoring_teams(self.data)
             self.top_defenders = top_defensive_teams(self.data)
@@ -140,6 +156,223 @@ class SportsAgent:
     def format_html_metric(self, key: str) -> str:
         value = self.metrics.get(key)
         return f"{value:.1f}%" if value is not None and isinstance(value, float) else (str(value) if value is not None else 'No disponible')
+
+    def _generate_match_report(self, output_path: Optional[str] = None) -> str:
+        """Informe de texto para el modo Partido."""
+        m = self.match_detail
+        lines: List[str] = []
+        title = f'FICHA DEL PARTIDO — {m["local"]} vs {m["visitante"]}'
+        lines.append(title)
+        lines.append('=' * len(title))
+        lines.append(f'Fecha:       {m["fecha"]}')
+        if m['jornada']:
+            lines.append(f'Jornada:     {m["jornada"]}')
+        lines.append(f'Competición: {m["competition"]}  |  Temporada: {m["season"]}')
+        if m['estadio'] != '-':
+            lines.append(f'Estadio:     {m["estadio"]}')
+        if m['arbitro'] != '-':
+            lines.append(f'Árbitro:     {m["arbitro"]}')
+        if m['espectadores']:
+            lines.append(f'Espectadores: {m["espectadores"]:,}')
+        lines.append('')
+
+        resultado_str = (
+            'Victoria local' if m['resultado'] == 'local'
+            else 'Victoria visitante' if m['resultado'] == 'visitante'
+            else 'Empate'
+        )
+        lines.append(f'  {m["local"]:<25}  {m["goles_local"]:>2}  -  {m["goles_visitante"]:<2}  {m["visitante"]}')
+        lines.append(f'  Resultado: {resultado_str}')
+        lines.append('')
+
+        # Contexto en la liga
+        cl = m.get('contexto_local')
+        cv = m.get('contexto_visitante')
+        if cl or cv:
+            lines.append('Contexto (clasificación antes del partido)')
+            lines.append('------------------------------------------')
+            if cl:
+                lines.append(
+                    f'  {m["local"]:<25}  Pos {cl["pos"]:>2} | {cl["pts"]} pts | '
+                    f'{cl["pj"]} PJ | {cl["gf"]} GF {cl["gc"]} GC'
+                )
+            if cv:
+                lines.append(
+                    f'  {m["visitante"]:<25}  Pos {cv["pos"]:>2} | {cv["pts"]} pts | '
+                    f'{cv["pj"]} PJ | {cv["gf"]} GF {cv["gc"]} GC'
+                )
+            lines.append('')
+
+        if m['stats']:
+            lines.append('Estadísticas cara a cara')
+            lines.append('------------------------')
+            lines.append(f'  {"Estadística":^22} {"Local":>8}  {"Visitante":>9}')
+            lines.append(f'  {"-"*22} {"-"*8}  {"-"*9}')
+            for s in m['stats']:
+                lines.append(f'  {s["stat"]:^22} {s["local"]:>8}  {s["visitante"]:>9}')
+            lines.append('')
+
+        lines.append('Análisis')
+        lines.append('--------')
+        lines.append(f'  {m["narrativa"]}')
+        lines.append('')
+
+        if m.get('video_highlights'):
+            lines.append(f'Highlights: {m["video_highlights"]}')
+
+        report_text = '\n'.join(lines)
+        if output_path:
+            output_file = Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(report_text, encoding='utf-8')
+        return report_text
+
+    def _generate_match_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
+        """Informe HTML para el modo Partido."""
+        m = self.match_detail
+        report_file = Path(output_path)
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+
+        image_folder_path = Path(image_folder) if image_folder else report_file.parent
+        image_folder_path.mkdir(parents=True, exist_ok=True)
+        images = self.save_visual_report(str(image_folder_path))
+        relative_images = [
+            Path(os.path.relpath(img, start=report_file.parent)).as_posix()
+            for img in images if img
+        ]
+
+        resultado_str = (
+            'Victoria local' if m['resultado'] == 'local'
+            else 'Victoria visitante' if m['resultado'] == 'visitante'
+            else 'Empate'
+        )
+        color_res = '#27ae60' if m['resultado'] == 'local' else ('#e74c3c' if m['resultado'] == 'visitante' else '#f39c12')
+
+        html = [
+            '<!DOCTYPE html>',
+            '<html lang="es">',
+            '<head>',
+            '  <meta charset="UTF-8">',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+            f'  <title>{m["local"]} vs {m["visitante"]}</title>',
+            '  <style>',
+            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
+            '    h1, h2 { color: #1f4e79; }',
+            '    .section { margin-bottom: 24px; }',
+            '    .scoreboard { text-align: center; background: white; border-radius: 12px;',
+            '      padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); margin-bottom: 24px; }',
+            '    .score { font-size: 3em; font-weight: bold; color: #1f4e79; }',
+            '    .teams { font-size: 1.3em; margin-bottom: 8px; }',
+            '    .result-badge { display: inline-block; padding: 4px 16px; border-radius: 20px;',
+            f'      background: {color_res}; color: white; font-weight: bold; margin-top: 8px; }}',
+            '    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }',
+            '    .metric { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
+            '    table { width: 100%; border-collapse: collapse; margin-top: 12px; }',
+            '    th, td { padding: 8px 10px; border: 1px solid #d7dbe3; text-align: center; }',
+            '    th { background: #e4efff; }',
+            '    td.stat-name { text-align: center; font-weight: bold; }',
+            '    .adv-local { background: #d4edfa; }',
+            '    .adv-visit { background: #fde8e8; }',
+            '    .narrativa { background: white; padding: 16px; border-radius: 8px;',
+            '      box-shadow: 0 2px 8px rgba(0,0,0,0.08); font-style: italic; line-height: 1.6; }',
+            '    img { max-width: 100%; border-radius: 8px; margin-top: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
+            '  </style>',
+            '</head>',
+            '<body>',
+            '  <div class="scoreboard">',
+            f'    <div class="teams"><strong>{m["local"]}</strong> vs <strong>{m["visitante"]}</strong></div>',
+            f'    <div class="score">{m["goles_local"]} — {m["goles_visitante"]}</div>',
+            f'    <div class="result-badge">{resultado_str}</div>',
+            '  </div>',
+            '  <div class="section">',
+            '    <h2>Datos del partido</h2>',
+            '    <div class="metrics">',
+            f'      <div class="metric"><strong>Fecha</strong><p>{m["fecha"][:10]}</p></div>',
+        ]
+        if m['jornada']:
+            html.append(f'      <div class="metric"><strong>Jornada</strong><p>{m["jornada"]}</p></div>')
+        html.append(f'      <div class="metric"><strong>Competición</strong><p>{m["competition"]}</p></div>')
+        html.append(f'      <div class="metric"><strong>Temporada</strong><p>{m["season"]}</p></div>')
+        if m['estadio'] != '-':
+            html.append(f'      <div class="metric"><strong>Estadio</strong><p>{m["estadio"]}</p></div>')
+        if m['arbitro'] != '-':
+            html.append(f'      <div class="metric"><strong>Árbitro</strong><p>{m["arbitro"]}</p></div>')
+        if m['espectadores']:
+            html.append(f'      <div class="metric"><strong>Espectadores</strong><p>{m["espectadores"]:,}</p></div>')
+        html.extend(['    </div>', '  </div>'])
+
+        # Contexto clasificatorio
+        cl = m.get('contexto_local')
+        cv = m.get('contexto_visitante')
+        if cl or cv:
+            html.extend([
+                '  <div class="section">',
+                '    <h2>Clasificación previa</h2>',
+                '    <table>',
+                '      <thead><tr><th>Equipo</th><th>Pos</th><th>PJ</th><th>PTS</th><th>GF</th><th>GC</th></tr></thead>',
+                '      <tbody>',
+            ])
+            if cl:
+                html.append(
+                    f'        <tr><td class="adv-local"><strong>{m["local"]}</strong></td>'
+                    f'<td>{cl["pos"]}</td><td>{cl["pj"]}</td>'
+                    f'<td><strong>{cl["pts"]}</strong></td><td>{cl["gf"]}</td><td>{cl["gc"]}</td></tr>'
+                )
+            if cv:
+                html.append(
+                    f'        <tr><td class="adv-visit"><strong>{m["visitante"]}</strong></td>'
+                    f'<td>{cv["pos"]}</td><td>{cv["pj"]}</td>'
+                    f'<td><strong>{cv["pts"]}</strong></td><td>{cv["gf"]}</td><td>{cv["gc"]}</td></tr>'
+                )
+            html.extend(['      </tbody>', '    </table>', '  </div>'])
+
+        # Stats cara a cara
+        if m['stats']:
+            html.extend([
+                '  <div class="section">',
+                '    <h2>Estadísticas cara a cara</h2>',
+                '    <table>',
+                f'      <thead><tr><th>{m["local"]}</th><th class="stat-name">Estadística</th><th>{m["visitante"]}</th></tr></thead>',
+                '      <tbody>',
+            ])
+            for s in m['stats']:
+                css = 'adv-local' if s['ventaja'] == 'local' else ('adv-visit' if s['ventaja'] == 'visitante' else '')
+                css_l = f' class="{css}"' if s['ventaja'] == 'local' else ''
+                css_v = f' class="{css}"' if s['ventaja'] == 'visitante' else ''
+                html.append(
+                    f'        <tr>'
+                    f'<td{css_l}><strong>{s["local"]}</strong></td>'
+                    f'<td class="stat-name">{s["stat"]}</td>'
+                    f'<td{css_v}><strong>{s["visitante"]}</strong></td>'
+                    f'</tr>'
+                )
+            html.extend(['      </tbody>', '    </table>', '  </div>'])
+
+        # Narrativa
+        html.extend([
+            '  <div class="section">',
+            '    <h2>Análisis del partido</h2>',
+            f'    <p class="narrativa">{m["narrativa"]}</p>',
+            '  </div>',
+        ])
+
+        if m.get('video_highlights'):
+            html.extend([
+                '  <div class="section">',
+                '    <h2>Highlights</h2>',
+                f'    <p><a href="{m["video_highlights"]}" target="_blank">Ver highlights del partido</a></p>',
+                '  </div>',
+            ])
+
+        if relative_images:
+            html.extend(['  <div class="section">', '    <h2>Gráficos</h2>'])
+            for img in relative_images:
+                html.append(f'    <img src="{img}" alt="Gráfico del partido">')
+            html.append('  </div>')
+
+        html.extend(['</body>', '</html>'])
+        report_file.write_text('\n'.join(html), encoding='utf-8')
+        return str(report_file)
 
     def _generate_matchday_report(self, output_path: Optional[str] = None) -> str:
         """Informe de texto para el modo Jornada."""
@@ -360,6 +593,9 @@ class SportsAgent:
         if self.top_scorers is None or self.top_defenders is None or self.highlights is None:
             raise ValueError('Los resultados del análisis no están disponibles. Ejecute analyze() antes de generar el informe.')
 
+        if self.match_id is not None and self.match_detail:
+            return self._generate_match_report(output_path)
+
         if self.matchday is not None and self.matchday_summary:
             return self._generate_matchday_report(output_path)
 
@@ -567,6 +803,9 @@ class SportsAgent:
             raise ValueError('Ejecute analyze() antes de generar el informe HTML.')
         if self.top_scorers is None or self.top_defenders is None or self.highlights is None:
             raise ValueError('Los resultados del análisis no están disponibles. Ejecute analyze() antes de generar el informe HTML.')
+
+        if self.match_id is not None and self.match_detail:
+            return self._generate_match_html_report(output_path, image_folder=image_folder)
 
         if self.matchday is not None and self.matchday_summary:
             return self._generate_matchday_html_report(output_path, image_folder=image_folder)
@@ -856,6 +1095,27 @@ class SportsAgent:
 
         report_folder = Path(output_folder)
         report_folder.mkdir(parents=True, exist_ok=True)
+
+        # Modo Partido: gráficos de estadísticas cara a cara
+        if self.match_id is not None:
+            paths = []
+            bar_path = plot_match_stats_bar(
+                self.match_detail['stats'],
+                self.match_detail['local'],
+                self.match_detail['visitante'],
+                str(report_folder / 'match_stats_bar.png'),
+            )
+            if bar_path:
+                paths.append(bar_path)
+            radar_path = plot_match_radar(
+                self.match_detail['stats'],
+                self.match_detail['local'],
+                self.match_detail['visitante'],
+                str(report_folder / 'match_radar.png'),
+            )
+            if radar_path:
+                paths.append(radar_path)
+            return paths
 
         # Modo Jornada: solo gráficos de la jornada
         if self.matchday is not None:

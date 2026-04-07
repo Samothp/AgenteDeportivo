@@ -10,9 +10,9 @@ Estado actual: ✅ implementado · 🔲 pendiente
 | Tipo       | Argumento CLI           | Estado |
 |------------|-------------------------|--------|
 | **Equipo** | `--team Mallorca`        | ✅     |
+| **Jornada**| `--jornada 10`           | ✅     |
+| **Partido**| `--match-id 2279399`     | 🔄     |
 | **Liga**   | *(ninguno extra)*        | 🔲     |
-| **Jornada**| `--jornada 10`           | 🔲     |
-| **Partido**| `--match-id 2279399`     | 🔲     |
 | **Jugador**| `--player "Vedat Muriqi"`| 🔲     |
 
 ---
@@ -80,7 +80,17 @@ python -m src.run_agent --competition 2014 --season 2025 \
 
 ---
 
-## Fase 2 — Reporte Jornada 🔲
+## Fase 2 — Reporte Jornada (✅ completado)
+
+> Commit `a0aa3ef` — `feat(jornada): reporte de jornada con resultados, clasificacion acumulada y graficos`
+
+**Implementado:**
+- `compute_standings()` y `compute_matchday_summary()` en `analysis.py`
+- `plot_matchday_goals()` y `plot_matchday_xg()` en `visualizer.py`
+- `filter_by_matchday()`, `_generate_matchday_report()`, `_generate_matchday_html_report()` en `agent.py`
+- Argumento `--jornada` en `run_agent.py`
+
+<!-- spec original -->
 
 **Propósito:** análisis de todos los partidos de una jornada concreta.  
 **Filtro:** `--jornada <N>` (columna `jornada` en la DB).
@@ -115,7 +125,7 @@ python -m src.run_agent --competition 2014 --season 2025 --jornada 15 \
 
 ---
 
-## Fase 3 — Reporte Partido 🔲
+## Fase 3 — Reporte Partido � (en progreso)
 
 **Propósito:** ficha técnica completa de un partido específico.  
 **Filtro:** `--match-id <id_event>` (columna `id_event` en la DB).
@@ -206,12 +216,12 @@ python -m src.run_agent --competition 2014 --season 2025 \
 
 ## Orden de implementación sugerido
 
-| Prioridad | Fase | Complejidad | Valor |
-|-----------|------|-------------|-------|
-| 1 | **Jornada** | Baja — datos 100% en DB | Alto — uso frecuente |
-| 2 | **Partido** | Media — radar chart nuevo | Alto — ficha detallada |
-| 3 | **Liga** | Media — tabla clasificación + rankings multi-equipo | Alto — visión global |
-| 4 | **Jugador** | Media — datos ya disponibles (ESPN) | Medio — datos limitados |
+| Prioridad | Fase | Complejidad | Valor | Estado |
+|-----------|------|-------------|-------|--------|
+| 1 | **Jornada** | Baja — datos 100% en DB | Alto — uso frecuente | ✅ |
+| 2 | **Partido** | Media — radar chart nuevo | Alto — ficha detallada | 🔄 |
+| 3 | **Liga** | Media — tabla clasificación + rankings multi-equipo | Alto — visión global | 🔲 |
+| 4 | **Jugador** | Media — datos ya disponibles (ESPN) | Medio — datos limitados | 🔲 |
 
 ---
 
