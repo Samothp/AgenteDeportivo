@@ -105,3 +105,45 @@ def match_highlights(df: pd.DataFrame, n: int = 5) -> pd.DataFrame:
     highlights = df.copy()
     highlights['margen_victoria'] = (highlights['goles_local'] - highlights['goles_visitante']).abs()
     return highlights.sort_values(['goles_totales', 'margen_victoria'], ascending=[False, False]).head(n)
+
+
+def compute_league_comparison(team_metrics: Dict, league_metrics: Dict) -> List[Dict]:
+    """Compara las métricas del equipo con las de la liga completa.
+
+    Devuelve una lista de dicts con: metrica, equipo, liga, diferencia, signo.
+    Solo incluye métricas disponibles en ambos contextos.
+    """
+    METRIC_LABELS = {
+        'goles_promedio_por_partido':         'Goles por partido',
+        'tiros_local_promedio':               'Tiros totales (local)',
+        'tiros_visitante_promedio':           'Tiros totales (visitante)',
+        'tiros_a_puerta_local_promedio':      'Tiros a puerta (local)',
+        'tiros_a_puerta_visitante_promedio':  'Tiros a puerta (visitante)',
+        'xg_local_promedio':                  'xG (local)',
+        'xg_visitante_promedio':              'xG (visitante)',
+        'posesion_local_promedio':            'Posesión % (local)',
+        'posesion_visitante_promedio':        'Posesión % (visitante)',
+        'corners_local_promedio':             'Corners (local)',
+        'corners_visitante_promedio':         'Corners (visitante)',
+        'faltas_local_promedio':              'Faltas (local)',
+        'faltas_visitante_promedio':          'Faltas (visitante)',
+        'paradas_local_promedio':             'Paradas portero (local)',
+        'paradas_visitante_promedio':         'Paradas portero (visitante)',
+        'precision_pases_local_promedio':     'Precisión pases % (local)',
+        'precision_pases_visitante_promedio': 'Precisión pases % (visitante)',
+    }
+    rows = []
+    for key, label in METRIC_LABELS.items():
+        t_val = team_metrics.get(key)
+        l_val = league_metrics.get(key)
+        if t_val is None or l_val is None:
+            continue
+        diff = t_val - l_val
+        rows.append({
+            'metrica': label,
+            'equipo': round(t_val, 2),
+            'liga': round(l_val, 2),
+            'diferencia': round(diff, 2),
+            'signo': '+' if diff >= 0 else '',
+        })
+    return rows

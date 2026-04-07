@@ -6,6 +6,7 @@ from typing import List, Optional
 import pandas as pd
 
 from .analysis import (
+    compute_league_comparison,
     compute_overall_metrics,
     match_highlights,
     top_defensive_teams,
@@ -18,6 +19,7 @@ from .visualizer import (
     plot_goals_distribution,
     plot_possession_distribution,
     plot_shots_comparison,
+    plot_temporal_evolution,
     plot_xg_per_match,
 )
 
@@ -30,8 +32,11 @@ class SportsAgent:
         self.season = season
         self.team = team
         self.data: Optional[pd.DataFrame] = None
+        self.full_data: Optional[pd.DataFrame] = None  # datos de toda la liga (antes de filtrar)
         self.available_optional_columns: set[str] = set()
         self.metrics: dict = {}
+        self.league_metrics: dict = {}  # métricas de la liga completa para comparativa
+        self.league_comparison: list = []  # filas de comparativa equipo vs liga
         self.top_scorers: Optional[pd.DataFrame] = None
         self.top_defenders: Optional[pd.DataFrame] = None
         self.highlights: Optional[pd.DataFrame] = None
@@ -44,6 +49,8 @@ class SportsAgent:
 
     def filter_by_team(self):
         if self.team and self.data is not None:
+            # Guardar datos completos de la liga ANTES de filtrar
+            self.full_data = self.data.copy()
             team_name = self.team.strip().lower()
             filtered = self.data[
                 self.data['local_team'].str.lower().str.contains(team_name, na=False) |
@@ -64,6 +71,10 @@ class SportsAgent:
         self.top_scorers = top_scoring_teams(self.data)
         self.top_defenders = top_defensive_teams(self.data)
         self.highlights = match_highlights(self.data)
+        # Comparativa vs liga si se filtró por equipo
+        if self.full_data is not None:
+            self.league_metrics = compute_overall_metrics(self.full_data)
+            self.league_comparison = compute_league_comparison(self.metrics, self.league_metrics)
         return self.metrics
 
     def format_metric(self, key: str, label: str, is_percent: bool = False) -> str:
@@ -129,6 +140,18 @@ class SportsAgent:
             report_lines.append('Estadísticas técnicas promedio')
             report_lines.append('------------------------------')
             report_lines.extend(tech_lines)
+
+        # Comparativa vs liga
+        if self.league_comparison:
+            report_lines.append('')
+            report_lines.append('Comparativa vs media de la liga')
+            report_lines.append('-------------------------------')
+            for row in self.league_comparison:
+                report_lines.append(
+                    f"  {row['metrica']}: {row['equipo']} "
+                    f"(liga: {row['liga']}, "
+                    f"dif: {row['signo']}{row['diferencia']})"
+                )
 
         report_lines.append('')
 
@@ -251,6 +274,32 @@ class SportsAgent:
         html.extend([
             '    </div>',
             '  </div>',
+        ])
+
+        # Sección comparativa vs liga en HTML
+        if self.league_comparison:
+            html.extend([
+                '  <div class="section">',
+                '    <h2>Comparativa vs media de La Liga</h2>',
+                '    <table>',
+                '      <thead><tr><th>Métrica</th><th>Equipo</th><th>Liga</th><th>Diferencia</th></tr></thead>',
+                '      <tbody>',
+            ])
+            for row in self.league_comparison:
+                signo = row['signo']
+                diff = row['diferencia']
+                color = '#27ae60' if diff >= 0 else '#e74c3c'
+                html.append(
+                    f'        <tr>'
+                    f'<td>{row["metrica"]}</td>'
+                    f'<td>{row["equipo"]}</td>'
+                    f'<td>{row["liga"]}</td>'
+                    f'<td style="color:{color};font-weight:bold">{signo}{diff}</td>'
+                    f'</tr>'
+                )
+            html.extend(['      </tbody>', '    </table>', '  </div>'])
+
+        html.extend([
             '  <div class="section">',
             '    <h2>Equipos con más goles</h2>',
             self.top_scorers.to_html(index=False, classes='dataframe', border=0),
@@ -333,5 +382,9 @@ class SportsAgent:
         shots_path = plot_shots_comparison(self.data, str(report_folder / 'shots_comparison.png'))
         if shots_path:
             paths.append(shots_path)
+
+        evolution_path = plot_temporal_evolution(self.data, self.team, str(report_folder / 'temporal_evolution.png'))
+        if evolution_path:
+            paths.append(evolution_path)
 
         return paths

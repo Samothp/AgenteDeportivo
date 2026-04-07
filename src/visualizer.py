@@ -143,3 +143,88 @@ def plot_shots_comparison(df: pd.DataFrame, output_path: str) -> Optional[str]:
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
     return output_path
+
+
+def plot_temporal_evolution(df: pd.DataFrame, team: Optional[str], output_path: str) -> Optional[str]:
+    """Gráfico de línea con la evolución de métricas clave partido a partido.
+
+    Muestra goles, xG y tiros a puerta del equipo a lo largo de la temporada,
+    ordenado por jornada (si está disponible) o por fecha.
+    Solo se genera cuando se analiza un equipo concreto.
+    """
+    if team is None:
+        return None
+
+    data = df.copy()
+
+    # Ordenar por jornada si existe, sino por fecha
+    if 'jornada' in data.columns and data['jornada'].notna().any():
+        data = data.sort_values('jornada').reset_index(drop=True)
+        x_col = 'jornada'
+        x_label = 'Jornada'
+    elif 'date' in data.columns:
+        data = data.sort_values('date').reset_index(drop=True)
+        x_col = 'date'
+        x_label = 'Fecha'
+    else:
+        return None
+
+    # Determinar si el equipo jugó de local o visitante en cada partido y
+    # extraer las métricas desde la perspectiva del equipo analizado.
+    team_lower = team.strip().lower()
+    is_home = data['local_team'].str.lower().str.contains(team_lower, na=False)
+
+    def _team_col(col_home: str, col_away: str) -> pd.Series:
+        if col_home not in data.columns:
+            return pd.Series([None] * len(data))
+        result = data[col_away].copy()
+        result[is_home] = data.loc[is_home, col_home]
+        return result
+
+    goles     = _team_col('goles_local', 'goles_visitante')
+    xg        = _team_col('xg_local', 'xg_visitante')
+    shots_ot  = _team_col('shots_on_target_local', 'shots_on_target_visitante')
+
+    # Necesitamos al menos goles para trazar algo
+    if goles.isna().all():
+        return None
+
+    x_values = data[x_col]
+    num_matches = len(data)
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # Número de subplots según datos disponibles
+    plots = [('Goles', goles, '#2ecc71')]
+    if xg.notna().any():
+        plots.append(('xG', xg, '#9b59b6'))
+    if shots_ot.notna().any():
+        plots.append(('Tiros a puerta', shots_ot, '#e67e22'))
+
+    nrows = len(plots)
+    fig, axes = plt.subplots(nrows=nrows, ncols=1, figsize=(max(12, num_matches * 0.4), 3.5 * nrows), sharex=True)
+    if nrows == 1:
+        axes = [axes]
+
+    title_team = team.title()
+    fig.suptitle(f'Evolución por jornada — {title_team}', fontsize=13, fontweight='bold', y=1.01)
+
+    for ax, (label, serie, color) in zip(axes, plots):
+        valid = serie.dropna()
+        if valid.empty:
+            continue
+        ax.plot(x_values, serie, marker='o', linewidth=2, color=color, markersize=5, label=label)
+        ax.axhline(valid.mean(), linestyle='--', linewidth=1, color=color, alpha=0.5, label=f'Media {valid.mean():.1f}')
+        ax.fill_between(x_values, serie.fillna(0), alpha=0.08, color=color)
+        ax.set_ylabel(label)
+        ax.legend(fontsize=8, loc='upper left')
+        ax.grid(True, alpha=0.3)
+        if num_matches <= 38 and x_col == 'jornada':
+            ax.set_xticks(x_values)
+            ax.set_xticklabels([str(int(v)) if pd.notna(v) else '' for v in x_values], fontsize=8)
+
+    axes[-1].set_xlabel(x_label)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return output_path
