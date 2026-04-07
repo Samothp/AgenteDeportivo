@@ -430,3 +430,84 @@ def plot_match_radar(stats: list, local: str, visitante: str, output_path: str) 
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     return output_path
+
+
+def plot_league_table(clasificacion: pd.DataFrame, output_path: str) -> Optional[str]:
+    """Tabla de clasificación: barras horizontales de puntos por equipo."""
+    if clasificacion is None or clasificacion.empty:
+        return None
+    df = clasificacion.sort_values('PTS', ascending=True)
+    fig, ax = plt.subplots(figsize=(8, max(5, len(df) * 0.38)))
+    colors = ['#1f77b4' if i >= len(df) - 4 else '#aec7e8' for i in range(len(df))]
+    bars = ax.barh(df['Equipo'], df['PTS'], color=colors, edgecolor='white')
+    for bar, pts in zip(bars, df['PTS']):
+        ax.text(bar.get_width() + 0.3, bar.get_y() + bar.get_height() / 2,
+                str(int(pts)), va='center', fontsize=8)
+    ax.set_xlabel('Puntos')
+    ax.set_title('Clasificación', fontsize=12)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_goals_per_team(clasificacion: pd.DataFrame, output_path: str) -> Optional[str]:
+    """Goles a favor y en contra por equipo (barras agrupadas)."""
+    if clasificacion is None or clasificacion.empty:
+        return None
+    df = clasificacion.sort_values('GF', ascending=True)
+    x = range(len(df))
+    width = 0.4
+    fig, ax = plt.subplots(figsize=(10, max(5, len(df) * 0.4)))
+    ax.barh([i + width / 2 for i in x], df['GF'], width, label='Goles a favor', color='#2ecc71')
+    ax.barh([i - width / 2 for i in x], df['GC'], width, label='Goles en contra', color='#e74c3c')
+    ax.set_yticks(list(x))
+    ax.set_yticklabels(df['Equipo'], fontsize=8)
+    ax.set_xlabel('Goles')
+    ax.set_title('Goles a favor y en contra por equipo', fontsize=12)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_xg_per_team(stats_df: pd.DataFrame, output_path: str) -> Optional[str]:
+    """xG medio por partido por equipo."""
+    if stats_df is None or stats_df.empty or 'xG' not in stats_df.columns:
+        return None
+    df = stats_df.dropna(subset=['xG']).sort_values('xG', ascending=True)
+    if df.empty:
+        return None
+    fig, ax = plt.subplots(figsize=(8, max(5, len(df) * 0.38)))
+    ax.barh(df['Equipo'], df['xG'], color='#9b59b6', edgecolor='white')
+    for i, v in enumerate(df['xG']):
+        ax.text(v + 0.01, i, f'{v:.2f}', va='center', fontsize=7)
+    ax.set_xlabel('xG medio por partido')
+    ax.set_title('Expected Goals (xG) medio por partido', fontsize=12)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_home_away_performance(home_away: pd.DataFrame, output_path: str) -> Optional[str]:
+    """Puntos local vs visitante por equipo (barras agrupadas)."""
+    if home_away is None or home_away.empty:
+        return None
+    df = home_away.sort_values('Pts_L', ascending=True)
+    x = range(len(df))
+    width = 0.4
+    fig, ax = plt.subplots(figsize=(10, max(5, len(df) * 0.4)))
+    ax.barh([i + width / 2 for i in x], df['Pts_L'], width, label='Puntos como local', color='#3498db')
+    ax.barh([i - width / 2 for i in x], df['Pts_V'], width, label='Puntos como visitante', color='#e67e22')
+    ax.set_yticks(list(x))
+    ax.set_yticklabels(df['Equipo'], fontsize=8)
+    ax.set_xlabel('Puntos')
+    ax.set_title('Rendimiento local vs visitante', fontsize=12)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+

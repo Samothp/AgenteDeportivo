@@ -11,8 +11,8 @@ Estado actual: ✅ implementado · 🔲 pendiente
 |------------|-------------------------|--------|
 | **Equipo** | `--team Mallorca`        | ✅     |
 | **Jornada**| `--jornada 10`           | ✅     |
-| **Partido**| `--match-id 2279399`     | 🔄     |
-| **Liga**   | *(ninguno extra)*        | 🔲     |
+| **Partido**| `--match-id 2279399`     | ✅     |
+| **Liga**   | *(ninguno extra)*        | ✅     |
 | **Jugador**| `--player "Vedat Muriqi"`| 🔲     |
 
 ---
@@ -40,7 +40,17 @@ Filtro: `--team <nombre>` sobre la DB de partidos + ESPN roster.
 
 ---
 
-## Fase 1 — Reporte Liga 🔲
+## Fase 1 — Reporte Liga (✅ completado)
+
+> Commit `(pendiente)` — `feat(liga): reporte de liga con clasificacion, records y graficos`
+
+**Implementado:**
+- `compute_liga_summary()` en `analysis.py`
+- `plot_league_table()`, `plot_goals_per_team()`, `plot_xg_per_team()`, `plot_home_away_performance()` en `visualizer.py`
+- `_generate_liga_report()`, `_generate_liga_html_report()` en `agent.py`
+- Modo Liga activado automáticamente cuando no se indica `--team`, `--jornada` ni `--match-id`
+
+<!-- spec original -->
 
 **Propósito:** panorama completo de la temporada en la competición.  
 **Filtro:** sin `--team`, sin `--jornada`. Solo `--competition` y `--season`.

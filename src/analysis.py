@@ -659,7 +659,7 @@ def compute_match_detail(df: pd.DataFrame, match_id: int) -> Dict:
 
     xg_l = _float('xg_local')
     xg_v = _float('xg_visitante')
-    if xg_l is not None:
+    if xg_l is not None and xg_v is not None:
         if gl > gv and xg_l < xg_v:
             frases.append(
                 f'{local} ganó pese a generar menos peligro según el xG'
@@ -670,14 +670,14 @@ def compute_match_detail(df: pd.DataFrame, match_id: int) -> Dict:
                 f'{visitante} ganó pese a generar menos peligro según el xG'
                 f' ({xg_v} vs {xg_l}), un resultado inesperado.'
             )
-        elif xg_l is not None:
+        else:
             frases.append(
                 f'El xG respaldó el resultado: {local} {xg_l} — {xg_v} {visitante}.'
             )
 
     shots_l = _int('shots_on_target_local')
     shots_v = _int('shots_on_target_visitante')
-    if shots_l is not None:
+    if shots_l is not None and shots_v is not None:
         if shots_l > shots_v:
             frases.append(f'{local} fue más peligroso con {shots_l} tiros a puerta frente a {shots_v}.')
         elif shots_v > shots_l:
@@ -736,4 +736,194 @@ def compute_match_detail(df: pd.DataFrame, match_id: int) -> Dict:
         'narrativa':         narrativa,
         'contexto_local':    contexto_local,
         'contexto_visitante': contexto_visitante,
+    }
+
+
+def compute_liga_summary(df: pd.DataFrame) -> Dict:
+    """Resumen completo de una temporada de liga.
+
+    Genera toda la información necesaria para el informe de Liga:
+    clasificación, récords, estadísticas técnicas por equipo y globales.
+
+    Returns:
+        Dict con:
+          competition, season, jornadas, partidos_totales,
+          goles_totales, goles_promedio, partido_mas_goleador,
+          clasificacion (DataFrame),
+          stats_por_equipo (DataFrame),
+          records (dict),
+          home_away (DataFrame),
+    """
+    if df.empty:
+        return {}
+
+    competition = _normalize_competition(str(df['competition'].iloc[0]) if 'competition' in df.columns else '-')
+    season = str(df['season'].iloc[0]) if 'season' in df.columns else '-'
+    jornadas = int(df['jornada'].max()) if 'jornada' in df.columns and df['jornada'].notna().any() else 0
+    partidos_totales = len(df)
+    goles_totales = int(df['goles_totales'].sum())
+    goles_promedio = round(float(df['goles_totales'].mean()), 2)
+
+    # Partido más goleador
+    idx_max = df['goles_totales'].idxmax()
+    partido_mas_goleador = {
+        'local':     str(df.at[idx_max, 'local_team'])       if 'local_team'      in df.columns else '-',
+        'visitante': str(df.at[idx_max, 'visitante_team'])   if 'visitante_team'  in df.columns else '-',
+        'goles_l':   int(df['goles_local'].at[idx_max])      if 'goles_local'     in df.columns else 0,  # type: ignore[arg-type]
+        'goles_v':   int(df['goles_visitante'].at[idx_max])  if 'goles_visitante' in df.columns else 0,  # type: ignore[arg-type]
+        'total':     int(df['goles_totales'].at[idx_max]),                                                 # type: ignore[arg-type]
+        'jornada':   df.at[idx_max, 'jornada']               if 'jornada'         in df.columns else '-',
+    }
+
+    # Clasificación
+    clasificacion = compute_standings(df)
+
+    # Estadísticas técnicas por equipo (promedio de columnas disponibles)
+    num_cols = {
+        'shots_local':       'Tiros (L)',
+        'shots_visitante':   'Tiros (V)',
+        'xg_local':          'xG (L)',
+        'xg_visitante':      'xG (V)',
+        'posesion_local':    'Pos% (L)',
+        'posesion_visitante':'Pos% (V)',
+        'corners_local':     'Corners (L)',
+        'corners_visitante': 'Corners (V)',
+    }
+    # Stats por equipo como local
+    teams = sorted(set(df['local_team'].dropna()) | set(df['visitante_team'].dropna()))
+    rows_stats = []
+    for team in teams:
+        df_l = df[df['local_team'] == team]
+        df_v = df[df['visitante_team'] == team]
+        pj_l = len(df_l)
+        pj_v = len(df_v)
+
+        def avg_col(d, col):
+            if col in d.columns and d[col].notna().any():
+                return round(float(d[col].mean()), 1)
+            return None
+
+        gf = (df_l['goles_local'].sum() if 'goles_local' in df_l.columns else 0) + \
+             (df_v['goles_visitante'].sum() if 'goles_visitante' in df_v.columns else 0)
+        gc = (df_l['goles_visitante'].sum() if 'goles_visitante' in df_l.columns else 0) + \
+             (df_v['goles_local'].sum() if 'goles_local' in df_v.columns else 0)
+
+        xg_l = avg_col(df_l, 'xg_local')
+        xg_v = avg_col(df_v, 'xg_visitante')
+        xg = round((xg_l or 0) * pj_l / max(pj_l + pj_v, 1) +
+                   (xg_v or 0) * pj_v / max(pj_l + pj_v, 1), 2) if (xg_l or xg_v) else None
+
+        pos_l = avg_col(df_l, 'posesion_local')
+        pos_v = avg_col(df_v, 'posesion_visitante')
+        pos = round((pos_l or 0) * pj_l / max(pj_l + pj_v, 1) +
+                    (pos_v or 0) * pj_v / max(pj_l + pj_v, 1), 1) if (pos_l or pos_v) else None
+
+        shots_l = avg_col(df_l, 'shots_local')
+        shots_v = avg_col(df_v, 'shots_visitante')
+        shots = round((shots_l or 0) * pj_l / max(pj_l + pj_v, 1) +
+                      (shots_v or 0) * pj_v / max(pj_l + pj_v, 1), 1) if (shots_l or shots_v) else None
+
+        rows_stats.append({
+            'Equipo': team,
+            'PJ':     pj_l + pj_v,
+            'GF':     int(gf),
+            'GC':     int(gc),
+            'xG':     xg,
+            'Pos%':   pos,
+            'Tiros':  shots,
+        })
+    stats_por_equipo = pd.DataFrame(rows_stats).sort_values('GF', ascending=False).reset_index(drop=True)
+
+    # Récords
+    equipo_mas_goleador = str(clasificacion.loc[clasificacion['GF'].idxmax(), 'Equipo']) if not clasificacion.empty else '-'
+    equipo_menos_goleado = str(clasificacion.loc[clasificacion['GC'].idxmin(), 'Equipo']) if not clasificacion.empty else '-'
+
+    partido_max_asist = None
+    if 'espectadores' in df.columns and df['espectadores'].notna().any():
+        idx_a = df['espectadores'].idxmax()
+        partido_max_asist = {
+            'local':        str(df.at[idx_a, 'local_team'])    if 'local_team'     in df.columns else '-',
+            'visitante':    str(df.at[idx_a, 'visitante_team'])if 'visitante_team' in df.columns else '-',
+            'espectadores': int(df['espectadores'].at[idx_a]),  # type: ignore[arg-type]
+            'estadio':      str(df.at[idx_a, 'estadio'])       if 'estadio'        in df.columns else '-',
+        }
+
+    arbitro_top = None
+    if 'arbitro' in df.columns and df['arbitro'].notna().any():
+        arb_counts = df['arbitro'].value_counts()
+        arbitro_top = {'nombre': str(arb_counts.index[0]), 'partidos': int(arb_counts.iloc[0])}
+
+    # Racha máxima de victorias por equipo
+    def max_racha(team_name: str) -> int:
+        df_t = df[(df['local_team'] == team_name) | (df['visitante_team'] == team_name)]
+        if 'jornada' in df_t.columns:
+            df_t = df_t.sort_values('jornada')
+        resultados = []
+        for _, r in df_t.iterrows():
+            if r['local_team'] == team_name:
+                if r['goles_local'] > r['goles_visitante']:
+                    resultados.append('V')
+                else:
+                    resultados.append('X')
+            else:
+                if r['goles_visitante'] > r['goles_local']:
+                    resultados.append('V')
+                else:
+                    resultados.append('X')
+        racha = max_r = 0
+        for r in resultados:
+            racha = racha + 1 if r == 'V' else 0
+            max_r = max(max_r, racha)
+        return max_r
+
+    equipo_mejor_racha = max((teams), key=lambda t: max_racha(t)) if teams else '-'
+    mejor_racha_n = max_racha(equipo_mejor_racha) if equipo_mejor_racha != '-' else 0
+
+    records = {
+        'equipo_mas_goleador':   equipo_mas_goleador,
+        'equipo_menos_goleado':  equipo_menos_goleado,
+        'partido_max_asistencia': partido_max_asist,
+        'arbitro_top':           arbitro_top,
+        'equipo_mejor_racha':    equipo_mejor_racha,
+        'mejor_racha_victorias': mejor_racha_n,
+    }
+
+    # Rendimiento local vs visitante por equipo
+    home_away_rows = []
+    for team in teams:
+        df_l = df[df['local_team'] == team]
+        df_v = df[df['visitante_team'] == team]
+        def wdl(d, is_local):
+            if is_local:
+                w = (d['goles_local'] > d['goles_visitante']).sum()
+                e = (d['goles_local'] == d['goles_visitante']).sum()
+                l = (d['goles_local'] < d['goles_visitante']).sum()
+            else:
+                w = (d['goles_visitante'] > d['goles_local']).sum()
+                e = (d['goles_visitante'] == d['goles_local']).sum()
+                l = (d['goles_visitante'] < d['goles_local']).sum()
+            return int(w), int(e), int(l)
+        wl, el, ll = wdl(df_l, True)
+        wv, ev, lv = wdl(df_v, False)
+        pts_l = wl * 3 + el
+        pts_v = wv * 3 + ev
+        home_away_rows.append({
+            'Equipo':  team,
+            'PJ_L':    len(df_l), 'W_L': wl, 'E_L': el, 'D_L': ll, 'Pts_L': pts_l,
+            'PJ_V':    len(df_v), 'W_V': wv, 'E_V': ev, 'D_V': lv, 'Pts_V': pts_v,
+        })
+    home_away = pd.DataFrame(home_away_rows).sort_values('Pts_L', ascending=False).reset_index(drop=True)
+
+    return {
+        'competition':          competition,
+        'season':               season,
+        'jornadas':             jornadas,
+        'partidos_totales':     partidos_totales,
+        'goles_totales':        goles_totales,
+        'goles_promedio':       goles_promedio,
+        'partido_mas_goleador': partido_mas_goleador,
+        'clasificacion':        clasificacion,
+        'stats_por_equipo':     stats_por_equipo,
+        'records':              records,
+        'home_away':            home_away,
     }

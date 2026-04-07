@@ -7,6 +7,7 @@ import pandas as pd
 
 from .analysis import (
     compute_league_comparison,
+    compute_liga_summary,
     compute_match_detail,
     compute_matchday_summary,
     compute_overall_metrics,
@@ -23,6 +24,9 @@ from .visualizer import (
     plot_attendance,
     plot_card_statistics,
     plot_goals_distribution,
+    plot_goals_per_team,
+    plot_home_away_performance,
+    plot_league_table,
     plot_match_radar,
     plot_match_stats_bar,
     plot_matchday_goals,
@@ -31,6 +35,7 @@ from .visualizer import (
     plot_shots_comparison,
     plot_temporal_evolution,
     plot_xg_per_match,
+    plot_xg_per_team,
 )
 
 
@@ -57,6 +62,7 @@ class SportsAgent:
         self.player_rankings: dict = {}
         self.matchday_summary: dict = {}
         self.match_detail: dict = {}  # ficha técnica del partido (solo modo Partido)
+        self.liga_summary: dict = {}  # resumen completo de liga (solo modo Liga)
 
     def load_data(self):
         if self.seasons and len(self.seasons) > 1:
@@ -121,6 +127,16 @@ class SportsAgent:
             self.highlights = match_highlights(self.data)
             return self.metrics
 
+        # Modo Liga: sin equipo ni jornada → panorama completo de la temporada
+        if not self.team:
+            self.liga_summary = compute_liga_summary(self.data)
+            self.metrics = compute_overall_metrics(self.data)
+            self.top_scorers = top_scoring_teams(self.data)
+            self.top_defenders = top_defensive_teams(self.data)
+            self.highlights = match_highlights(self.data)
+            return self.metrics
+
+        # Modo Equipo: filtrar por equipo
         self.filter_by_team()
         self.metrics = compute_overall_metrics(self.data, team=self.team)
         self.top_scorers = top_scoring_teams(self.data)
@@ -156,6 +172,255 @@ class SportsAgent:
     def format_html_metric(self, key: str) -> str:
         value = self.metrics.get(key)
         return f"{value:.1f}%" if value is not None and isinstance(value, float) else (str(value) if value is not None else 'No disponible')
+
+    def _generate_liga_report(self, output_path: Optional[str] = None) -> str:
+        """Informe de texto para el modo Liga."""
+        s = self.liga_summary
+        lines: List[str] = []
+
+        title = f'INFORME DE LIGA — {s["competition"]}  |  Temporada {s["season"]}'
+        lines.append(title)
+        lines.append('=' * len(title))
+        lines.append(f'Jornadas disputadas: {s["jornadas"]}   |   Partidos totales: {s["partidos_totales"]}')
+        lines.append(f'Goles totales: {s["goles_totales"]}   |   Promedio por partido: {s["goles_promedio"]}')
+        pmg = s['partido_mas_goleador']
+        lines.append(
+            f'Partido más goleador: {pmg["local"]} {pmg["goles_l"]}-{pmg["goles_v"]} {pmg["visitante"]}'
+            f'  ({pmg["total"]} goles, jornada {pmg["jornada"]})'
+        )
+        lines.append('')
+
+        # Récords
+        r = s['records']
+        lines.append('Récords de la temporada')
+        lines.append('-----------------------')
+        lines.append(f'  Equipo más goleador:      {r["equipo_mas_goleador"]}')
+        lines.append(f'  Equipo menos goleado:     {r["equipo_menos_goleado"]}')
+        lines.append(f'  Mejor racha de victorias: {r["equipo_mejor_racha"]} ({r["mejor_racha_victorias"]} victorias consecutivas)')
+        if r['arbitro_top']:
+            lines.append(f'  Árbitro más activo:       {r["arbitro_top"]["nombre"]} ({r["arbitro_top"]["partidos"]} partidos)')
+        if r['partido_max_asistencia']:
+            pa = r['partido_max_asistencia']
+            lines.append(f'  Mayor asistencia:         {pa["local"]} vs {pa["visitante"]} — {pa["espectadores"]:,} espectadores ({pa["estadio"]})')
+        lines.append('')
+
+        # Clasificación
+        lines.append('Clasificación')
+        lines.append('-------------')
+        clf = s['clasificacion']
+        lines.append(f'  {"Pos":>3}  {"Equipo":<25} {"PJ":>3} {"G":>3} {"E":>3} {"P":>3} {"GF":>3} {"GC":>3} {"DIF":>4} {"PTS":>4}')
+        lines.append(f'  {"---":>3}  {"-"*25} {"--":>3} {"--":>3} {"--":>3} {"--":>3} {"--":>3} {"--":>3} {"----":>4} {"----":>4}')
+        for _, row in clf.iterrows():
+            dif = f'+{int(row["DIF"])}' if row['DIF'] > 0 else str(int(row['DIF']))
+            lines.append(
+                f'  {int(row["Pos"]):>3}  {row["Equipo"]:<25} {int(row["PJ"]):>3} {int(row["G"]):>3}'
+                f' {int(row["E"]):>3} {int(row["P"]):>3} {int(row["GF"]):>3} {int(row["GC"]):>3}'
+                f' {dif:>4} {int(row["PTS"]):>4}'
+            )
+        lines.append('')
+
+        # Top goleadores / defensas
+        lines.append('Top equipos goleadores')
+        lines.append('----------------------')
+        if self.top_scorers is not None:
+            for _, row in self.top_scorers.iterrows():
+                lines.append(f'  {row.iloc[0]:<25}  {int(row.iloc[1])} goles')
+        lines.append('')
+
+        lines.append('Top equipos menos goleados')
+        lines.append('--------------------------')
+        if self.top_defenders is not None:
+            for _, row in self.top_defenders.iterrows():
+                lines.append(f'  {row.iloc[0]:<25}  {int(row.iloc[1])} goles encajados')
+        lines.append('')
+
+        # Estadísticas técnicas por equipo
+        lines.append('Estadísticas técnicas por equipo')
+        lines.append('--------------------------------')
+        st = s['stats_por_equipo']
+        lines.append(f'  {"Equipo":<25} {"GF":>4} {"GC":>4} {"xG":>5} {"Pos%":>5} {"Tiros":>6}')
+        lines.append(f'  {"-"*25} {"--":>4} {"--":>4} {"---":>5} {"----":>5} {"-----":>6}')
+        for _, row in st.iterrows():
+            xg   = f'{row["xG"]:.2f}' if pd.notna(row.get('xG')) and row.get('xG') is not None else '-'
+            pos  = f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-'
+            tirs = f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-'
+            lines.append(f'  {row["Equipo"]:<25} {int(row["GF"]):>4} {int(row["GC"]):>4} {xg:>5} {pos:>5} {tirs:>6}')
+        lines.append('')
+
+        # Rendimiento local/visitante
+        lines.append('Rendimiento local vs visitante')
+        lines.append('------------------------------')
+        ha = s['home_away']
+        lines.append(f'  {"Equipo":<25} {"PJ_L":>5} {"Pts_L":>6}  {"PJ_V":>5} {"Pts_V":>6}')
+        lines.append(f'  {"-"*25} {"----":>5} {"-----":>6}  {"----":>5} {"-----":>6}')
+        for _, row in ha.iterrows():
+            lines.append(
+                f'  {row["Equipo"]:<25} {int(row["PJ_L"]):>5} {int(row["Pts_L"]):>6}'
+                f'  {int(row["PJ_V"]):>5} {int(row["Pts_V"]):>6}'
+            )
+
+        report_text = '\n'.join(lines)
+        if output_path:
+            out = Path(output_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(report_text, encoding='utf-8')
+        return report_text
+
+    def _generate_liga_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
+        """Informe HTML para el modo Liga."""
+        s = self.liga_summary
+        report_file = Path(output_path)
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+
+        image_folder_path = Path(image_folder) if image_folder else report_file.parent
+        image_folder_path.mkdir(parents=True, exist_ok=True)
+        images = self.save_visual_report(str(image_folder_path))
+        relative_images = [
+            Path(os.path.relpath(img, start=report_file.parent)).as_posix()
+            for img in images if img
+        ]
+
+        pmg = s['partido_mas_goleador']
+        r = s['records']
+
+        html = [
+            '<!DOCTYPE html>',
+            '<html lang="es">',
+            '<head>',
+            '  <meta charset="UTF-8">',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+            f'  <title>{s["competition"]} {s["season"]}</title>',
+            '  <style>',
+            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
+            '    h1 { color: #1f4e79; } h2 { color: #2c7bb6; border-bottom: 2px solid #d0e4f7; padding-bottom: 4px; }',
+            '    .header-box { background: #1f4e79; color: white; border-radius: 12px;',
+            '      padding: 20px 28px; margin-bottom: 24px; }',
+            '    .header-box h1 { color: white; margin: 0 0 8px 0; }',
+            '    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }',
+            '    .kpi { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align:center; }',
+            '    .kpi .val { font-size: 1.8em; font-weight: bold; color: #1f4e79; }',
+            '    .kpi .lbl { font-size: 0.85em; color: #666; margin-top: 4px; }',
+            '    table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.9em; }',
+            '    th, td { padding: 7px 10px; border: 1px solid #d7dbe3; text-align: center; }',
+            '    th { background: #e4efff; }',
+            '    td.left { text-align: left; }',
+            '    tr.ucl td { background: #cce5ff; }',
+            '    tr.uel td { background: #d4edda; }',
+            '    tr.uecl td { background: #e8f5e9; }',
+            '    tr.descenso td { background: #fde8e8; }',
+            '    .zona-badge { font-size: 0.7em; vertical-align: middle; margin-left: 4px; opacity: 0.7; }',
+            '    .records { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
+            '    .records ul { margin: 0; padding-left: 20px; line-height: 1.8; }',
+            '    img { max-width: 100%; border-radius: 8px; margin: 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
+            '    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 16px; }',
+            '  </style>',
+            '</head>',
+            '<body>',
+            f'  <div class="header-box">',
+            f'    <h1>{s["competition"]} — {s["season"]}</h1>',
+            f'    <p>Jornadas: {s["jornadas"]} &nbsp;|&nbsp; Partidos: {s["partidos_totales"]}</p>',
+            '  </div>',
+
+            # KPIs
+            '  <div class="kpi-grid">',
+            f'    <div class="kpi"><div class="val">{s["goles_totales"]}</div><div class="lbl">Goles totales</div></div>',
+            f'    <div class="kpi"><div class="val">{s["goles_promedio"]}</div><div class="lbl">Goles por partido</div></div>',
+            f'    <div class="kpi"><div class="val">{pmg["local"]} {pmg["goles_l"]}-{pmg["goles_v"]} {pmg["visitante"]}</div><div class="lbl">Partido más goleador</div></div>',
+            f'    <div class="kpi"><div class="val">{r["equipo_mas_goleador"]}</div><div class="lbl">Equipo más goleador</div></div>',
+            f'    <div class="kpi"><div class="val">{r["equipo_menos_goleado"]}</div><div class="lbl">Menos goleado</div></div>',
+            '  </div>',
+
+            # Récords
+            '  <h2>Récords de la temporada</h2>',
+            '  <div class="records"><ul>',
+            f'    <li><strong>Mejor racha:</strong> {r["equipo_mejor_racha"]} — {r["mejor_racha_victorias"]} victorias consecutivas</li>',
+        ]
+        if r['arbitro_top']:
+            html.append(f'    <li><strong>Árbitro más activo:</strong> {r["arbitro_top"]["nombre"]} ({r["arbitro_top"]["partidos"]} partidos)</li>')
+        if r['partido_max_asistencia']:
+            pa = r['partido_max_asistencia']
+            html.append(f'    <li><strong>Mayor asistencia:</strong> {pa["local"]} vs {pa["visitante"]} — {pa["espectadores"]:,} espectadores ({pa["estadio"]})</li>')
+        html.extend(['  </ul></div>'])
+
+        # Clasificación
+        clf = s['clasificacion']
+        total_teams = len(clf)
+        html.extend([
+            '  <h2>Clasificación</h2>',
+            '  <table>',
+            '    <thead><tr><th>Pos</th><th class="left">Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>DIF</th><th>PTS</th></tr></thead>',
+            '    <tbody>',
+        ])
+        for _, row in clf.iterrows():
+            pos = int(row['Pos'])
+            dif = f'+{int(row["DIF"])}' if row['DIF'] > 0 else str(int(row['DIF']))
+            if pos <= 4:
+                tr_class = ' class="ucl"'
+                badge = ' <span class="zona-badge" title="Champions League">🏦</span>'
+            elif pos <= 6:
+                tr_class = ' class="uel"'
+                badge = ' <span class="zona-badge" title="Europa League">🌟</span>'
+            elif pos == 7:
+                tr_class = ' class="uecl"'
+                badge = ' <span class="zona-badge" title="Conference League">🌿</span>'
+            elif pos >= total_teams - 2:
+                tr_class = ' class="descenso"'
+                badge = ' <span class="zona-badge" title="Descenso">⬇️</span>'
+            else:
+                tr_class = ''
+                badge = ''
+            html.append(
+                f'      <tr{tr_class}><td>{pos}</td>'
+                f'<td class="left"><strong>{row["Equipo"]}</strong>{badge}</td>'
+                f'<td>{int(row["PJ"])}</td><td>{int(row["G"])}</td><td>{int(row["E"])}</td><td>{int(row["P"])}</td>'
+                f'<td>{int(row["GF"])}</td><td>{int(row["GC"])}</td><td>{dif}</td><td><strong>{int(row["PTS"])}</strong></td></tr>'
+            )
+        html.extend(['    </tbody>', '  </table>'])
+
+        # Stats técnicas por equipo
+        st = s['stats_por_equipo']
+        html.extend([
+            '  <h2>Estadísticas técnicas por equipo</h2>',
+            '  <table>',
+            '    <thead><tr><th class="left">Equipo</th><th>GF</th><th>GC</th><th>xG medio</th><th>Posesión %</th><th>Tiros/partido</th></tr></thead>',
+            '    <tbody>',
+        ])
+        for _, row in st.iterrows():
+            xg  = f'{row["xG"]:.2f}' if pd.notna(row.get('xG')) and row.get('xG') is not None else '-'
+            pos = f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-'
+            tir = f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-'
+            html.append(
+                f'      <tr><td class="left">{row["Equipo"]}</td>'
+                f'<td>{int(row["GF"])}</td><td>{int(row["GC"])}</td>'
+                f'<td>{xg}</td><td>{pos}</td><td>{tir}</td></tr>'
+            )
+        html.extend(['    </tbody>', '  </table>'])
+
+        # Rendimiento local/visitante
+        ha = s['home_away']
+        html.extend([
+            '  <h2>Rendimiento local vs visitante</h2>',
+            '  <table>',
+            '    <thead><tr><th class="left">Equipo</th><th>PJ Local</th><th>Pts Local</th><th>PJ Visit.</th><th>Pts Visit.</th></tr></thead>',
+            '    <tbody>',
+        ])
+        for _, row in ha.iterrows():
+            html.append(
+                f'      <tr><td class="left">{row["Equipo"]}</td>'
+                f'<td>{int(row["PJ_L"])}</td><td><strong>{int(row["Pts_L"])}</strong></td>'
+                f'<td>{int(row["PJ_V"])}</td><td><strong>{int(row["Pts_V"])}</strong></td></tr>'
+            )
+        html.extend(['    </tbody>', '  </table>'])
+
+        if relative_images:
+            html.extend(['  <h2>Gráficos</h2>', '  <div class="charts">'])
+            for img in relative_images:
+                html.append(f'    <img src="{img}" alt="Gráfico de liga">')
+            html.append('  </div>')
+
+        html.extend(['</body>', '</html>'])
+        report_file.write_text('\n'.join(html), encoding='utf-8')
+        return str(report_file)
 
     def _generate_match_report(self, output_path: Optional[str] = None) -> str:
         """Informe de texto para el modo Partido."""
@@ -599,6 +864,9 @@ class SportsAgent:
         if self.matchday is not None and self.matchday_summary:
             return self._generate_matchday_report(output_path)
 
+        if self.liga_summary:
+            return self._generate_liga_report(output_path)
+
         report_lines: List[str] = []
         report_lines.append('INFORME DE ANÁLISIS DE PARTIDOS')
         report_lines.append('--------------------------------')
@@ -809,6 +1077,9 @@ class SportsAgent:
 
         if self.matchday is not None and self.matchday_summary:
             return self._generate_matchday_html_report(output_path, image_folder=image_folder)
+
+        if self.liga_summary:
+            return self._generate_liga_html_report(output_path, image_folder=image_folder)
 
         report_file = Path(output_path)
         report_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1126,6 +1397,19 @@ class SportsAgent:
             xg_path = plot_matchday_xg(self.data, str(report_folder / 'matchday_xg.png'))
             if xg_path:
                 paths.append(xg_path)
+            return paths
+
+        # Modo Liga: gráficos de clasificación, goles y rendimiento
+        if self.liga_summary:
+            paths = []
+            lt = plot_league_table(self.liga_summary['clasificacion'], str(report_folder / 'league_table.png'))
+            if lt: paths.append(lt)
+            gpt = plot_goals_per_team(self.liga_summary['clasificacion'], str(report_folder / 'goals_per_team.png'))
+            if gpt: paths.append(gpt)
+            xgt = plot_xg_per_team(self.liga_summary['stats_por_equipo'], str(report_folder / 'xg_per_team.png'))
+            if xgt: paths.append(xgt)
+            hap = plot_home_away_performance(self.liga_summary['home_away'], str(report_folder / 'home_away_performance.png'))
+            if hap: paths.append(hap)
             return paths
 
         paths = []
