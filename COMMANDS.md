@@ -2,28 +2,115 @@
 
 Este archivo resume los comandos principales del agente para analizar datos deportivos.
 
-## Uso general
+## Argumentos disponibles
 
-```bash
-python -m src.run_agent --data data/example_matches.csv --output reports/informe.txt --visual reports
+```
+--data           Ruta al archivo CSV de partidos (ej. data/example_matches.csv)
+--output         Ruta del informe de texto generado
+--html-output    Ruta del informe HTML (opcional)
+--visual         Carpeta donde se guardan los gráficos
+--clean-reports  Elimina archivos anteriores en la carpeta antes de generar nuevos
+--fetch-real     Construye/actualiza la DB descargando de la API
+--competition    ID de la competición (2014=La Liga, 2021=Premier, etc.)
+--season         Temporada en formato YYYY
+--team           Equipo para filtrar el análisis (búsqueda parcial)
+--jornada        Número de jornada (activa modo Jornada)
+--match-id       ID del partido — id_event — (activa modo Partido)
+--player         Nombre del jugador (requiere --team, activa modo Jugador)
+--list-teams     Lista los equipos disponibles en la DB y termina
+--seasons        Lista de temporadas a combinar (ej. --seasons 2024 2025)
 ```
 
-- `--data` : ruta al archivo CSV de partidos
-- `--output` : ruta del informe de texto generado
-- `--visual` : carpeta donde se guardan los gráficos
-- `--html-output` : ruta del informe HTML (opcional)
-- `--clean-reports` : elimina archivos anteriores en la carpeta de reportes antes de generar nuevos
-- `--fetch-real` : construye/actualiza la DB descargando de la API
-- `--competition` : ID de la competición (`2014` = La Liga, `2021` = Premier, etc.)
-- `--season` : temporada en formato `YYYY`
-- `--team` : equipo para filtrar el análisis (búsqueda parcial)
-- `--list-teams` : lista los equipos disponibles en la DB y termina
+## Detección automática del tipo de informe
 
-## Generar informe HTML
+El agente selecciona el modo según los argumentos:
+
+| Modo | Condición | Descripción |
+|------|-----------|-------------|
+| **Liga** | solo `--competition` + `--season` | Clasificación, récords, stats de la temporada |
+| **Equipo** | `--team` (sin `--player`) | Análisis del equipo: W/D/L, métricas, comparativa vs liga |
+| **Jornada** | `--jornada N` | Resultados y estadísticas de una jornada |
+| **Partido** | `--match-id ID` | Ficha técnica detallada de un partido |
+| **Jugador** | `--team` + `--player` | Perfil individual de un jugador |
+
+---
+
+## Informe de Liga
+
+Panorama completo de una temporada: clasificación, récords, estadísticas por equipo y rendimiento local/visitante.
 
 ```bash
-python -m src.run_agent --data data/example_matches.csv --output reports/informe.txt --visual reports --html-output reports/informe.html
+python -m src.run_agent --competition 2014 --season 2025 \
+  --output reports/laliga.txt --html-output reports/laliga.html --visual reports/laliga
 ```
+
+Gráficos generados: `league_table.png`, `goals_per_team.png`, `xg_per_team.png`, `home_away_performance.png`
+
+---
+
+## Informe de Equipo
+
+Análisis filtrado por equipo: historial W/D/L, métricas técnicas, comparativa vs liga, top goleadores y asistentes.
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca \
+  --output reports/mallorca.txt --html-output reports/mallorca.html --visual reports/mallorca
+```
+
+El filtro usa búsqueda parcial: `Mallorca` localiza `RCD Mallorca`. Usa `--list-teams` para ver nombres exactos.
+
+Gráficos: `goals_distribution.png`, `possession_distribution.png`, `card_summary.png`, `xg_per_match.png`, `shots_comparison.png`, `temporal_evolution.png`
+
+---
+
+## Informe de Jornada
+
+Resultados, estadísticas agregadas, clasificación acumulada y partido más espectacular de una jornada.
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --jornada 15 \
+  --output reports/jornada_15.txt --html-output reports/jornada_15.html --visual reports/jornada_15
+```
+
+Gráficos: `matchday_goals.png`, `matchday_xg.png`
+
+---
+
+## Informe de Partido
+
+Ficha técnica completa: resultado, estadísticas cara a cara, clasificación previa y análisis narrativo.
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --match-id 2279399 \
+  --output reports/partido.txt --html-output reports/partido.html --visual reports/partido
+```
+
+Para encontrar el `id_event` de un partido, búscalo en la DB local:
+
+```bash
+python -c "import pandas as pd; df=pd.read_csv('data/db_2014_2025.csv'); print(df[['id_event','date','local_team','visitante_team','jornada']].to_string())"
+```
+
+Gráficos: `match_stats_bar.png`, `match_radar.png`
+
+---
+
+## Informe de Jugador
+
+Perfil individual de temporada: stats, ratios por partido, ranking en el equipo y gráficos comparativos.
+Requiere `--team` para cargar el CSV de jugadores ESPN del equipo correcto.
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 \
+  --team Mallorca --player "Vedat Muriqi" \
+  --output reports/muriqi.txt --html-output reports/muriqi.html --visual reports/muriqi
+```
+
+La búsqueda del jugador es parcial e insensible a mayúsculas. `"muriqi"` y `"Vedat Muriqi"` funcionan igual.
+
+Gráficos: `player_bar.png` (barras jugador vs media equipo), `player_radar.png` (radar 5 métricas normalizadas)
+
+---
 
 ## Ver equipos disponibles en la DB local
 
@@ -49,21 +136,6 @@ Si la DB no existe aún:
 No hay DB local para competition=2014 season=2025.
 Usa --fetch-real para descargar los datos primero.
 ```
-
-## Contenido del informe de equipo
-
-Cuando se usa `--team`, el informe genera automáticamente:
-
-- **Resumen general**: partidos, goles, tarjetas, posesión, asistencia, árbitros
-- **Estadísticas técnicas promedio**: tiros, xG, corners, faltas, paradas, precisión de pases
-- **Comparativa vs liga**: tabla con cada métrica del equipo vs media de la competición (diferencia en verde/rojo)
-- **Gráficos**:
-  - `goals_distribution.png` — distribución de goles por partido
-  - `possession_distribution.png` — caja de posesión local/visitante
-  - `card_summary.png` — resumen de tarjetas
-  - `xg_per_match.png` — xG por partido (local vs visitante)
-  - `shots_comparison.png` — tiros promedio local vs visitante
-  - `temporal_evolution.png` — evolución por jornada (goles, xG, tiros a puerta)
 
 ## Base de datos local incremental
 

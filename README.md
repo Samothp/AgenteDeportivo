@@ -55,6 +55,7 @@ print(competitions)
 - ✅ **Evolución temporal**: gráfico de línea por jornada (goles, xG, tiros a puerta)
 - ✅ **Comparativa vs liga**: cada métrica del equipo frente a la media de la competición
 - ✅ **Listado de equipos**: `--list-teams` muestra los equipos disponibles en la DB local
+- ✅ **5 tipos de informe**: Liga, Equipo, Jornada, Partido y Jugador
 
 ### Último análisis disponible
 
@@ -121,6 +122,18 @@ Este enfoque separa la *actualización de datos* de la *generación de informes*
 - `paradas_local/visitante` — paradas del portero
 - `pases_local/visitante`, `pases_precisos_local/visitante`, `precision_pases_local/visitante`
 
+## Tipos de informe
+
+El agente detecta automáticamente el tipo de informe según los argumentos proporcionados:
+
+| Tipo | Argumentos necesarios | Descripción |
+|------|----------------------|-------------|
+| **Liga** | solo `--competition` y `--season` | Clasificación, récords y stats de toda la temporada |
+| **Equipo** | `--team <nombre>` | Análisis del equipo: W/D/L, métricas, comparativa vs liga, top jugadores |
+| **Jornada** | `--jornada <N>` | Todos los resultados y estadísticas de una jornada concreta |
+| **Partido** | `--match-id <id>` | Ficha técnica detallada y estadísticas cara a cara de un partido |
+| **Jugador** | `--team <nombre>` + `--player <nombre>` | Perfil individual: stats, ratios, ranking y gráficos comparativos |
+
 ## Uso básico
 
 **Ver qué equipos hay disponibles en la DB:**
@@ -129,30 +142,44 @@ Este enfoque separa la *actualización de datos* de la *generación de informes*
 python -m src.run_agent --list-teams --competition 2014 --season 2025
 ```
 
+**Informe de liga completo:**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --output reports/laliga.txt --html-output reports/laliga.html --visual reports/laliga
+```
+
+**Informe de equipo desde la DB local (sin API):**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --output reports/mallorca.txt --html-output reports/mallorca.html --visual reports/mallorca
+```
+
+**Informe de jornada:**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --jornada 15 --output reports/jornada_15.txt --html-output reports/jornada_15.html --visual reports/jornada_15
+```
+
+**Ficha de un partido concreto:**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --match-id 2279399 --output reports/partido.txt --html-output reports/partido.html --visual reports/partido
+```
+
+**Perfil de un jugador:**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --player "Vedat Muriqi" --output reports/muriqi.txt --html-output reports/muriqi.html --visual reports/muriqi
+```
+
 **Construir/actualizar la DB de una competición:**
 
 ```bash
 python -m src.run_agent --fetch-real --competition 2014 --season 2025 --output reports/laliga_2025.txt --html-output reports/laliga_2025.html --visual reports/laliga_2025
 ```
 
-**Generar informe de equipo desde la DB local (sin API):**
-
-```bash
-python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --output reports/mallorca.txt --html-output reports/mallorca.html --visual reports/mallorca
-```
-
-El informe incluye automáticamente:
-- Gráfico de evolución temporal por jornada (goles, xG, tiros a puerta)
-- Tabla comparativa de cada métrica del equipo vs media de la liga
-
-**Usar un dataset CSV externo:**
-
-```bash
-python -m src.run_agent --data data/example_matches.csv --output reports/informe.txt --visual reports
-```
-
-Para una guía rápida de todos los comandos, consulta `COMMANDS.md`.
-También puedes consultar el historial de cambios en `CHANGELOG.md`.
+Para una guía completa de todos los comandos, consulta `COMMANDS.md`.
+Para el historial de cambios, consulta `CHANGELOG.md`.
 
 **Obtener datos de otras competiciones:**
 
@@ -171,4 +198,5 @@ python -m src.run_agent --fetch-real --competition 2002 --season 2024 --output r
 
 - Añade tus propios datos en `data/` con el mismo formato
 - Amplía `src/analysis.py` con nuevas métricas
-- Crea notebooks en `notebooks/` para análisis interactivo
+- Amplía `src/visualizer.py` con nuevos tipos de gráficos
+- Amplía `src/agent.py` añadiendo nuevos modos de análisis
