@@ -26,11 +26,12 @@ from .visualizer import (
 
 
 class SportsAgent:
-    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None):
+    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None):
         self.data_path = data_path
         self.fetch_real = fetch_real
         self.competition_id = competition_id
         self.season = season
+        self.seasons = seasons  # lista de temporadas para análisis multi-temporada
         self.team = team
         self.data: Optional[pd.DataFrame] = None
         self.full_data: Optional[pd.DataFrame] = None  # datos de toda la liga (antes de filtrar)
@@ -44,7 +45,16 @@ class SportsAgent:
         self.highlights: Optional[pd.DataFrame] = None
 
     def load_data(self):
-        self.data = load_match_data(self.data_path, self.fetch_real, self.competition_id, self.season)
+        if self.seasons and len(self.seasons) > 1:
+            from .data_loader import load_multiple_seasons
+            if self.competition_id is None:
+                raise ValueError('--competition es obligatorio con --seasons')
+            self.data = load_multiple_seasons(
+                self.data_path, self.competition_id, self.seasons, self.fetch_real
+            )
+        else:
+            _season = self.seasons[0] if self.seasons and len(self.seasons) == 1 else self.season
+            self.data = load_match_data(self.data_path, self.fetch_real, self.competition_id, _season)
         if self.data is not None and isinstance(self.data, pd.DataFrame):
             self.available_optional_columns = set(self.data.attrs.get('available_optional_columns', []))
         return self.data
@@ -103,6 +113,10 @@ class SportsAgent:
         report_lines: List[str] = []
         report_lines.append('INFORME DE ANÁLISIS DE PARTIDOS')
         report_lines.append('--------------------------------')
+        if self.seasons and len(self.seasons) > 1:
+            report_lines.append(f"Temporadas: {', '.join(str(s) for s in self.seasons)}")
+        elif self.season:
+            report_lines.append(f"Temporada: {self.season}")
         report_lines.append(f"Partidos analizados: {self.metrics['partidos_analizados']}")
         report_lines.append(f"Goles totales: {self.metrics['goles_totales']}")
         report_lines.append(f"Goles promedio por partido: {self.metrics['goles_promedio_por_partido']:.2f}")
@@ -171,16 +185,30 @@ class SportsAgent:
             )
             report_lines.append(f"  Racha últimos 5: {racha_display}")
             report_lines.append('')
-            report_lines.append(
-                f"  {'Jornada':<8} {'Rival':<25} {'GF':>3} {'GC':>3} {'Local/Visit':<12} Res"
-            )
-            report_lines.append(f"  {'-'*8} {'-'*25} {'-'*3} {'-'*3} {'-'*12} ---")
+            show_season_col = any(r.get('season') for r in rec['tabla_resultados'])
+            if show_season_col:
+                report_lines.append(
+                    f"  {'Temp':<6} {'Jornada':<8} {'Rival':<25} {'GF':>3} {'GC':>3} {'Local/Visit':<12} Res"
+                )
+                report_lines.append(f"  {'-'*6} {'-'*8} {'-'*25} {'-'*3} {'-'*3} {'-'*12} ---")
+            else:
+                report_lines.append(
+                    f"  {'Jornada':<8} {'Rival':<25} {'GF':>3} {'GC':>3} {'Local/Visit':<12} Res"
+                )
+                report_lines.append(f"  {'-'*8} {'-'*25} {'-'*3} {'-'*3} {'-'*12} ---")
             for r in rec['tabla_resultados']:
                 jornada_str = str(r['jornada']) if r['jornada'] is not None else '-'
-                report_lines.append(
-                    f"  {jornada_str:<8} {str(r['rival']):<25} {r['gf']:>3} {r['gc']:>3} "
-                    f"{r['local']:<12} {r['resultado']}"
-                )
+                if show_season_col:
+                    season_str = str(r.get('season', '-')) if r.get('season') else '-'
+                    report_lines.append(
+                        f"  {season_str:<6} {jornada_str:<8} {str(r['rival']):<25} {r['gf']:>3} {r['gc']:>3} "
+                        f"{r['local']:<12} {r['resultado']}"
+                    )
+                else:
+                    report_lines.append(
+                        f"  {jornada_str:<8} {str(r['rival']):<25} {r['gf']:>3} {r['gc']:>3} "
+                        f"{r['local']:<12} {r['resultado']}"
+                    )
 
         report_lines.append('')
 
@@ -256,6 +284,12 @@ class SportsAgent:
             '  <div class="section">',
             '    <h2>Resumen general</h2>',
             '    <div class="metrics">',
+            *([
+                f'      <div class="metric"><strong>Temporadas</strong><p>{", ".join(str(s) for s in self.seasons)}</p></div>'
+            ] if self.seasons and len(self.seasons) > 1 else (
+                [f'      <div class="metric"><strong>Temporada</strong><p>{self.season}</p></div>']
+                if self.season else []
+            )),
             f'      <div class="metric"><strong>Partidos analizados</strong><p>{self.metrics["partidos_analizados"]}</p></div>',
             f'      <div class="metric"><strong>Goles totales</strong><p>{self.metrics["goles_totales"]}</p></div>',
             f'      <div class="metric"><strong>Goles promedio</strong><p>{self.metrics["goles_promedio_por_partido"]:.2f}</p></div>',
@@ -352,14 +386,20 @@ class SportsAgent:
                 '    </div>',
                 f'    <p><strong>Racha últimos 5:</strong> {racha_badges}</p>',
                 '    <table>',
-                '      <thead><tr><th>Jornada</th><th>Rival</th><th>GF</th><th>GC</th><th>Local/Visitante</th><th>Resultado</th></tr></thead>',
+            ])
+            show_season_col = any(r.get('season') for r in rec['tabla_resultados'])
+            thead_cols = '<th>Temporada</th>' if show_season_col else ''
+            html.extend([
+                f'      <thead><tr>{thead_cols}<th>Jornada</th><th>Rival</th><th>GF</th><th>GC</th><th>Local/Visitante</th><th>Resultado</th></tr></thead>',
                 '      <tbody>',
             ])
             for r in rec['tabla_resultados']:
                 jornada_str = str(r['jornada']) if r['jornada'] is not None else '-'
                 bg = res_bg.get(r['resultado'], 'white')
+                season_td = f'<td>{r.get("season", "-")}</td>' if show_season_col else ''
                 html.append(
                     f'        <tr style="background:{bg}">'
+                    f'{season_td}'
                     f'<td>{jornada_str}</td>'
                     f'<td>{r["rival"]}</td>'
                     f'<td>{r["gf"]}</td>'

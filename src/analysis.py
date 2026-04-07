@@ -119,8 +119,12 @@ def compute_team_record(df: pd.DataFrame, team: str) -> Dict:
     """
     data = df.copy()
 
-    # Ordenar cronológicamente
-    if 'jornada' in data.columns and data['jornada'].notna().any():
+    # Ordenar cronológicamente (en multi-temporada, primero por season)
+    has_season = 'season' in data.columns and data['season'].notna().any()
+    has_jornada = 'jornada' in data.columns and data['jornada'].notna().any()
+    if has_season and has_jornada:
+        data = data.sort_values(['season', 'jornada']).reset_index(drop=True)
+    elif has_jornada:
         data = data.sort_values('jornada').reset_index(drop=True)
     elif 'date' in data.columns:
         data = data.sort_values('date').reset_index(drop=True)
@@ -147,6 +151,7 @@ def compute_team_record(df: pd.DataFrame, team: str) -> Dict:
             resultado = 'D'
 
         results.append({
+            'season': row.get('season'),
             'jornada': row.get('jornada'),
             'rival': rival,
             'gf': int(gf),

@@ -149,6 +149,31 @@ def list_available_teams(competition_id: int, season: str) -> List[str]:
     return sorted(teams.tolist())
 
 
+def load_multiple_seasons(
+    csv_path: str,
+    competition_id: int,
+    seasons: List[str],
+    fetch_real: bool = False,
+) -> pd.DataFrame:
+    """Carga y combina múltiples temporadas en un solo DataFrame.
+
+    Añade la columna 'season' a cada fila con la temporada correspondiente.
+    Si fetch_real=True, actualiza la DB local de cada temporada antes de cargar.
+    """
+    dfs = []
+    optional_cols: set = set()
+    for season in seasons:
+        df = load_match_data(csv_path, fetch_real=fetch_real, competition_id=competition_id, season=season)
+        df['season'] = str(season)
+        optional_cols.update(df.attrs.get('available_optional_columns', []))
+        dfs.append(df)
+    if not dfs:
+        raise ValueError('No se encontraron temporadas válidas.')
+    combined = pd.concat(dfs, ignore_index=True)
+    combined.attrs['available_optional_columns'] = list(optional_cols)
+    return combined
+
+
 def normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
     mapping = {}
     for column in df.columns:

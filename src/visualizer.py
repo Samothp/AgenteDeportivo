@@ -150,78 +150,120 @@ def plot_temporal_evolution(df: pd.DataFrame, team: Optional[str], output_path: 
 
     Muestra goles, xG y tiros a puerta del equipo a lo largo de la temporada,
     ordenado por jornada (si está disponible) o por fecha.
+    En modo multi-temporada (columna 'season' presente), traza una línea por
+    temporada con color/trazo distinto.
     Solo se genera cuando se analiza un equipo concreto.
     """
     if team is None:
         return None
 
     data = df.copy()
+    team_lower = team.strip().lower()
+    multi_season = 'season' in data.columns and data['season'].nunique() > 1
 
-    # Ordenar por jornada si existe, sino por fecha
+    # Elegir eje X
     if 'jornada' in data.columns and data['jornada'].notna().any():
-        data = data.sort_values('jornada').reset_index(drop=True)
         x_col = 'jornada'
         x_label = 'Jornada'
     elif 'date' in data.columns:
-        data = data.sort_values('date').reset_index(drop=True)
         x_col = 'date'
         x_label = 'Fecha'
     else:
         return None
 
-    # Determinar si el equipo jugó de local o visitante en cada partido y
-    # extraer las métricas desde la perspectiva del equipo analizado.
-    team_lower = team.strip().lower()
-    is_home = data['local_team'].str.lower().str.contains(team_lower, na=False)
+    def _extract(subset: pd.DataFrame):
+        """Extrae métricas desde la perspectiva del equipo (local o visitante)."""
+        is_h = subset['local_team'].str.lower().str.contains(team_lower, na=False)
 
-    def _team_col(col_home: str, col_away: str) -> pd.Series:
-        if col_home not in data.columns:
-            return pd.Series([None] * len(data))
-        result = data[col_away].copy()
-        result[is_home] = data.loc[is_home, col_home]
-        return result
+        def _col(col_h: str, col_a: str) -> pd.Series:
+            if col_h not in subset.columns:
+                return pd.Series([None] * len(subset), index=subset.index, dtype=float)
+            result = subset[col_a].copy().astype(float)
+            result[is_h] = subset.loc[is_h, col_h].astype(float)
+            return result
 
-    goles     = _team_col('goles_local', 'goles_visitante')
-    xg        = _team_col('xg_local', 'xg_visitante')
-    shots_ot  = _team_col('shots_on_target_local', 'shots_on_target_visitante')
+        return (
+            _col('goles_local', 'goles_visitante'),
+            _col('xg_local', 'xg_visitante'),
+            _col('shots_on_target_local', 'shots_on_target_visitante'),
+        )
 
-    # Necesitamos al menos goles para trazar algo
-    if goles.isna().all():
+    # Determinar qué métricas hay disponibles (sobre todos los datos)
+    all_g, all_xg, all_sot = _extract(data)
+    if all_g.isna().all():
         return None
 
-    x_values = data[x_col]
-    num_matches = len(data)
+    metrics_cfg = [('Goles', '#2ecc71')]
+    if all_xg.notna().any():
+        metrics_cfg.append(('xG', '#9b59b6'))
+    if all_sot.notna().any():
+        metrics_cfg.append(('Tiros a puerta', '#e67e22'))
 
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-
-    # Número de subplots según datos disponibles
-    plots = [('Goles', goles, '#2ecc71')]
-    if xg.notna().any():
-        plots.append(('xG', xg, '#9b59b6'))
-    if shots_ot.notna().any():
-        plots.append(('Tiros a puerta', shots_ot, '#e67e22'))
-
-    nrows = len(plots)
-    fig, axes = plt.subplots(nrows=nrows, ncols=1, figsize=(max(12, num_matches * 0.4), 3.5 * nrows), sharex=True)
+    nrows = len(metrics_cfg)
+    n_per_season = len(data) // (data['season'].nunique() if multi_season else 1)
+    fig_width = max(12, n_per_season * 0.4)
+    fig, axes = plt.subplots(nrows=nrows, ncols=1, figsize=(fig_width, 3.5 * nrows), sharex=True)
     if nrows == 1:
         axes = [axes]
 
     title_team = team.title()
-    fig.suptitle(f'Evolución por jornada — {title_team}', fontsize=13, fontweight='bold', y=1.01)
+    title_suffix = ' (multi-temporada)' if multi_season else ''
+    fig.suptitle(f'Evolución por jornada — {title_team}{title_suffix}', fontsize=13, fontweight='bold', y=1.01)
 
-    for ax, (label, serie, color) in zip(axes, plots):
-        valid = serie.dropna()
-        if valid.empty:
-            continue
-        ax.plot(x_values, serie, marker='o', linewidth=2, color=color, markersize=5, label=label)
-        ax.axhline(valid.mean(), linestyle='--', linewidth=1, color=color, alpha=0.5, label=f'Media {valid.mean():.1f}')
-        ax.fill_between(x_values, serie.fillna(0), alpha=0.08, color=color)
-        ax.set_ylabel(label)
-        ax.legend(fontsize=8, loc='upper left')
-        ax.grid(True, alpha=0.3)
-        if num_matches <= 38 and x_col == 'jornada':
-            ax.set_xticks(x_values)
-            ax.set_xticklabels([str(int(v)) if pd.notna(v) else '' for v in x_values], fontsize=8)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    if multi_season:
+        season_list = sorted(data['season'].unique())
+        palette = [plt.get_cmap('tab10')(i % 10) for i in range(len(season_list))]
+        linestyles = ['-', '--', '-.', ':'] * 3
+
+        for ax, (label, _) in zip(axes, metrics_cfg):
+            ax.set_ylabel(label)
+            ax.grid(True, alpha=0.3)
+            for i, season in enumerate(season_list):
+                s_data = data[data['season'] == season].sort_values(x_col).reset_index(drop=True)
+                s_g, s_xg, s_sot = _extract(s_data)
+                serie = s_g if label == 'Goles' else (s_xg if label == 'xG' else s_sot)
+                x_vals = s_data[x_col]
+                color = palette[i]
+                ls = linestyles[i]
+                ax.plot(x_vals, serie, marker='o', linewidth=2, color=color,
+                        markersize=5, label=str(season), linestyle=ls)
+                valid = serie.dropna()
+                if not valid.empty:
+                    ax.axhline(valid.mean(), linestyle=':', linewidth=1, color=color, alpha=0.5)
+            ax.legend(fontsize=8, loc='upper left', title='Temporada')
+
+        if x_col == 'jornada':
+            all_x = sorted(data[x_col].dropna().unique())
+            if len(all_x) <= 38:
+                axes[-1].set_xticks(all_x)
+                axes[-1].set_xticklabels([str(int(v)) for v in all_x], fontsize=8)
+    else:
+        data = data.sort_values(x_col).reset_index(drop=True)
+        x_values = data[x_col]
+        num_matches = len(data)
+        goles, xg, shots_ot = _extract(data)
+
+        plots = [('Goles', goles, '#2ecc71')]
+        if xg.notna().any():
+            plots.append(('xG', xg, '#9b59b6'))
+        if shots_ot.notna().any():
+            plots.append(('Tiros a puerta', shots_ot, '#e67e22'))
+
+        for ax, (label, serie, color) in zip(axes, plots):
+            valid = serie.dropna()
+            if valid.empty:
+                continue
+            ax.plot(x_values, serie, marker='o', linewidth=2, color=color, markersize=5, label=label)
+            ax.axhline(valid.mean(), linestyle='--', linewidth=1, color=color, alpha=0.5, label=f'Media {valid.mean():.1f}')
+            ax.fill_between(x_values, serie.fillna(0), alpha=0.08, color=color)
+            ax.set_ylabel(label)
+            ax.legend(fontsize=8, loc='upper left')
+            ax.grid(True, alpha=0.3)
+            if num_matches <= 38 and x_col == 'jornada':
+                ax.set_xticks(x_values)
+                ax.set_xticklabels([str(int(v)) if pd.notna(v) else '' for v in x_values], fontsize=8)
 
     axes[-1].set_xlabel(x_label)
     fig.tight_layout()

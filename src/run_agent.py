@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument('--season', default='2023', help='Temporada para datos reales (formato YYYY)')
     parser.add_argument('--team', default=None, help='Equipo para filtrar el análisis (ej. Mallorca)')
     parser.add_argument('--list-teams', action='store_true', help='Lista los equipos disponibles en la DB local para la competition+season indicada y termina')
+    parser.add_argument('--seasons', nargs='+', default=None, metavar='YEAR', help='Lista de temporadas a combinar en un solo análisis (ej. --seasons 2024 2025). Tiene prioridad sobre --season')
     return parser.parse_args()
 
 
@@ -55,7 +56,7 @@ def main():
     if args.html_output:
         args.html_output = ensure_inside_folder(args.html_output, args.visual)
 
-    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team)
+    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team, seasons=args.seasons)
 
     if args.clean_reports:
         agent.clean_reports(args.visual)

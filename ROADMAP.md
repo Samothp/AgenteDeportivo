@@ -45,7 +45,7 @@
 ## Prioridad Baja
 
 ### ✅ 5. Soporte multi-temporada en un solo reporte
-**Estado:** Pendiente  
+**Estado:** Completado  
 **Objetivo:** Comparar el rendimiento de un equipo entre temporadas distintas (ej. Mallorca 24-25 vs 25-26).  
 **Cambios previstos:**
 - `run_agent.py` → `--seasons 2024 2025` (lista de temporadas)
