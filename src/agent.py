@@ -98,8 +98,6 @@ class SportsAgent:
             report_lines.append(f"Asistencia máxima: {self.metrics['asistencia_maxima']:,} ({self.metrics.get('partido_mas_espectadores', '')})")
         report_lines.append(self.format_metric('estadio_mas_frecuente', 'Estadio más frecuente'))
         report_lines.append(self.format_metric('arbitro_mas_frecuente', 'Árbitro más frecuente'))
-        if self.available_optional_columns:
-            report_lines.append('Campos opcionales disponibles: ' + ', '.join(sorted(self.available_optional_columns)))
 
         _tech = [
             ('tiros_local_promedio',               'Tiros locales promedio',               False),
@@ -226,9 +224,6 @@ class SportsAgent:
             html.append(f'      <div class="metric"><strong>Estadio más frecuente</strong><p>{self.metrics["estadio_mas_frecuente"]}</p></div>')
         if self.metrics.get('arbitro_mas_frecuente') is not None:
             html.append(f'      <div class="metric"><strong>Árbitro más frecuente</strong><p>{self.metrics["arbitro_mas_frecuente"]}</p></div>')
-
-        if self.available_optional_columns:
-            html.append(f'      <div class="metric"><strong>Campos opcionales</strong><p>{", ".join(sorted(self.available_optional_columns))}</p></div>')
 
         # Métricas técnicas en el grid
         _tech_html = [

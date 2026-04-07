@@ -127,6 +127,15 @@ PERCENT_COLUMNS = [
 ]
 
 
+def get_db_path(competition_id: int, season: str) -> Path:
+    """Retorna la ruta de la base de datos local para una competition+season concreta.
+
+    Ejemplo: competition_id=2014, season='2025' → data/db_2014_2025.csv
+    """
+    season_norm = str(season).split('-')[0]  # '2025-2026' → '2025'
+    return Path(f"data/db_{competition_id}_{season_norm}.csv")
+
+
 def normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
     mapping = {}
     for column in df.columns:
@@ -190,34 +199,98 @@ def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Opt
     """
     path = Path(csv_path)
 
-    if fetch_real or not path.exists():
-        if fetch_real:
-            print("Obteniendo datos reales de la API...")
-            from .api_client import fetch_real_matches
-            df = fetch_real_matches(competition_id or 2014, season or '2023')
-
-            if df.empty:
-                if path.exists():
-                    print("La API devolvió 0 partidos. Usando último CSV local disponible.")
-                    df = pd.read_csv(path)
-                else:
-                    raise ValueError(
-                        "La API devolvió 0 partidos para esta consulta. "
-                        "Puede ser un límite temporal de cuota; intenta de nuevo o usa una API key propia."
-                    )
-            else:
-                # Enriquecer con estadísticas detalladas antes de guardar
-                from .api_client import fetch_real_matches, SportsDBAPI
-                api = SportsDBAPI()
-                df = api.enrich_with_stats(df)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                df.to_csv(path, index=False)
-                print(f"Datos guardados en: {csv_path}")
-        else:
-            raise FileNotFoundError(f'No se encontró el archivo: {csv_path}. Usa fetch_real=True para obtener datos reales.')
+    # Cuando se especifica competition+season, usar una DB dedicada por liga y temporada.
+    # Esto permite mantener bases de datos separadas y actualizarlas incrementalmente.
+    if competition_id and season:
+        db_path = get_db_path(competition_id, season)
     else:
+        db_path = path
+
+    if fetch_real:
+        from .api_client import SportsDBAPI, fetch_real_matches
+
+        # 1. Cargar DB existente (puede estar vacía en el primer uso)
+        df_db = pd.read_csv(db_path) if db_path.exists() else pd.DataFrame()
+
+        # 2. Obtener todos los partidos jugados de la temporada (datos base, sin stats)
+        print("Consultando partidos de la temporada en la API...")
+        _api_failed = False
+        try:
+            df_api = fetch_real_matches(competition_id or 2014, season or '2023')
+        except Exception as exc:
+            if not df_db.empty:
+                print(f"Error al contactar la API ({exc.__class__.__name__}). Usando DB local.")
+                df = df_db
+                _api_failed = True
+            else:
+                raise
+
+        if _api_failed:
+            pass  # df ya asignado arriba
+        elif df_api.empty:
+            if not df_db.empty:
+                print("La API devolvió 0 partidos. Usando DB local.")
+                df = df_db
+            else:
+                raise ValueError(
+                    "La API devolvió 0 partidos y no hay DB local. "
+                    "Puede ser un límite de cuota; intenta de nuevo."
+                )
+        else:
+            # 3. Determinar qué partidos ya tienen stats completas en la DB
+            if not df_db.empty and 'id_event' in df_db.columns:
+                if 'shots_local' in df_db.columns:
+                    # Solo se consideran "con stats" los que tienen shots_local relleno
+                    enriched_ids = set(
+                        df_db.loc[df_db['shots_local'].notna(), 'id_event'].astype(str)
+                    )
+                else:
+                    enriched_ids = set(df_db['id_event'].astype(str))
+            else:
+                enriched_ids = set()
+
+            df_to_enrich = df_api[
+                ~df_api['id_event'].astype(str).isin(enriched_ids)
+            ].copy()
+
+            print(
+                f"DB local: {len(enriched_ids)} partidos con stats. "
+                f"Nuevos/pendientes: {len(df_to_enrich)}."
+            )
+
+            if not df_to_enrich.empty:
+                # 4. Enriquecer solo los partidos nuevos o que aún no tienen stats
+                print(f"Enriqueciendo {len(df_to_enrich)} partidos con estadísticas detalladas...")
+                api = SportsDBAPI()
+                df_enriched = api.enrich_with_stats(df_to_enrich)
+
+                # 5. Fusionar en DB: sustituir filas sin stats + añadir nuevas
+                if not df_db.empty and 'id_event' in df_db.columns:
+                    updated_ids = set(df_enriched['id_event'].astype(str))
+                    df_db = df_db[~df_db['id_event'].astype(str).isin(updated_ids)]
+                    df_db = pd.concat([df_db, df_enriched], ignore_index=True)
+                else:
+                    df_db = df_enriched
+
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                df_db.to_csv(db_path, index=False)
+                print(f"DB guardada en: {db_path} ({len(df_db)} partidos totales)")
+            else:
+                print("La DB ya está al día, no hay partidos nuevos ni pendientes.")
+
+            df = df_db
+
+    elif db_path.exists():
+        print(f"Cargando datos desde: {db_path}")
+        df = pd.read_csv(db_path)
+    elif path.exists():
         print(f"Cargando datos desde: {csv_path}")
         df = pd.read_csv(path)
+    else:
+        raise FileNotFoundError(
+            f"No se encontró la base de datos. "
+            f"Usa --fetch-real para descargar y construir la DB local."
+        )
 
     df = normalize_column_names(df)
     validate_match_data(df)
