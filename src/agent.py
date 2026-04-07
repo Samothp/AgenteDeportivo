@@ -8,12 +8,14 @@ import pandas as pd
 from .analysis import (
     compute_league_comparison,
     compute_overall_metrics,
+    compute_player_rankings,
     compute_team_record,
     match_highlights,
     top_defensive_teams,
     top_scoring_teams,
 )
 from .data_loader import load_match_data
+from .player_loader import load_player_stats
 from .visualizer import (
     plot_attendance,
     plot_card_statistics,
@@ -43,6 +45,7 @@ class SportsAgent:
         self.top_scorers: Optional[pd.DataFrame] = None
         self.top_defenders: Optional[pd.DataFrame] = None
         self.highlights: Optional[pd.DataFrame] = None
+        self.player_rankings: dict = {}  # goleadores, asistentes, combinado
 
     def load_data(self):
         if self.seasons and len(self.seasons) > 1:
@@ -90,6 +93,16 @@ class SportsAgent:
         # Historial W/D/L si se filtró por equipo
         if self.team:
             self.team_record = compute_team_record(self.data, self.team)
+        # Rankings de jugadores si se filtró por equipo
+        if self.team:
+            df_players = load_player_stats(
+                self.team,
+                competition_id=self.competition_id or 2014,
+                season=self.season or '2025-2026',
+                fetch_real=self.fetch_real,
+                verbose=self.fetch_real,
+            )
+            self.player_rankings = compute_player_rankings(df_players)
         return self.metrics
 
     def format_metric(self, key: str, label: str, is_percent: bool = False) -> str:
@@ -262,12 +275,26 @@ class SportsAgent:
 
         report_lines.append('')
 
-        report_lines.append('Top equipos con más goles')
-        report_lines.extend(self.top_scorers.to_string(index=False).splitlines())
-        report_lines.append('')
-
-        report_lines.append('Top equipos con menos goles concedidos')
-        report_lines.extend(self.top_defenders.to_string(index=False).splitlines())
+        if self.team and self.player_rankings:
+            goleadores = self.player_rankings.get('goleadores', pd.DataFrame())
+            asistentes = self.player_rankings.get('asistentes', pd.DataFrame())
+            if not goleadores.empty:
+                report_lines.append('Top goleadores')
+                report_lines.extend(goleadores.to_string(index=False).splitlines())
+            else:
+                report_lines.append('Top goleadores: sin datos disponibles')
+            report_lines.append('')
+            if not asistentes.empty:
+                report_lines.append('Top asistentes')
+                report_lines.extend(asistentes.to_string(index=False).splitlines())
+            else:
+                report_lines.append('Top asistentes: sin datos disponibles')
+        else:
+            report_lines.append('Top equipos con más goles')
+            report_lines.extend(self.top_scorers.to_string(index=False).splitlines())
+            report_lines.append('')
+            report_lines.append('Top equipos con menos goles concedidos')
+            report_lines.extend(self.top_defenders.to_string(index=False).splitlines())
         report_lines.append('')
 
         report_lines.append('Partidos destacados')
@@ -512,15 +539,32 @@ class SportsAgent:
                 )
             html.extend(['      </tbody>', '    </table>', '  </div>'])
 
+        if self.team and self.player_rankings:
+            goleadores = self.player_rankings.get('goleadores', pd.DataFrame())
+            asistentes = self.player_rankings.get('asistentes', pd.DataFrame())
+            html.extend(['  <div class="section">', '    <h2>Top goleadores</h2>'])
+            if not goleadores.empty:
+                html.append(goleadores.to_html(index=False, classes='dataframe', border=0))
+            else:
+                html.append('    <p>Sin datos disponibles.</p>')
+            html.extend(['  </div>', '  <div class="section">', '    <h2>Top asistentes</h2>'])
+            if not asistentes.empty:
+                html.append(asistentes.to_html(index=False, classes='dataframe', border=0))
+            else:
+                html.append('    <p>Sin datos disponibles.</p>')
+            html.append('  </div>')
+        else:
+            html.extend([
+                '  <div class="section">',
+                '    <h2>Equipos con más goles</h2>',
+                self.top_scorers.to_html(index=False, classes='dataframe', border=0),
+                '  </div>',
+                '  <div class="section">',
+                '    <h2>Equipos con menos goles concedidos</h2>',
+                self.top_defenders.to_html(index=False, classes='dataframe', border=0),
+                '  </div>',
+            ])
         html.extend([
-            '  <div class="section">',
-            '    <h2>Equipos con más goles</h2>',
-            self.top_scorers.to_html(index=False, classes='dataframe', border=0),
-            '  </div>',
-            '  <div class="section">',
-            '    <h2>Equipos con menos goles concedidos</h2>',
-            self.top_defenders.to_html(index=False, classes='dataframe', border=0),
-            '  </div>',
             '  <div class="section">',
             '    <h2>Partidos destacados</h2>',
         ])

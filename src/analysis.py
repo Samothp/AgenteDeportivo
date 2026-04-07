@@ -337,3 +337,58 @@ def compute_league_comparison(team_metrics: Dict, league_metrics: Dict) -> List[
                 continue
             rows.append(_row(label, t_val, l_val))
     return rows
+
+
+_POS_ES = {
+    'F':  'Delantero',
+    'M':  'Centrocampista',
+    'D':  'Defensa',
+    'G':  'Portero',
+    'GK': 'Portero',
+    'FW': 'Delantero',
+    'MF': 'Centrocampista',
+    'DF': 'Defensa',
+}
+
+
+def compute_player_rankings(df_players: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    """Genera rankings de jugadores a partir del DataFrame de stats.
+
+    Args:
+        df_players: DataFrame de load_player_stats() con columnas
+                    player_name, goals, assists, yellow_cards, red_cards,
+                    appearances, shots_on_target, goals_assists, position.
+
+    Returns:
+        Dict con claves:
+          'goleadores'   -> top jugadores por goles (desc)
+          'asistentes'   -> top jugadores por asistencias (desc)
+          'combinado'    -> top jugadores por goles+asistencias (desc)
+        Cada DataFrame tiene columnas: Jugador, Posicion, PJ, Goles, Asistencias, G+A
+        Solo incluye jugadores con al menos 1 aportacion relevante.
+    """
+    if df_players.empty:
+        empty = pd.DataFrame(columns=['Jugador', 'Posicion', 'PJ', 'Goles', 'Asistencias', 'G+A'])
+        return {'goleadores': empty, 'asistentes': empty, 'combinado': empty}
+
+    def _translate_pos(pos: str) -> str:
+        return _POS_ES.get(str(pos).strip().upper(), str(pos))
+
+    def _fmt(df: pd.DataFrame, sort_col: str, min_val: int = 1) -> pd.DataFrame:
+        sub = df[df[sort_col] >= min_val].copy()
+        sub = sub.sort_values([sort_col, 'goals_assists'], ascending=[False, False])
+        out = pd.DataFrame({
+            'Jugador':     sub['player_name'].values,
+            'Posicion':    [_translate_pos(p) for p in sub['position'].values],
+            'PJ':          sub['appearances'].values,
+            'Goles':       sub['goals'].values,
+            'Asistencias': sub['assists'].values,
+            'G+A':         sub['goals_assists'].values,
+        })
+        return out.reset_index(drop=True)
+
+    return {
+        'goleadores': _fmt(df_players, 'goals', min_val=1),
+        'asistentes': _fmt(df_players, 'assists', min_val=1),
+        'combinado':  _fmt(df_players, 'goals_assists', min_val=1),
+    }
