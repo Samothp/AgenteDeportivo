@@ -13,9 +13,12 @@ from .analysis import (
 )
 from .data_loader import load_match_data
 from .visualizer import (
+    plot_attendance,
     plot_card_statistics,
     plot_goals_distribution,
     plot_possession_distribution,
+    plot_shots_comparison,
+    plot_xg_per_match,
 )
 
 
@@ -90,8 +93,45 @@ class SportsAgent:
         report_lines.append(self.format_metric('tarjetas_amarillas', 'Tarjetas amarillas'))
         report_lines.append(self.format_metric('tarjetas_rojas', 'Tarjetas rojas'))
         report_lines.append(self.format_metric('posesion_local_promedio', 'Posesión local promedio', is_percent=True))
+        report_lines.append(self.format_metric('asistencia_promedio', 'Asistencia promedio'))
+        if self.metrics.get('asistencia_maxima') is not None:
+            report_lines.append(f"Asistencia máxima: {self.metrics['asistencia_maxima']:,} ({self.metrics.get('partido_mas_espectadores', '')})")
+        report_lines.append(self.format_metric('estadio_mas_frecuente', 'Estadio más frecuente'))
+        report_lines.append(self.format_metric('arbitro_mas_frecuente', 'Árbitro más frecuente'))
         if self.available_optional_columns:
             report_lines.append('Campos opcionales disponibles: ' + ', '.join(sorted(self.available_optional_columns)))
+
+        _tech = [
+            ('tiros_local_promedio',               'Tiros locales promedio',               False),
+            ('tiros_visitante_promedio',           'Tiros visitante promedio',             False),
+            ('tiros_a_puerta_local_promedio',      'Tiros a puerta local promedio',        False),
+            ('tiros_a_puerta_visitante_promedio',  'Tiros a puerta visitante promedio',    False),
+            ('xg_local_promedio',                  'xG local promedio',                   False),
+            ('xg_visitante_promedio',              'xG visitante promedio',               False),
+            ('posesion_local_promedio',            'Posesión local promedio',              True),
+            ('posesion_visitante_promedio',        'Posesión visitante promedio',          True),
+            ('corners_local_promedio',             'Corners local promedio',              False),
+            ('corners_visitante_promedio',         'Corners visitante promedio',          False),
+            ('faltas_local_promedio',              'Faltas local promedio',               False),
+            ('faltas_visitante_promedio',          'Faltas visitante promedio',           False),
+            ('fueras_de_juego_local_promedio',     'Fueras de juego local promedio',      False),
+            ('fueras_de_juego_visitante_promedio', 'Fueras de juego visitante promedio',  False),
+            ('paradas_local_promedio',             'Paradas portero local promedio',      False),
+            ('paradas_visitante_promedio',         'Paradas portero visitante promedio',  False),
+            ('precision_pases_local_promedio',     'Precisión pases local',               True),
+            ('precision_pases_visitante_promedio', 'Precisión pases visitante',           True),
+        ]
+        tech_lines = [
+            f"  {lbl}: {self.metrics[k]:.1f}{'%' if pct else ''}"
+            for k, lbl, pct in _tech
+            if self.metrics.get(k) is not None
+        ]
+        if tech_lines:
+            report_lines.append('')
+            report_lines.append('Estadísticas técnicas promedio')
+            report_lines.append('------------------------------')
+            report_lines.extend(tech_lines)
+
         report_lines.append('')
 
         report_lines.append('Top equipos con más goles')
@@ -178,8 +218,40 @@ class SportsAgent:
         else:
             html.append('      <div class="metric"><strong>Posesión local promedio</strong><p>No disponible</p></div>')
 
+        if self.metrics.get('asistencia_promedio') is not None:
+            html.append(f'      <div class="metric"><strong>Asistencia promedio</strong><p>{self.metrics["asistencia_promedio"]:,.0f}</p></div>')
+        if self.metrics.get('asistencia_maxima') is not None:
+            html.append(f'      <div class="metric"><strong>Asistencia máxima</strong><p>{self.metrics["asistencia_maxima"]:,}<br><small>{self.metrics.get("partido_mas_espectadores","")}</small></p></div>')
+        if self.metrics.get('estadio_mas_frecuente') is not None:
+            html.append(f'      <div class="metric"><strong>Estadio más frecuente</strong><p>{self.metrics["estadio_mas_frecuente"]}</p></div>')
+        if self.metrics.get('arbitro_mas_frecuente') is not None:
+            html.append(f'      <div class="metric"><strong>Árbitro más frecuente</strong><p>{self.metrics["arbitro_mas_frecuente"]}</p></div>')
+
         if self.available_optional_columns:
             html.append(f'      <div class="metric"><strong>Campos opcionales</strong><p>{", ".join(sorted(self.available_optional_columns))}</p></div>')
+
+        # Métricas técnicas en el grid
+        _tech_html = [
+            ('tiros_local_promedio',              'Tiros locales (prom.)',         False),
+            ('tiros_visitante_promedio',          'Tiros visitante (prom.)',       False),
+            ('tiros_a_puerta_local_promedio',     'Tiros a puerta local (prom.)',  False),
+            ('tiros_a_puerta_visitante_promedio', 'Tiros a puerta visit. (prom.)', False),
+            ('xg_local_promedio',                'xG local promedio',             False),
+            ('xg_visitante_promedio',            'xG visitante promedio',         False),
+            ('corners_local_promedio',           'Corners local (prom.)',         False),
+            ('corners_visitante_promedio',       'Corners visitante (prom.)',     False),
+            ('faltas_local_promedio',            'Faltas local (prom.)',          False),
+            ('faltas_visitante_promedio',        'Faltas visitante (prom.)',      False),
+            ('paradas_local_promedio',           'Paradas portero local (prom.)', False),
+            ('paradas_visitante_promedio',       'Paradas portero visit.(prom.)', False),
+            ('precision_pases_local_promedio',   'Precisión pases local',         True),
+            ('precision_pases_visitante_promedio', 'Precisión pases visitante',   True),
+        ]
+        for k, lbl, pct in _tech_html:
+            val = self.metrics.get(k)
+            if val is not None:
+                fmt = f'{val:.1f}%' if pct else f'{val:.1f}'
+                html.append(f'      <div class="metric"><strong>{lbl}</strong><p>{fmt}</p></div>')
 
         html.extend([
             '    </div>',
@@ -194,8 +266,26 @@ class SportsAgent:
             '  </div>',
             '  <div class="section">',
             '    <h2>Partidos destacados</h2>',
-            self.highlights[['date', 'local_team', 'visitante_team', 'goles_local', 'goles_visitante', 'goles_totales']]
-                .to_html(index=False, classes='dataframe', border=0),
+        ])
+
+        highlights_cols = ['date', 'local_team', 'visitante_team', 'goles_local', 'goles_visitante', 'goles_totales']
+        if 'jornada' in self.highlights.columns:
+            highlights_cols.insert(0, 'jornada')
+        if 'estadio' in self.highlights.columns:
+            highlights_cols.append('estadio')
+        html.append(self.highlights[highlights_cols].to_html(index=False, classes='dataframe', border=0))
+
+        # Sección de vídeos destacados
+        if 'video_highlights' in self.highlights.columns:
+            videos = self.highlights[['local_team', 'visitante_team', 'video_highlights']].dropna(subset=['video_highlights'])
+            if not videos.empty:
+                html.append('  <div class="section">')
+                html.append('    <h2>Vídeos destacados</h2>')
+                for _, row in videos.iterrows():
+                    html.append(f'    <p><a href="{row["video_highlights"]}" target="_blank">{row["local_team"]} vs {row["visitante_team"]}</a></p>')
+                html.append('  </div>')
+
+        html.extend([
             '  </div>',
         ])
 
@@ -236,5 +326,17 @@ class SportsAgent:
         card_path = plot_card_statistics(self.data, str(report_folder / 'card_summary.png'))
         if card_path:
             paths.append(card_path)
+
+        attendance_path = plot_attendance(self.data, str(report_folder / 'attendance.png'))
+        if attendance_path:
+            paths.append(attendance_path)
+
+        xg_path = plot_xg_per_match(self.data, str(report_folder / 'xg_per_match.png'))
+        if xg_path:
+            paths.append(xg_path)
+
+        shots_path = plot_shots_comparison(self.data, str(report_folder / 'shots_comparison.png'))
+        if shots_path:
+            paths.append(shots_path)
 
         return paths

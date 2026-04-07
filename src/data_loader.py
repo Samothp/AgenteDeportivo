@@ -19,14 +19,43 @@ OPTIONAL_COLUMNS = [
     'shots_visitante',
     'shots_on_target_local',
     'shots_on_target_visitante',
+    'shots_off_target_local',
+    'shots_off_target_visitante',
+    'shots_blocked_local',
+    'shots_blocked_visitante',
+    'shots_inside_box_local',
+    'shots_inside_box_visitante',
+    'shots_outside_box_local',
+    'shots_outside_box_visitante',
     'corners_local',
     'corners_visitante',
+    'fueras_de_juego_local',
+    'fueras_de_juego_visitante',
     'amarillas_local',
     'amarillas_visitante',
     'rojas_local',
     'rojas_visitante',
     'faltas_local',
     'faltas_visitante',
+    'paradas_local',
+    'paradas_visitante',
+    'pases_local',
+    'pases_visitante',
+    'pases_precisos_local',
+    'pases_precisos_visitante',
+    'precision_pases_local',
+    'precision_pases_visitante',
+    'xg_local',
+    'xg_visitante',
+    # Campos del evento base
+    'id_event',
+    'jornada',
+    'espectadores',
+    'estadio',
+    'ciudad',
+    'arbitro',
+    'descripcion',
+    'video_highlights',
 ]
 
 # Todas las columnas esperadas
@@ -60,17 +89,42 @@ INTEGER_COLUMNS = [
     'shots_visitante',
     'shots_on_target_local',
     'shots_on_target_visitante',
+    'shots_off_target_local',
+    'shots_off_target_visitante',
+    'shots_blocked_local',
+    'shots_blocked_visitante',
+    'shots_inside_box_local',
+    'shots_inside_box_visitante',
+    'shots_outside_box_local',
+    'shots_outside_box_visitante',
     'corners_local',
     'corners_visitante',
+    'fueras_de_juego_local',
+    'fueras_de_juego_visitante',
     'amarillas_local',
     'amarillas_visitante',
     'rojas_local',
     'rojas_visitante',
     'faltas_local',
     'faltas_visitante',
+    'paradas_local',
+    'paradas_visitante',
+    'pases_local',
+    'pases_visitante',
+    'pases_precisos_local',
+    'pases_precisos_visitante',
+    'jornada',
+    'espectadores',
 ]
 
-PERCENT_COLUMNS = ['posesion_local', 'posesion_visitante']
+PERCENT_COLUMNS = [
+    'posesion_local',
+    'posesion_visitante',
+    'precision_pases_local',
+    'precision_pases_visitante',
+    'xg_local',
+    'xg_visitante',
+]
 
 
 def normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
@@ -152,7 +206,10 @@ def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Opt
                         "Puede ser un límite temporal de cuota; intenta de nuevo o usa una API key propia."
                     )
             else:
-                # Guardar para uso futuro
+                # Enriquecer con estadísticas detalladas antes de guardar
+                from .api_client import fetch_real_matches, SportsDBAPI
+                api = SportsDBAPI()
+                df = api.enrich_with_stats(df)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 df.to_csv(path, index=False)
                 print(f"Datos guardados en: {csv_path}")

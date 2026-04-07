@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,27 @@ class SportsDBAPI:
         2019: 4332,  # Serie A
         2015: 4334,  # Ligue 1
         2017: 4344,  # Primeira Liga
+    }
+
+    # Mapeo de nombres de estadísticas de la API a columnas del DataFrame.
+    STAT_MAP = {
+        'Shots on Goal':    ('shots_on_target_local',       'shots_on_target_visitante'),
+        'Shots off Goal':   ('shots_off_target_local',      'shots_off_target_visitante'),
+        'Total Shots':      ('shots_local',                 'shots_visitante'),
+        'Blocked Shots':    ('shots_blocked_local',         'shots_blocked_visitante'),
+        'Shots insidebox':  ('shots_inside_box_local',      'shots_inside_box_visitante'),
+        'Shots outsidebox': ('shots_outside_box_local',     'shots_outside_box_visitante'),
+        'Fouls':            ('faltas_local',                'faltas_visitante'),
+        'Corner Kicks':     ('corners_local',               'corners_visitante'),
+        'Offsides':         ('fueras_de_juego_local',       'fueras_de_juego_visitante'),
+        'Ball Possession':  ('posesion_local',              'posesion_visitante'),
+        'Yellow Cards':     ('amarillas_local',             'amarillas_visitante'),
+        'Red Cards':        ('rojas_local',                 'rojas_visitante'),
+        'Goalkeeper Saves': ('paradas_local',               'paradas_visitante'),
+        'Total passes':     ('pases_local',                 'pases_visitante'),
+        'Passes accurate':  ('pases_precisos_local',        'pases_precisos_visitante'),
+        'Passes %':         ('precision_pases_local',       'precision_pases_visitante'),
+        'expected_goals':   ('xg_local',                   'xg_visitante'),
     }
 
     def __init__(self, api_key: Optional[str] = None):
@@ -73,7 +95,16 @@ class SportsDBAPI:
                 'goles_visitante': int(away_score),
                 'status': event.get('strStatus') or 'FINISHED',
                 'competition': event.get('strLeague') or str(league_id),
+                'id_event': event.get('idEvent'),
                 'season': event.get('strSeason') or season_label,
+                # Campos adicionales disponibles en el evento base
+                'jornada': event.get('intRound'),
+                'espectadores': event.get('intSpectators'),
+                'estadio': event.get('strVenue') or None,
+                'ciudad': event.get('strCity') or None,
+                'arbitro': event.get('strOfficial') or None,
+                'descripcion': event.get('strDescriptionEN') or None,
+                'video_highlights': event.get('strVideo') or None,
             })
         return rows
 
@@ -167,6 +198,78 @@ class SportsDBAPI:
             )
 
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        return df
+
+    def _fetch_event_stats(self, event_id: str) -> dict:
+        """Obtiene estadísticas detalladas de un evento. Retorna {} si no hay datos."""
+        for _attempt in range(2):
+            try:
+                data = self._get_json('lookupeventstats.php', {'id': event_id})
+                break
+            except requests.HTTPError as exc:
+                code = exc.response.status_code if exc.response is not None else None
+                if code == 429:
+                    print("\n  Límite alcanzado, esperando 60s...")
+                    time.sleep(60)
+                    continue
+                return {}
+        else:
+            return {}
+
+        result = {}
+        for stat in (data.get('eventstats') or []):
+            stat_name = stat.get('strStat', '')
+            if stat_name not in self.STAT_MAP:
+                continue
+            col_home, col_away = self.STAT_MAP[stat_name]
+            try:
+                result[col_home] = float(stat['intHome']) if stat['intHome'] is not None else None
+                result[col_away] = float(stat['intAway']) if stat['intAway'] is not None else None
+            except (ValueError, TypeError):
+                pass
+        return result
+
+    def enrich_with_stats(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Enriquece el DataFrame con estadísticas detalladas por partido (lookupeventstats.php).
+        - Solo consulta partidos sin stats previas: si shots_local ya está relleno, se salta.
+        - Pausa 0.65s entre llamadas (~92 req/min, bajo el límite premium de 100/min).
+        - En 429 espera 60s y reintenta.
+        Funciona para cualquier volumen: 30 jornadas, 38, copas, amistosos, etc.
+        """
+        if 'id_event' not in df.columns:
+            return df
+
+        df = df.copy()
+
+        has_id = df['id_event'].notna()
+        needs_stats = has_id
+        if 'shots_local' in df.columns:
+            needs_stats = has_id & df['shots_local'].isna()
+
+        pending = df[needs_stats].index.tolist()
+        total = len(pending)
+
+        if total == 0:
+            print("Estadísticas detalladas ya en caché.")
+            return df
+
+        print(f"Enriqueciendo {total} partidos con estadísticas detalladas...")
+
+        for i, idx in enumerate(pending, 1):
+            event_id = str(int(float(df.at[idx, 'id_event'])))
+            home = df.at[idx, 'local_team']
+            away = df.at[idx, 'visitante_team']
+            print(f"  [{i}/{total}] {home} vs {away}          ", end='\r', flush=True)
+
+            stats = self._fetch_event_stats(event_id)
+            for col, val in stats.items():
+                df.at[idx, col] = val
+
+            if i < total:
+                time.sleep(0.65)
+
+        print(f"\nEnriquecimiento completado: {total} partidos procesados.")
         return df
 
     def get_competitions(self) -> pd.DataFrame:
