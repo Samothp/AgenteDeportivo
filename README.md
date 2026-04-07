@@ -113,6 +113,8 @@ python -m src.run_agent --data data/example_matches.csv --output reports/informe
 
 Para una guía rápida de comandos, consulta `COMMANDS.md`.
 
+También puedes consultar el historial de cambios en `CHANGELOG.md`.
+
 Generar también un informe HTML:
 
 ```bash
