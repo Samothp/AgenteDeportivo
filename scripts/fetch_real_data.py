@@ -1,53 +1,46 @@
 #!/usr/bin/env python3
 """
-Script de ejemplo para obtener datos reales de competiciones.
-Requiere configurar FOOTBALL_DATA_API_KEY en .env o variable de entorno.
+Actualiza la DB local para una competición y temporada concretas.
+
+Uso:
+    python scripts/fetch_real_data.py [competition_id] [season]
+
+Ejemplos:
+    python scripts/fetch_real_data.py          # La Liga 2025 (por defecto)
+    python scripts/fetch_real_data.py 2014 2024
+    python scripts/fetch_real_data.py 2021 2025  # Premier League
+
+IDs de competición frecuentes:
+    2014 = La Liga
+    2021 = Premier League
+    2002 = Bundesliga
+    2019 = Serie A
+    2015 = Ligue 1
+
+Para generar informes completos usa el CLI principal:
+    python -m src.run_agent --fetch-real --competition 2014 --season 2025 --team Mallorca ...
 """
 
 import sys
 from pathlib import Path
 
-# Añadir el directorio raíz al path para importar módulos
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
-from src.api_client import fetch_real_matches
+from src.data_loader import get_db_path, load_match_data
+
 
 def main():
-    # Ejemplos de competiciones
-    competitions = {
-        'La Liga': 2014,
-        'Premier League': 2021,
-        'Bundesliga': 2002,
-        'Serie A': 2019,
-        'Ligue 1': 2015,
-    }
+    competition_id = int(sys.argv[1]) if len(sys.argv) > 1 else 2014
+    season = sys.argv[2] if len(sys.argv) > 2 else '2025'
 
-    print("Obteniendo datos de La Liga 2025 (temporada actual)...")
-    try:
-        df = fetch_real_matches(
-            competition_id=competitions['La Liga'],
-            season='2025',
-            output_path='data/laliga_2025.csv'
-        )
-        print(f"✅ Obtenidos {len(df)} partidos de La Liga 2025")
-        print(f"Columnas disponibles: {list(df.columns)}")
-        print(f"Primeros 5 partidos:\n{df.head()}")
+    db_path = get_db_path(competition_id, season)
+    print(f"Actualizando DB: competition={competition_id}, season={season}")
+    print(f"Destino: {db_path}")
 
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        print("\nIntentando con temporada 2024...")
-        try:
-            df = fetch_real_matches(
-                competition_id=competitions['La Liga'],
-                season='2024',
-                output_path='data/laliga_2024.csv'
-            )
-            print(f"✅ Obtenidos {len(df)} partidos de La Liga 2024")
-            print(f"Columnas disponibles: {list(df.columns)}")
-            print(f"Primeros 5 partidos:\n{df.head()}")
-        except Exception as e2:
-            print(f"❌ Error también con 2024: {e2}")
+    df = load_match_data('data/matches.csv', fetch_real=True, competition_id=competition_id, season=season)
+    print(f"DB actualizada: {len(df)} partidos en {db_path}")
+
 
 if __name__ == '__main__':
     main()

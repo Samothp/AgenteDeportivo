@@ -55,7 +55,7 @@
 ---
 
 ### ✅ 6. Deprecar/actualizar `scripts/`
-**Estado:** Pendiente  
+**Estado:** Completado  
 **Objetivo:** Los scripts `fetch_real_data.py` y `get_current_season.py` escriben en CSVs planos que ya no son el formato de la DB local. Generan confusión.  
 **Cambios previstos:**
 - Reescribir para que usen `load_match_data()` con `fetch_real=True`
