@@ -111,6 +111,8 @@ Ejecuta el agente con el dataset de ejemplo:
 python -m src.run_agent --data data/example_matches.csv --output reports/informe.txt --visual reports
 ```
 
+Para una guía rápida de comandos, consulta `COMMANDS.md`.
+
 Generar también un informe HTML:
 
 ```bash

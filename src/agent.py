@@ -15,29 +15,13 @@ from .visualizer import (
 )
 
 
-from pathlib import Path
-from typing import List, Optional
-
-from .analysis import (
-    compute_overall_metrics,
-    match_highlights,
-    top_defensive_teams,
-    top_scoring_teams,
-)
-from .data_loader import load_match_data
-from .visualizer import (
-    plot_card_statistics,
-    plot_goals_distribution,
-    plot_possession_distribution,
-)
-
-
 class SportsAgent:
-    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None):
+    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None):
         self.data_path = data_path
         self.fetch_real = fetch_real
         self.competition_id = competition_id
         self.season = season
+        self.team = team
         self.data = None
         self.metrics = {}
         self.top_scorers = None
@@ -48,10 +32,22 @@ class SportsAgent:
         self.data = load_match_data(self.data_path, self.fetch_real, self.competition_id, self.season)
         return self.data
 
+    def filter_by_team(self):
+        if self.team and self.data is not None:
+            team_name = self.team.strip().lower()
+            filtered = self.data[
+                self.data['local_team'].str.lower().str.contains(team_name, na=False) |
+                self.data['visitante_team'].str.lower().str.contains(team_name, na=False)
+            ].copy()
+            if filtered.empty:
+                raise ValueError(f'No se encontraron partidos para el equipo: {self.team}')
+            self.data = filtered
+
     def analyze(self):
         if self.data is None:
             raise ValueError('Datos no cargados. Ejecute load_data() primero.')
 
+        self.filter_by_team()
         self.metrics = compute_overall_metrics(self.data)
         self.top_scorers = top_scoring_teams(self.data)
         self.top_defenders = top_defensive_teams(self.data)

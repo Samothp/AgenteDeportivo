@@ -13,12 +13,13 @@ def parse_args():
     parser.add_argument('--fetch-real', action='store_true', help='Obtener datos reales de la API en lugar de usar CSV local')
     parser.add_argument('--competition', type=int, default=2014, help='ID de competición para datos reales (2014=La Liga, 2021=Premier League)')
     parser.add_argument('--season', default='2023', help='Temporada para datos reales (formato YYYY)')
+    parser.add_argument('--team', default=None, help='Equipo para filtrar el análisis (ej. Mallorca)')
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season)
+    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team)
     agent.load_data()
     agent.analyze()
 
