@@ -79,7 +79,7 @@ class SportsAgent:
             raise ValueError('Datos no cargados. Ejecute load_data() primero.')
 
         self.filter_by_team()
-        self.metrics = compute_overall_metrics(self.data)
+        self.metrics = compute_overall_metrics(self.data, team=self.team)
         self.top_scorers = top_scoring_teams(self.data)
         self.top_defenders = top_defensive_teams(self.data)
         self.highlights = match_highlights(self.data)
@@ -118,10 +118,18 @@ class SportsAgent:
         elif self.season:
             report_lines.append(f"Temporada: {self.season}")
         report_lines.append(f"Partidos analizados: {self.metrics['partidos_analizados']}")
-        report_lines.append(f"Goles totales: {self.metrics['goles_totales']}")
-        report_lines.append(f"Goles promedio por partido: {self.metrics['goles_promedio_por_partido']:.2f}")
-        report_lines.append(self.format_metric('tarjetas_amarillas', 'Tarjetas amarillas'))
-        report_lines.append(self.format_metric('tarjetas_rojas', 'Tarjetas rojas'))
+        if self.metrics.get('goles_a_favor') is not None:
+            report_lines.append(f"Goles a favor: {self.metrics['goles_a_favor']}")
+            report_lines.append(f"Goles en contra: {self.metrics['goles_en_contra']}")
+            report_lines.append(f"Promedio goles a favor: {self.metrics['goles_a_favor_promedio']:.2f}")
+            report_lines.append(f"Promedio goles en contra: {self.metrics['goles_concedidos_promedio']:.2f}")
+            report_lines.append(self.format_metric('tarjetas_amarillas_equipo', 'Tarjetas amarillas'))
+            report_lines.append(self.format_metric('tarjetas_rojas_equipo', 'Tarjetas rojas'))
+        else:
+            report_lines.append(f"Goles totales: {self.metrics['goles_totales']}")
+            report_lines.append(f"Goles promedio por partido: {self.metrics['goles_promedio_por_partido']:.2f}")
+            report_lines.append(self.format_metric('tarjetas_amarillas', 'Tarjetas amarillas'))
+            report_lines.append(self.format_metric('tarjetas_rojas', 'Tarjetas rojas'))
         report_lines.append(self.format_metric('posesion_local_promedio', 'Posesión local promedio', is_percent=True))
         report_lines.append(self.format_metric('asistencia_promedio', 'Asistencia promedio'))
         if self.metrics.get('asistencia_maxima') is not None:
@@ -291,10 +299,21 @@ class SportsAgent:
                 if self.season else []
             )),
             f'      <div class="metric"><strong>Partidos analizados</strong><p>{self.metrics["partidos_analizados"]}</p></div>',
-            f'      <div class="metric"><strong>Goles totales</strong><p>{self.metrics["goles_totales"]}</p></div>',
-            f'      <div class="metric"><strong>Goles promedio</strong><p>{self.metrics["goles_promedio_por_partido"]:.2f}</p></div>',
-            f'      <div class="metric"><strong>Tarjetas amarillas</strong><p>{self.format_html_metric("tarjetas_amarillas")}</p></div>',
-            f'      <div class="metric"><strong>Tarjetas rojas</strong><p>{self.format_html_metric("tarjetas_rojas")}</p></div>',
+            *(
+                [
+                    f'      <div class="metric"><strong>Goles a favor</strong><p>{self.metrics["goles_a_favor"]}</p></div>',
+                    f'      <div class="metric"><strong>Goles en contra</strong><p>{self.metrics["goles_en_contra"]}</p></div>',
+                    f'      <div class="metric"><strong>Prom. a favor</strong><p>{self.metrics["goles_a_favor_promedio"]:.2f}</p></div>',
+                    f'      <div class="metric"><strong>Prom. en contra</strong><p>{self.metrics["goles_concedidos_promedio"]:.2f}</p></div>',
+                    f'      <div class="metric"><strong>Tarjetas amarillas</strong><p>{self.format_html_metric("tarjetas_amarillas_equipo")}</p></div>',
+                    f'      <div class="metric"><strong>Tarjetas rojas</strong><p>{self.format_html_metric("tarjetas_rojas_equipo")}</p></div>',
+                ] if self.metrics.get('goles_a_favor') is not None else [
+                    f'      <div class="metric"><strong>Goles totales</strong><p>{self.metrics["goles_totales"]}</p></div>',
+                    f'      <div class="metric"><strong>Goles promedio</strong><p>{self.metrics["goles_promedio_por_partido"]:.2f}</p></div>',
+                    f'      <div class="metric"><strong>Tarjetas amarillas</strong><p>{self.format_html_metric("tarjetas_amarillas")}</p></div>',
+                    f'      <div class="metric"><strong>Tarjetas rojas</strong><p>{self.format_html_metric("tarjetas_rojas")}</p></div>',
+                ]
+            ),
         ]
 
         if self.metrics.get('posesion_local_promedio') is not None:

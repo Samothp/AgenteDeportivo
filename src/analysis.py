@@ -1,8 +1,8 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 import pandas as pd
 
 
-def compute_overall_metrics(df: pd.DataFrame) -> Dict[str, object]:
+def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dict[str, object]:
     total_matches = len(df)
     total_goals = int(df['goles_totales'].sum())
     average_goals = float(df['goles_totales'].mean())
@@ -50,6 +50,32 @@ def compute_overall_metrics(df: pd.DataFrame) -> Dict[str, object]:
     def _avg(col: str):
         return float(df[col].mean()) if col in df.columns and df[col].notna().any() else None
 
+    # Perspectiva del equipo: goles a favor/en contra y tarjetas propias
+    goles_a_favor = None
+    goles_en_contra = None
+    goles_a_favor_promedio = None
+    goles_concedidos_promedio = None
+    tarjetas_amarillas_equipo = None
+    tarjetas_rojas_equipo = None
+    if team:
+        team_lower = team.strip().lower()
+        is_home = df['local_team'].str.lower().str.contains(team_lower, na=False)
+        gf = df['goles_local'].where(is_home, df['goles_visitante']).astype(float)
+        gc = df['goles_visitante'].where(is_home, df['goles_local']).astype(float)
+        goles_a_favor = int(gf.sum())
+        goles_en_contra = int(gc.sum())
+        goles_a_favor_promedio = float(gf.mean())
+        goles_concedidos_promedio = float(gc.mean())
+        if yellow_available:
+            am_eq = df['amarillas_local'].where(is_home, df['amarillas_visitante'])
+            tarjetas_amarillas_equipo = int(am_eq.sum(skipna=True))
+        if red_available:
+            ro_eq = df['rojas_local'].where(is_home, df['rojas_visitante'])
+            tarjetas_rojas_equipo = int(ro_eq.sum(skipna=True))
+
+    # Media de goles por equipo por partido en la liga (para comparativa)
+    goles_por_equipo_promedio = float(df['goles_totales'].mean()) / 2.0 if total_matches > 0 else None
+
     return {
         'partidos_analizados': total_matches,
         'goles_totales': total_goals,
@@ -82,6 +108,15 @@ def compute_overall_metrics(df: pd.DataFrame) -> Dict[str, object]:
         'precision_pases_visitante_promedio':  _avg('precision_pases_visitante'),
         'xg_local_promedio':                   _avg('xg_local'),
         'xg_visitante_promedio':               _avg('xg_visitante'),
+        # Perspectiva del equipo (sólo cuando se filtra por equipo)
+        'goles_a_favor':               goles_a_favor,
+        'goles_en_contra':             goles_en_contra,
+        'goles_a_favor_promedio':      goles_a_favor_promedio,
+        'goles_concedidos_promedio':   goles_concedidos_promedio,
+        'tarjetas_amarillas_equipo':   tarjetas_amarillas_equipo,
+        'tarjetas_rojas_equipo':       tarjetas_rojas_equipo,
+        # Referencia de liga para comparativa
+        'goles_por_equipo_promedio':   goles_por_equipo_promedio,
     }
 
 
@@ -185,8 +220,21 @@ def compute_league_comparison(team_metrics: Dict, league_metrics: Dict) -> List[
     Devuelve una lista de dicts con: metrica, equipo, liga, diferencia, signo.
     Solo incluye métricas disponibles en ambos contextos.
     """
+    rows: List[Dict] = []
+
+    def _row(label: str, t_val: float, l_val: float) -> Dict:
+        diff = t_val - l_val
+        return {'metrica': label, 'equipo': round(t_val, 2), 'liga': round(l_val, 2),
+                'diferencia': round(diff, 2), 'signo': '+' if diff >= 0 else ''}
+
+    # Goles desde la perspectiva del equipo vs media de la liga por equipo
+    liga_goles_ref = league_metrics.get('goles_por_equipo_promedio')
+    if team_metrics.get('goles_a_favor_promedio') is not None and liga_goles_ref is not None:
+        rows.append(_row('Goles a favor por partido', team_metrics['goles_a_favor_promedio'], liga_goles_ref))
+    if team_metrics.get('goles_concedidos_promedio') is not None and liga_goles_ref is not None:
+        rows.append(_row('Goles en contra por partido', team_metrics['goles_concedidos_promedio'], liga_goles_ref))
+
     METRIC_LABELS = {
-        'goles_promedio_por_partido':         'Goles por partido',
         'tiros_local_promedio':               'Tiros totales (local)',
         'tiros_visitante_promedio':           'Tiros totales (visitante)',
         'tiros_a_puerta_local_promedio':      'Tiros a puerta (local)',
@@ -204,18 +252,10 @@ def compute_league_comparison(team_metrics: Dict, league_metrics: Dict) -> List[
         'precision_pases_local_promedio':     'Precisión pases % (local)',
         'precision_pases_visitante_promedio': 'Precisión pases % (visitante)',
     }
-    rows = []
     for key, label in METRIC_LABELS.items():
         t_val = team_metrics.get(key)
         l_val = league_metrics.get(key)
         if t_val is None or l_val is None:
             continue
-        diff = t_val - l_val
-        rows.append({
-            'metrica': label,
-            'equipo': round(t_val, 2),
-            'liga': round(l_val, 2),
-            'diferencia': round(diff, 2),
-            'signo': '+' if diff >= 0 else '',
-        })
+        rows.append(_row(label, t_val, l_val))
     return rows
