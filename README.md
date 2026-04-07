@@ -38,21 +38,8 @@ print(competitions)
 
 ## Script para obtener datos
 
-También puedes usar el script incluido:
-
-```bash
-python scripts/fetch_real_data.py
-```
-
-Este script obtiene datos de La Liga 2023 y los guarda en `data/laliga_2023.csv`.
-
-Para obtener datos de la **temporada actual**:
-
-```bash
-python scripts/get_current_season.py
-```
-
-Este script obtiene automáticamente los datos más recientes de La Liga y muestra estadísticas básicas.
+> **Nota:** Los scripts de `scripts/` son auxiliares y pueden estar desactualizados.
+> El flujo recomendado es usar directamente el CLI con `--fetch-real`.
 
 ## Estado actual del proyecto ✅
 
@@ -65,6 +52,9 @@ Este script obtiene automáticamente los datos más recientes de La Liga y muest
 - ✅ **Flexibilidad**: Maneja datasets con columnas opcionales
 - ✅ **DB local incremental**: Caché por competición/temporada, informes de equipo sin API
 - ✅ **18 estadísticas técnicas**: xG, tiros, posesión, corners, pases, paradas, etc.
+- ✅ **Evolución temporal**: gráfico de línea por jornada (goles, xG, tiros a puerta)
+- ✅ **Comparativa vs liga**: cada métrica del equipo frente a la media de la competición
+- ✅ **Listado de equipos**: `--list-teams` muestra los equipos disponibles en la DB local
 
 ### Último análisis disponible
 
@@ -133,6 +123,12 @@ Este enfoque separa la *actualización de datos* de la *generación de informes*
 
 ## Uso básico
 
+**Ver qué equipos hay disponibles en la DB:**
+
+```bash
+python -m src.run_agent --list-teams --competition 2014 --season 2025
+```
+
 **Construir/actualizar la DB de una competición:**
 
 ```bash
@@ -144,6 +140,10 @@ python -m src.run_agent --fetch-real --competition 2014 --season 2025 --output r
 ```bash
 python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --output reports/mallorca.txt --html-output reports/mallorca.html --visual reports/mallorca
 ```
+
+El informe incluye automáticamente:
+- Gráfico de evolución temporal por jornada (goles, xG, tiros a puerta)
+- Tabla comparativa de cada métrica del equipo vs media de la liga
 
 **Usar un dataset CSV externo:**
 

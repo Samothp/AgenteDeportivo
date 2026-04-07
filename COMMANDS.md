@@ -11,13 +11,59 @@ python -m src.run_agent --data data/example_matches.csv --output reports/informe
 - `--data` : ruta al archivo CSV de partidos
 - `--output` : ruta del informe de texto generado
 - `--visual` : carpeta donde se guardan los gráficos
+- `--html-output` : ruta del informe HTML (opcional)
 - `--clean-reports` : elimina archivos anteriores en la carpeta de reportes antes de generar nuevos
+- `--fetch-real` : construye/actualiza la DB descargando de la API
+- `--competition` : ID de la competición (`2014` = La Liga, `2021` = Premier, etc.)
+- `--season` : temporada en formato `YYYY`
+- `--team` : equipo para filtrar el análisis (búsqueda parcial)
+- `--list-teams` : lista los equipos disponibles en la DB y termina
 
 ## Generar informe HTML
 
 ```bash
 python -m src.run_agent --data data/example_matches.csv --output reports/informe.txt --visual reports --html-output reports/informe.html
 ```
+
+## Ver equipos disponibles en la DB local
+
+Antes de generar un informe de equipo, consulta qué nombres exactos usa la DB:
+
+```bash
+python -m src.run_agent --list-teams --competition 2014 --season 2025
+```
+
+Salida de ejemplo:
+```
+Equipos disponibles (competition=2014, season=2025):
+  Athletic Bilbao
+  Atlético Madrid
+  Barcelona
+  Celta Vigo
+  ...
+  Villarreal
+```
+
+Si la DB no existe aún:
+```
+No hay DB local para competition=2014 season=2025.
+Usa --fetch-real para descargar los datos primero.
+```
+
+## Contenido del informe de equipo
+
+Cuando se usa `--team`, el informe genera automáticamente:
+
+- **Resumen general**: partidos, goles, tarjetas, posesión, asistencia, árbitros
+- **Estadísticas técnicas promedio**: tiros, xG, corners, faltas, paradas, precisión de pases
+- **Comparativa vs liga**: tabla con cada métrica del equipo vs media de la competición (diferencia en verde/rojo)
+- **Gráficos**:
+  - `goals_distribution.png` — distribución de goles por partido
+  - `possession_distribution.png` — caja de posesión local/visitante
+  - `card_summary.png` — resumen de tarjetas
+  - `xg_per_match.png` — xG por partido (local vs visitante)
+  - `shots_comparison.png` — tiros promedio local vs visitante
+  - `temporal_evolution.png` — evolución por jornada (goles, xG, tiros a puerta)
 
 ## Base de datos local incremental
 
@@ -86,13 +132,13 @@ export THESPORTSDB_API_KEY=078593
 
 Usa `--team` para filtrar los partidos de un equipo concreto.
 
-**Recomendado: primero actualiza la DB, luego genera el informe sin API:**
+Primero comprueba los nombres disponibles con `--list-teams`, luego genera el informe:
 
 ```bash
-# 1. Actualizar/construir la DB de La Liga 2025 (solo si hay jornadas nuevas)
-python -m src.run_agent --fetch-real --competition 2014 --season 2025
+# Ver equipos disponibles
+python -m src.run_agent --list-teams --competition 2014 --season 2025
 
-# 2. Generar informes de distintos equipos sin llamar a la API
+# Generar informes de distintos equipos sin llamar a la API
 python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --output reports/mallorca_2025.txt --html-output reports/mallorca_2025.html --visual reports/mallorca_2025
 python -m src.run_agent --competition 2014 --season 2025 --team Barcelona --output reports/barcelona_2025.txt --html-output reports/barcelona_2025.html --visual reports/barcelona_2025
 ```
@@ -103,19 +149,14 @@ El filtro busca coincidencias parciales en los nombres de equipo (local y visita
 ## Analizar la temporada actual de La Liga
 
 ```bash
-python scripts/get_current_season.py
-```
+# 1. Construir la DB (solo la primera vez o al inicio de temporada)
+python -m src.run_agent --fetch-real --competition 2014 --season 2025
 
-Este script obtiene la temporada actual de La Liga y guarda los datos en:
+# 2. Ver equipos disponibles
+python -m src.run_agent --list-teams --competition 2014 --season 2025
 
-- `data/laliga_actual.csv`
-
-La fuente de datos para este flujo es TheSportsDB.
-
-Luego puedes generar un informe completo con:
-
-```bash
-python -m src.run_agent --data data/laliga_actual.csv --output reports/laliga_actual_informe.txt --html-output reports/laliga_actual_informe.html --visual reports/laliga_actual
+# 3. Generar informe de un equipo
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --output reports/mallorca.txt --html-output reports/mallorca.html --visual reports/mallorca
 ```
 
 ## Ejemplos rápidos
@@ -154,4 +195,5 @@ Estos archivos actúan como caché: una vez construidos, los informes de equipo 
 
 ## Nota
 
-Si usas un equipo y no aparece en el informe, revisa el nombre exacto que usa el dataset. El filtro busca coincidencias parciales en `local_team` y `visitante_team`.
+El filtro `--team` usa búsqueda parcial. Si no encuentras el equipo, usa `--list-teams` primero
+para ver el nombre exacto que usa la DB.
