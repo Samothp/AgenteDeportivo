@@ -34,7 +34,7 @@
 ---
 
 ### ✅ 4. Resultados W/D/L y racha actual del equipo
-**Estado:** Pendiente  
+**Estado:** Completado  
 **Objetivo:** Lo más básico del fútbol: victorias, empates, derrotas, y cuál es la racha de los últimos N partidos. Actualmente no figura en ningún informe.  
 **Cambios previstos:**
 - `analysis.py` → `compute_team_record(df, team)` con W/D/L, puntos, racha últimos 5

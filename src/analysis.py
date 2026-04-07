@@ -107,6 +107,73 @@ def match_highlights(df: pd.DataFrame, n: int = 5) -> pd.DataFrame:
     return highlights.sort_values(['goles_totales', 'margen_victoria'], ascending=[False, False]).head(n)
 
 
+def compute_team_record(df: pd.DataFrame, team: str) -> Dict:
+    """Calcula el historial W/D/L, puntos y racha del equipo.
+
+    Ordena los partidos por jornada (o fecha) y determina para cada uno
+    si el equipo ganó, empató o perdió, teniendo en cuenta si jugó de local
+    o visitante. Devuelve:
+      - victorias, empates, derrotas, puntos
+      - racha_actual: string como 'VVEEDD' (últimos 5 partidos, orden cronológico)
+      - tabla_resultados: lista de dicts [{jornada, rival, gf, gc, resultado}]
+    """
+    data = df.copy()
+
+    # Ordenar cronológicamente
+    if 'jornada' in data.columns and data['jornada'].notna().any():
+        data = data.sort_values('jornada').reset_index(drop=True)
+    elif 'date' in data.columns:
+        data = data.sort_values('date').reset_index(drop=True)
+
+    team_lower = team.strip().lower()
+    results = []
+
+    for _, row in data.iterrows():
+        is_home = str(row.get('local_team', '')).lower().find(team_lower) >= 0
+        if is_home:
+            gf = row['goles_local']
+            gc = row['goles_visitante']
+            rival = row['visitante_team']
+        else:
+            gf = row['goles_visitante']
+            gc = row['goles_local']
+            rival = row['local_team']
+
+        if gf > gc:
+            resultado = 'V'
+        elif gf == gc:
+            resultado = 'E'
+        else:
+            resultado = 'D'
+
+        results.append({
+            'jornada': row.get('jornada'),
+            'rival': rival,
+            'gf': int(gf),
+            'gc': int(gc),
+            'local': 'Local' if is_home else 'Visitante',
+            'resultado': resultado,
+        })
+
+    victorias  = sum(1 for r in results if r['resultado'] == 'V')
+    empates    = sum(1 for r in results if r['resultado'] == 'E')
+    derrotas   = sum(1 for r in results if r['resultado'] == 'D')
+    puntos     = victorias * 3 + empates
+
+    # Racha de los últimos 5 partidos (más reciente a la derecha)
+    ultimos = results[-5:]
+    racha_actual = ''.join(r['resultado'] for r in ultimos)
+
+    return {
+        'victorias': victorias,
+        'empates': empates,
+        'derrotas': derrotas,
+        'puntos': puntos,
+        'racha_actual': racha_actual,
+        'tabla_resultados': results,
+    }
+
+
 def compute_league_comparison(team_metrics: Dict, league_metrics: Dict) -> List[Dict]:
     """Compara las métricas del equipo con las de la liga completa.
 

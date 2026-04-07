@@ -8,6 +8,7 @@ import pandas as pd
 from .analysis import (
     compute_league_comparison,
     compute_overall_metrics,
+    compute_team_record,
     match_highlights,
     top_defensive_teams,
     top_scoring_teams,
@@ -37,6 +38,7 @@ class SportsAgent:
         self.metrics: dict = {}
         self.league_metrics: dict = {}  # métricas de la liga completa para comparativa
         self.league_comparison: list = []  # filas de comparativa equipo vs liga
+        self.team_record: dict = {}  # historial W/D/L del equipo
         self.top_scorers: Optional[pd.DataFrame] = None
         self.top_defenders: Optional[pd.DataFrame] = None
         self.highlights: Optional[pd.DataFrame] = None
@@ -75,6 +77,9 @@ class SportsAgent:
         if self.full_data is not None:
             self.league_metrics = compute_overall_metrics(self.full_data)
             self.league_comparison = compute_league_comparison(self.metrics, self.league_metrics)
+        # Historial W/D/L si se filtró por equipo
+        if self.team:
+            self.team_record = compute_team_record(self.data, self.team)
         return self.metrics
 
     def format_metric(self, key: str, label: str, is_percent: bool = False) -> str:
@@ -151,6 +156,30 @@ class SportsAgent:
                     f"  {row['metrica']}: {row['equipo']} "
                     f"(liga: {row['liga']}, "
                     f"dif: {row['signo']}{row['diferencia']})"
+                )
+
+        # Rendimiento W/D/L del equipo
+        if self.team_record:
+            rec = self.team_record
+            racha_display = ' '.join(list(rec['racha_actual']))
+            report_lines.append('')
+            report_lines.append('Rendimiento del equipo')
+            report_lines.append('----------------------')
+            report_lines.append(
+                f"  Victorias: {rec['victorias']}  |  Empates: {rec['empates']}  |  "
+                f"Derrotas: {rec['derrotas']}  |  Puntos: {rec['puntos']}"
+            )
+            report_lines.append(f"  Racha últimos 5: {racha_display}")
+            report_lines.append('')
+            report_lines.append(
+                f"  {'Jornada':<8} {'Rival':<25} {'GF':>3} {'GC':>3} {'Local/Visit':<12} Res"
+            )
+            report_lines.append(f"  {'-'*8} {'-'*25} {'-'*3} {'-'*3} {'-'*12} ---")
+            for r in rec['tabla_resultados']:
+                jornada_str = str(r['jornada']) if r['jornada'] is not None else '-'
+                report_lines.append(
+                    f"  {jornada_str:<8} {str(r['rival']):<25} {r['gf']:>3} {r['gc']:>3} "
+                    f"{r['local']:<12} {r['resultado']}"
                 )
 
         report_lines.append('')
@@ -295,6 +324,48 @@ class SportsAgent:
                     f'<td>{row["equipo"]}</td>'
                     f'<td>{row["liga"]}</td>'
                     f'<td style="color:{color};font-weight:bold">{signo}{diff}</td>'
+                    f'</tr>'
+                )
+            html.extend(['      </tbody>', '    </table>', '  </div>'])
+
+        # Sección Rendimiento W/D/L en HTML
+        if self.team_record:
+            rec = self.team_record
+            badge_colors = {'V': '#27ae60', 'E': '#f39c12', 'D': '#e74c3c'}
+            racha_badges = ''
+            for r_char in rec['racha_actual']:
+                color = badge_colors.get(r_char, '#888')
+                racha_badges += (
+                    f'<span style="display:inline-block;width:28px;height:28px;line-height:28px;'
+                    f'text-align:center;border-radius:50%;background:{color};color:white;'
+                    f'font-weight:bold;margin:2px">{r_char}</span>'
+                )
+            res_bg = {'V': '#d4edda', 'E': '#fff3cd', 'D': '#f8d7da'}
+            html.extend([
+                '  <div class="section">',
+                '    <h2>Rendimiento del equipo</h2>',
+                '    <div class="metrics">',
+                f'      <div class="metric"><strong>Victorias</strong><p style="color:#27ae60;font-size:1.4em;font-weight:bold">{rec["victorias"]}</p></div>',
+                f'      <div class="metric"><strong>Empates</strong><p style="color:#f39c12;font-size:1.4em;font-weight:bold">{rec["empates"]}</p></div>',
+                f'      <div class="metric"><strong>Derrotas</strong><p style="color:#e74c3c;font-size:1.4em;font-weight:bold">{rec["derrotas"]}</p></div>',
+                f'      <div class="metric"><strong>Puntos</strong><p style="font-size:1.4em;font-weight:bold">{rec["puntos"]}</p></div>',
+                '    </div>',
+                f'    <p><strong>Racha últimos 5:</strong> {racha_badges}</p>',
+                '    <table>',
+                '      <thead><tr><th>Jornada</th><th>Rival</th><th>GF</th><th>GC</th><th>Local/Visitante</th><th>Resultado</th></tr></thead>',
+                '      <tbody>',
+            ])
+            for r in rec['tabla_resultados']:
+                jornada_str = str(r['jornada']) if r['jornada'] is not None else '-'
+                bg = res_bg.get(r['resultado'], 'white')
+                html.append(
+                    f'        <tr style="background:{bg}">'
+                    f'<td>{jornada_str}</td>'
+                    f'<td>{r["rival"]}</td>'
+                    f'<td>{r["gf"]}</td>'
+                    f'<td>{r["gc"]}</td>'
+                    f'<td>{r["local"]}</td>'
+                    f'<td><strong>{r["resultado"]}</strong></td>'
                     f'</tr>'
                 )
             html.extend(['      </tbody>', '    </table>', '  </div>'])
