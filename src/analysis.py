@@ -57,6 +57,7 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
     goles_concedidos_promedio = None
     tarjetas_amarillas_equipo = None
     tarjetas_rojas_equipo = None
+    team_tech: Dict[str, float] = {}
     if team:
         team_lower = team.strip().lower()
         is_home = df['local_team'].str.lower().str.contains(team_lower, na=False)
@@ -73,8 +74,63 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
             ro_eq = df['rojas_local'].where(is_home, df['rojas_visitante'])
             tarjetas_rojas_equipo = int(ro_eq.sum(skipna=True))
 
+        # Estadísticas técnicas desde la perspectiva del equipo
+        TECH_PAIRS = [
+            ('shots_local',              'shots_visitante',              'tiros'),
+            ('shots_on_target_local',    'shots_on_target_visitante',    'tiros_a_puerta'),
+            ('corners_local',            'corners_visitante',            'corners'),
+            ('faltas_local',             'faltas_visitante',             'faltas'),
+            ('fueras_de_juego_local',    'fueras_de_juego_visitante',    'fueras_de_juego'),
+            ('paradas_local',            'paradas_visitante',            'paradas'),
+            ('precision_pases_local',    'precision_pases_visitante',    'precision_pases'),
+            ('xg_local',                 'xg_visitante',                 'xg'),
+            ('posesion_local',           'posesion_visitante',           'posesion'),
+        ]
+        team_tech: Dict[str, float] = {}
+        for col_h, col_a, prefix in TECH_PAIRS:
+            if col_h in df.columns and col_a in df.columns:
+                eq = df[col_h].where(is_home, df[col_a]).astype(float)
+                rv = df[col_a].where(is_home, df[col_h]).astype(float)
+                # Total combinado
+                if eq.notna().any():
+                    team_tech[f'{prefix}_equipo_promedio'] = float(eq.mean())
+                if rv.notna().any():
+                    team_tech[f'{prefix}_rival_promedio'] = float(rv.mean())
+                # Desglose local vs visitante
+                eq_home  = df.loc[is_home,  col_h].astype(float)
+                eq_away  = df.loc[~is_home, col_a].astype(float)
+                rv_home  = df.loc[is_home,  col_a].astype(float)
+                rv_away  = df.loc[~is_home, col_h].astype(float)
+                if eq_home.notna().any():
+                    team_tech[f'{prefix}_equipo_local_promedio']     = float(eq_home.mean())
+                if eq_away.notna().any():
+                    team_tech[f'{prefix}_equipo_visitante_promedio'] = float(eq_away.mean())
+                if rv_home.notna().any():
+                    team_tech[f'{prefix}_rival_local_promedio']      = float(rv_home.mean())
+                if rv_away.notna().any():
+                    team_tech[f'{prefix}_rival_visitante_promedio']  = float(rv_away.mean())
+
     # Media de goles por equipo por partido en la liga (para comparativa)
     goles_por_equipo_promedio = float(df['goles_totales'].mean()) / 2.0 if total_matches > 0 else None
+
+    # Medias de liga por equipo para cada stat técnica (promedio local + visitante / 2)
+    TECH_PAIRS_LIGA = [
+        ('shots_local',              'shots_visitante',              'tiros'),
+        ('shots_on_target_local',    'shots_on_target_visitante',    'tiros_a_puerta'),
+        ('corners_local',            'corners_visitante',            'corners'),
+        ('faltas_local',             'faltas_visitante',             'faltas'),
+        ('fueras_de_juego_local',    'fueras_de_juego_visitante',    'fueras_de_juego'),
+        ('paradas_local',            'paradas_visitante',            'paradas'),
+        ('precision_pases_local',    'precision_pases_visitante',    'precision_pases'),
+        ('xg_local',                 'xg_visitante',                 'xg'),
+        ('posesion_local',           'posesion_visitante',           'posesion'),
+    ]
+    liga_tech: Dict[str, float] = {}
+    for col_h, col_a, prefix in TECH_PAIRS_LIGA:
+        h_avg = _avg(col_h)
+        a_avg = _avg(col_a)
+        if h_avg is not None and a_avg is not None:
+            liga_tech[f'{prefix}_liga_promedio'] = (h_avg + a_avg) / 2.0
 
     return {
         'partidos_analizados': total_matches,
@@ -115,8 +171,11 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
         'goles_concedidos_promedio':   goles_concedidos_promedio,
         'tarjetas_amarillas_equipo':   tarjetas_amarillas_equipo,
         'tarjetas_rojas_equipo':       tarjetas_rojas_equipo,
+        # stats técnicas perspectiva equipo (sólo con filtro de equipo)
+        **team_tech,
         # Referencia de liga para comparativa
         'goles_por_equipo_promedio':   goles_por_equipo_promedio,
+        **liga_tech,
     }
 
 
@@ -234,6 +293,23 @@ def compute_league_comparison(team_metrics: Dict, league_metrics: Dict) -> List[
     if team_metrics.get('goles_concedidos_promedio') is not None and liga_goles_ref is not None:
         rows.append(_row('Goles en contra por partido', team_metrics['goles_concedidos_promedio'], liga_goles_ref))
 
+    # Stats técnicas desde perspectiva del equipo vs referencia de liga
+    TEAM_TECH_LABELS = {
+        'tiros':           'Tiros propios (prom.)',
+        'tiros_a_puerta':  'Tiros a puerta propios (prom.)',
+        'xg':              'xG propio (prom.)',
+        'posesion':        'Posesión propia % (prom.)',
+        'corners':         'Corners propios (prom.)',
+        'faltas':          'Faltas propias (prom.)',
+        'paradas':         'Paradas portero propio (prom.)',
+        'precision_pases': 'Precisión pases propia % (prom.)',
+    }
+    for prefix, label in TEAM_TECH_LABELS.items():
+        t_val = team_metrics.get(f'{prefix}_equipo_promedio')
+        l_val = league_metrics.get(f'{prefix}_liga_promedio')
+        if t_val is not None and l_val is not None:
+            rows.append(_row(label, t_val, l_val))
+
     METRIC_LABELS = {
         'tiros_local_promedio':               'Tiros totales (local)',
         'tiros_visitante_promedio':           'Tiros totales (visitante)',
@@ -252,10 +328,12 @@ def compute_league_comparison(team_metrics: Dict, league_metrics: Dict) -> List[
         'precision_pases_local_promedio':     'Precisión pases % (local)',
         'precision_pases_visitante_promedio': 'Precisión pases % (visitante)',
     }
-    for key, label in METRIC_LABELS.items():
-        t_val = team_metrics.get(key)
-        l_val = league_metrics.get(key)
-        if t_val is None or l_val is None:
-            continue
-        rows.append(_row(label, t_val, l_val))
+    # Solo incluir métricas local/visitante si no hay perspectiva de equipo (informe sin filtro)
+    if not any(team_metrics.get(f'{p}_equipo_promedio') for p in ['tiros', 'xg', 'posesion']):
+        for key, label in METRIC_LABELS.items():
+            t_val = team_metrics.get(key)
+            l_val = league_metrics.get(key)
+            if t_val is None or l_val is None:
+                continue
+            rows.append(_row(label, t_val, l_val))
     return rows

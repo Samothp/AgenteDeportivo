@@ -137,7 +137,27 @@ class SportsAgent:
         report_lines.append(self.format_metric('estadio_mas_frecuente', 'Estadio más frecuente'))
         report_lines.append(self.format_metric('arbitro_mas_frecuente', 'Árbitro más frecuente'))
 
-        _tech = [
+        _tech_equipo = [
+            ('tiros_equipo_promedio',        'Tiros propios promedio',               False),
+            ('tiros_rival_promedio',         'Tiros rival promedio',                 False),
+            ('tiros_a_puerta_equipo_promedio','Tiros a puerta propios promedio',     False),
+            ('tiros_a_puerta_rival_promedio','Tiros a puerta rival promedio',        False),
+            ('xg_equipo_promedio',           'xG propio promedio',                  False),
+            ('xg_rival_promedio',            'xG rival promedio',                   False),
+            ('posesion_equipo_promedio',     'Posesión propia promedio',             True),
+            ('posesion_rival_promedio',      'Posesión rival promedio',              True),
+            ('corners_equipo_promedio',      'Corners propios promedio',            False),
+            ('corners_rival_promedio',       'Corners rival promedio',              False),
+            ('faltas_equipo_promedio',       'Faltas propias promedio',             False),
+            ('faltas_rival_promedio',        'Faltas rival promedio',               False),
+            ('fueras_de_juego_equipo_promedio','Fueras de juego propios promedio',  False),
+            ('fueras_de_juego_rival_promedio','Fueras de juego rival promedio',     False),
+            ('paradas_equipo_promedio',      'Paradas portero propio promedio',     False),
+            ('paradas_rival_promedio',       'Paradas portero rival promedio',      False),
+            ('precision_pases_equipo_promedio','Precisión pases propia',            True),
+            ('precision_pases_rival_promedio','Precisión pases rival',             True),
+        ]
+        _tech_liga = [
             ('tiros_local_promedio',               'Tiros locales promedio',               False),
             ('tiros_visitante_promedio',           'Tiros visitante promedio',             False),
             ('tiros_a_puerta_local_promedio',      'Tiros a puerta local promedio',        False),
@@ -157,10 +177,32 @@ class SportsAgent:
             ('precision_pases_local_promedio',     'Precisión pases local',               True),
             ('precision_pases_visitante_promedio', 'Precisión pases visitante',           True),
         ]
+        _tech = _tech_equipo if self.metrics.get('tiros_equipo_promedio') is not None else _tech_liga
+
+        def _fmt_tech_line(k: str, lbl: str, pct: bool) -> Optional[str]:
+            val = self.metrics.get(k)
+            if val is None:
+                return None
+            suffix = '%' if pct else ''
+            # Si es una métrica de perspectiva de equipo, añadir desglose local/visitante
+            if k.endswith('_equipo_promedio'):
+                prefix = k[: -len('_equipo_promedio')]
+                loc = self.metrics.get(f'{prefix}_equipo_local_promedio')
+                vis = self.metrics.get(f'{prefix}_equipo_visitante_promedio')
+                if loc is not None and vis is not None:
+                    return f"  {lbl}: {val:.1f}{suffix}  (local: {loc:.1f}{suffix} | visitante: {vis:.1f}{suffix})"
+            elif k.endswith('_rival_promedio'):
+                prefix = k[: -len('_rival_promedio')]
+                loc = self.metrics.get(f'{prefix}_rival_local_promedio')
+                vis = self.metrics.get(f'{prefix}_rival_visitante_promedio')
+                if loc is not None and vis is not None:
+                    return f"  {lbl}: {val:.1f}{suffix}  (local rival: {loc:.1f}{suffix} | visitante rival: {vis:.1f}{suffix})"
+            return f"  {lbl}: {val:.1f}{suffix}"
+
         tech_lines = [
-            f"  {lbl}: {self.metrics[k]:.1f}{'%' if pct else ''}"
-            for k, lbl, pct in _tech
-            if self.metrics.get(k) is not None
+            line for k, lbl, pct in _tech
+            for line in [_fmt_tech_line(k, lbl, pct)]
+            if line is not None
         ]
         if tech_lines:
             report_lines.append('')
@@ -331,7 +373,23 @@ class SportsAgent:
             html.append(f'      <div class="metric"><strong>Árbitro más frecuente</strong><p>{self.metrics["arbitro_mas_frecuente"]}</p></div>')
 
         # Métricas técnicas en el grid
-        _tech_html = [
+        _tech_html_equipo = [
+            ('tiros_equipo_promedio',          'Tiros propios (prom.)',          False),
+            ('tiros_rival_promedio',           'Tiros rival (prom.)',            False),
+            ('tiros_a_puerta_equipo_promedio', 'Tiros a puerta propios (prom.)', False),
+            ('tiros_a_puerta_rival_promedio',  'Tiros a puerta rival (prom.)',   False),
+            ('xg_equipo_promedio',             'xG propio (prom.)',             False),
+            ('xg_rival_promedio',              'xG rival (prom.)',              False),
+            ('corners_equipo_promedio',        'Corners propios (prom.)',       False),
+            ('corners_rival_promedio',         'Corners rival (prom.)',         False),
+            ('faltas_equipo_promedio',         'Faltas propias (prom.)',        False),
+            ('faltas_rival_promedio',          'Faltas rival (prom.)',          False),
+            ('paradas_equipo_promedio',        'Paradas portero propio (prom.)',False),
+            ('paradas_rival_promedio',         'Paradas portero rival (prom.)', False),
+            ('precision_pases_equipo_promedio','Precisión pases propia',        True),
+            ('precision_pases_rival_promedio', 'Precisión pases rival',         True),
+        ]
+        _tech_html_liga = [
             ('tiros_local_promedio',              'Tiros locales (prom.)',         False),
             ('tiros_visitante_promedio',          'Tiros visitante (prom.)',       False),
             ('tiros_a_puerta_local_promedio',     'Tiros a puerta local (prom.)',  False),
@@ -347,11 +405,36 @@ class SportsAgent:
             ('precision_pases_local_promedio',   'Precisión pases local',         True),
             ('precision_pases_visitante_promedio', 'Precisión pases visitante',   True),
         ]
+        _tech_html = _tech_html_equipo if self.metrics.get('tiros_equipo_promedio') is not None else _tech_html_liga
         for k, lbl, pct in _tech_html:
             val = self.metrics.get(k)
-            if val is not None:
-                fmt = f'{val:.1f}%' if pct else f'{val:.1f}'
-                html.append(f'      <div class="metric"><strong>{lbl}</strong><p>{fmt}</p></div>')
+            if val is None:
+                continue
+            fmt_total = f'{val:.1f}%' if pct else f'{val:.1f}'
+            suffix = '%' if pct else ''
+            # Desglose local/visitante para métricas de perspectiva de equipo
+            split_html = ''
+            if k.endswith('_equipo_promedio'):
+                prefix_k = k[: -len('_equipo_promedio')]
+                loc = self.metrics.get(f'{prefix_k}_equipo_local_promedio')
+                vis = self.metrics.get(f'{prefix_k}_equipo_visitante_promedio')
+                if loc is not None and vis is not None:
+                    split_html = (
+                        f'<small style="color:#555;display:block;margin-top:4px">'
+                        f'Local: {loc:.1f}{suffix} &nbsp;|&nbsp; Visit.: {vis:.1f}{suffix}'
+                        f'</small>'
+                    )
+            elif k.endswith('_rival_promedio'):
+                prefix_k = k[: -len('_rival_promedio')]
+                loc = self.metrics.get(f'{prefix_k}_rival_local_promedio')
+                vis = self.metrics.get(f'{prefix_k}_rival_visitante_promedio')
+                if loc is not None and vis is not None:
+                    split_html = (
+                        f'<small style="color:#555;display:block;margin-top:4px">'
+                        f'Local rival: {loc:.1f}{suffix} &nbsp;|&nbsp; Visit. rival: {vis:.1f}{suffix}'
+                        f'</small>'
+                    )
+            html.append(f'      <div class="metric"><strong>{lbl}</strong><p>{fmt_total}{split_html}</p></div>')
 
         html.extend([
             '    </div>',
