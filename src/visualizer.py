@@ -270,3 +270,64 @@ def plot_temporal_evolution(df: pd.DataFrame, team: Optional[str], output_path: 
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     return output_path
+
+
+def plot_matchday_goals(df: pd.DataFrame, output_path: str) -> Optional[str]:
+    """Barras apiladas con los goles local y visitante de cada partido de la jornada."""
+    if df.empty:
+        return None
+    needed = ['local_team', 'visitante_team', 'goles_local', 'goles_visitante']
+    if not all(c in df.columns for c in needed):
+        return None
+
+    data = df[needed].copy().reset_index(drop=True)
+    data['match_label'] = data['local_team'].str[:12] + '\nvs\n' + data['visitante_team'].str[:12]
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(max(8, len(data) * 1.3), 5))
+    x = range(len(data))
+    ax.bar(x, data['goles_local'], label='Local', color='#2e86de', alpha=0.85)
+    ax.bar(x, data['goles_visitante'], bottom=data['goles_local'],
+           label='Visitante', color='#e74c3c', alpha=0.85)
+    for i, row in data.iterrows():
+        total = row['goles_local'] + row['goles_visitante']
+        ax.text(i, total + 0.05, str(int(total)), ha='center', va='bottom', fontsize=9, fontweight='bold')
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(data['match_label'], fontsize=7)
+    ax.set_ylabel('Goles')
+    ax.set_title('Goles por partido')
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_matchday_xg(df: pd.DataFrame, output_path: str) -> Optional[str]:
+    """Barras agrupadas con xG local vs visitante por partido de la jornada."""
+    if 'xg_local' not in df.columns or df['xg_local'].isna().all():
+        return None
+    needed = ['local_team', 'visitante_team', 'xg_local', 'xg_visitante']
+    data = df[needed].dropna(subset=['xg_local', 'xg_visitante']).copy().reset_index(drop=True)
+    if data.empty:
+        return None
+
+    data['match_label'] = data['local_team'].str[:12] + '\nvs\n' + data['visitante_team'].str[:12]
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    x = list(range(len(data)))
+    width = 0.4
+    fig, ax = plt.subplots(figsize=(max(8, len(data) * 1.3), 5))
+    ax.bar([i - width / 2 for i in x], data['xg_local'],
+           width=width, label='xG Local', color='#2e86de', alpha=0.85)
+    ax.bar([i + width / 2 for i in x], data['xg_visitante'],
+           width=width, label='xG Visitante', color='#e74c3c', alpha=0.85)
+    ax.set_xticks(x)
+    ax.set_xticklabels(data['match_label'], fontsize=7)
+    ax.set_ylabel('xG')
+    ax.set_title('Goles esperados (xG) por partido de la jornada')
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path

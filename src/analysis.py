@@ -392,3 +392,155 @@ def compute_player_rankings(df_players: pd.DataFrame) -> Dict[str, pd.DataFrame]
         'asistentes': _fmt(df_players, 'assists', min_val=1),
         'combinado':  _fmt(df_players, 'goals_assists', min_val=1),
     }
+
+
+def compute_standings(df: pd.DataFrame, up_to_jornada: Optional[int] = None) -> pd.DataFrame:
+    """Tabla de clasificación calculada desde la DB de partidos.
+
+    Args:
+        df: DataFrame completo de partidos (toda la liga).
+        up_to_jornada: Si se indica, solo incluye partidos con jornada <= N.
+
+    Returns:
+        DataFrame con columnas: Pos, Equipo, PJ, G, E, P, GF, GC, DIF, PTS
+        Ordenado por PTS desc, DIF desc, GF desc.
+    """
+    data = df.copy()
+    if up_to_jornada is not None and 'jornada' in data.columns:
+        data = data[data['jornada'] <= up_to_jornada]
+
+    teams = sorted(
+        set(data['local_team'].dropna().unique()) |
+        set(data['visitante_team'].dropna().unique())
+    )
+    rows = []
+    for team in teams:
+        home = data[data['local_team'] == team]
+        away = data[data['visitante_team'] == team]
+        pj = len(home) + len(away)
+        if pj == 0:
+            continue
+        gf = int(home['goles_local'].sum()) + int(away['goles_visitante'].sum())
+        gc = int(home['goles_visitante'].sum()) + int(away['goles_local'].sum())
+        g  = int((home['goles_local'] > home['goles_visitante']).sum()) + \
+             int((away['goles_visitante'] > away['goles_local']).sum())
+        e  = int((home['goles_local'] == home['goles_visitante']).sum()) + \
+             int((away['goles_visitante'] == away['goles_local']).sum())
+        p  = pj - g - e
+        pts = g * 3 + e
+        rows.append({
+            'Equipo': team, 'PJ': pj, 'G': g, 'E': e, 'P': p,
+            'GF': gf, 'GC': gc, 'DIF': gf - gc, 'PTS': pts,
+        })
+
+    if not rows:
+        return pd.DataFrame(columns=['Pos', 'Equipo', 'PJ', 'G', 'E', 'P', 'GF', 'GC', 'DIF', 'PTS'])
+
+    df_out = pd.DataFrame(rows)
+    df_out = df_out.sort_values(['PTS', 'DIF', 'GF'], ascending=[False, False, False])
+    df_out.insert(0, 'Pos', range(1, len(df_out) + 1))
+    return df_out.reset_index(drop=True)
+
+
+def compute_matchday_summary(df_jornada: pd.DataFrame, df_all: pd.DataFrame, jornada: int) -> Dict:
+    """Genera el resumen completo de una jornada concreta.
+
+    Args:
+        df_jornada: Partidos filtrados para la jornada indicada.
+        df_all: Todos los partidos de la temporada (para clasificación acumulada).
+        jornada: Número de jornada.
+
+    Returns:
+        Dict con claves: jornada, num_partidos, results, total_goals, avg_goals,
+        total_yellow, total_red, avg_possession_local, avg_possession_visitante,
+        most_exciting, xg_surprise, standings.
+    """
+    results = []
+    sort_data = df_jornada.sort_values('local_team') if 'local_team' in df_jornada.columns else df_jornada
+    for _, row in sort_data.iterrows():
+        gl = int(row['goles_local'])
+        gv = int(row['goles_visitante'])
+        if gl > gv:
+            res = 'L'
+        elif gl == gv:
+            res = 'E'
+        else:
+            res = 'V'
+        results.append({
+            'local':           row['local_team'],
+            'goles_local':     gl,
+            'goles_visitante': gv,
+            'visitante':       row['visitante_team'],
+            'resultado':       res,
+            'goles_totales':   gl + gv,
+        })
+
+    total_goals = sum(r['goles_totales'] for r in results)
+    avg_goals   = round(total_goals / len(results), 2) if results else 0.0
+    most_exciting = max(results, key=lambda r: r['goles_totales']) if results else None
+
+    # Tarjetas
+    total_yellow = None
+    total_red    = None
+    if 'amarillas_local' in df_jornada.columns and df_jornada['amarillas_local'].notna().any():
+        total_yellow = int(
+            df_jornada['amarillas_local'].sum(skipna=True) +
+            df_jornada['amarillas_visitante'].sum(skipna=True)
+        )
+    if 'rojas_local' in df_jornada.columns and df_jornada['rojas_local'].notna().any():
+        total_red = int(
+            df_jornada['rojas_local'].sum(skipna=True) +
+            df_jornada['rojas_visitante'].sum(skipna=True)
+        )
+
+    # Posesión media
+    avg_possession_local     = None
+    avg_possession_visitante = None
+    if 'posesion_local' in df_jornada.columns and df_jornada['posesion_local'].notna().any():
+        avg_possession_local     = round(float(df_jornada['posesion_local'].mean()), 1)
+        avg_possession_visitante = round(float(df_jornada['posesion_visitante'].mean()), 1)
+
+    # Sorpresa de la jornada: partido donde el resultado contradice más al xG esperado
+    xg_surprise = None
+    if 'xg_local' in df_jornada.columns and df_jornada['xg_local'].notna().any():
+        xg_cols = ['local_team', 'visitante_team', 'goles_local', 'goles_visitante', 'xg_local', 'xg_visitante']
+        xg_data = df_jornada[xg_cols].dropna(subset=['xg_local', 'xg_visitante']).copy()
+        if not xg_data.empty:
+            xg_data['xg_winner'] = (xg_data['xg_local'] - xg_data['xg_visitante']).apply(
+                lambda x: 'L' if x > 0.3 else ('V' if x < -0.3 else 'E')
+            )
+            xg_data['real_winner'] = xg_data.apply(
+                lambda r: 'L' if r['goles_local'] > r['goles_visitante']
+                          else ('V' if r['goles_local'] < r['goles_visitante'] else 'E'),
+                axis=1,
+            )
+            surprised = xg_data[xg_data['xg_winner'] != xg_data['real_winner']].copy()
+            if not surprised.empty:
+                surprised['margin'] = (surprised['xg_local'] - surprised['xg_visitante']).abs()
+                row_s = surprised.sort_values('margin', ascending=False).iloc[0]
+                xg_surprise = {
+                    'local':           row_s['local_team'],
+                    'visitante':       row_s['visitante_team'],
+                    'goles_local':     int(row_s['goles_local']),
+                    'goles_visitante': int(row_s['goles_visitante']),
+                    'xg_local':        round(float(row_s['xg_local']), 2),
+                    'xg_visitante':    round(float(row_s['xg_visitante']), 2),
+                }
+
+    # Clasificación acumulada hasta esta jornada
+    standings = compute_standings(df_all, up_to_jornada=jornada)
+
+    return {
+        'jornada':                  jornada,
+        'num_partidos':             len(results),
+        'results':                  results,
+        'total_goals':              total_goals,
+        'avg_goals':                avg_goals,
+        'total_yellow':             total_yellow,
+        'total_red':                total_red,
+        'avg_possession_local':     avg_possession_local,
+        'avg_possession_visitante': avg_possession_visitante,
+        'most_exciting':            most_exciting,
+        'xg_surprise':              xg_surprise,
+        'standings':                standings,
+    }
