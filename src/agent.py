@@ -1,5 +1,9 @@
+import os
+import shutil
 from pathlib import Path
 from typing import List, Optional
+
+import pandas as pd
 
 from .analysis import (
     compute_overall_metrics,
@@ -22,14 +26,17 @@ class SportsAgent:
         self.competition_id = competition_id
         self.season = season
         self.team = team
-        self.data = None
-        self.metrics = {}
-        self.top_scorers = None
-        self.top_defenders = None
-        self.highlights = None
+        self.data: Optional[pd.DataFrame] = None
+        self.available_optional_columns: set[str] = set()
+        self.metrics: dict = {}
+        self.top_scorers: Optional[pd.DataFrame] = None
+        self.top_defenders: Optional[pd.DataFrame] = None
+        self.highlights: Optional[pd.DataFrame] = None
 
     def load_data(self):
         self.data = load_match_data(self.data_path, self.fetch_real, self.competition_id, self.season)
+        if self.data is not None and isinstance(self.data, pd.DataFrame):
+            self.available_optional_columns = set(self.data.attrs.get('available_optional_columns', []))
         return self.data
 
     def filter_by_team(self):
@@ -42,6 +49,8 @@ class SportsAgent:
             if filtered.empty:
                 raise ValueError(f'No se encontraron partidos para el equipo: {self.team}')
             self.data = filtered
+            if hasattr(self.data, 'attrs'):
+                self.available_optional_columns = set(self.data.attrs.get('available_optional_columns', []))
 
     def analyze(self):
         if self.data is None:
@@ -54,9 +63,23 @@ class SportsAgent:
         self.highlights = match_highlights(self.data)
         return self.metrics
 
+    def format_metric(self, key: str, label: str, is_percent: bool = False) -> str:
+        value = self.metrics.get(key)
+        if value is None:
+            return f"{label}: No disponible para este dataset"
+        if is_percent:
+            return f"{label}: {value:.1f}%"
+        return f"{label}: {value}"
+
+    def format_html_metric(self, key: str) -> str:
+        value = self.metrics.get(key)
+        return f"{value:.1f}%" if value is not None and isinstance(value, float) else (str(value) if value is not None else 'No disponible')
+
     def generate_report(self, output_path: Optional[str] = None) -> str:
         if not self.metrics:
             raise ValueError('Ejecute analyze() antes de generar el informe.')
+        if self.top_scorers is None or self.top_defenders is None or self.highlights is None:
+            raise ValueError('Los resultados del análisis no están disponibles. Ejecute analyze() antes de generar el informe.')
 
         report_lines: List[str] = []
         report_lines.append('INFORME DE ANÁLISIS DE PARTIDOS')
@@ -64,9 +87,11 @@ class SportsAgent:
         report_lines.append(f"Partidos analizados: {self.metrics['partidos_analizados']}")
         report_lines.append(f"Goles totales: {self.metrics['goles_totales']}")
         report_lines.append(f"Goles promedio por partido: {self.metrics['goles_promedio_por_partido']:.2f}")
-        report_lines.append(f"Tarjetas amarillas: {self.metrics['tarjetas_amarillas']}")
-        report_lines.append(f"Tarjetas rojas: {self.metrics['tarjetas_rojas']}")
-        report_lines.append(f"Posesión local promedio: {self.metrics['posesion_local_promedio']:.1f}%")
+        report_lines.append(self.format_metric('tarjetas_amarillas', 'Tarjetas amarillas'))
+        report_lines.append(self.format_metric('tarjetas_rojas', 'Tarjetas rojas'))
+        report_lines.append(self.format_metric('posesion_local_promedio', 'Posesión local promedio', is_percent=True))
+        if self.available_optional_columns:
+            report_lines.append('Campos opcionales disponibles: ' + ', '.join(sorted(self.available_optional_columns)))
         report_lines.append('')
 
         report_lines.append('Top equipos con más goles')
@@ -89,9 +114,24 @@ class SportsAgent:
 
         return report_text
 
+    def clean_reports(self, output_folder: str = 'reports') -> None:
+        report_folder = Path(output_folder)
+        if not report_folder.exists():
+            return
+        if report_folder.is_file():
+            raise ValueError(f'El camino de reportes debe ser una carpeta, no un archivo: {output_folder}')
+
+        for item in report_folder.iterdir():
+            if item.is_file():
+                item.unlink()
+            elif item.is_dir():
+                shutil.rmtree(item)
+
     def generate_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
         if not self.metrics:
             raise ValueError('Ejecute analyze() antes de generar el informe HTML.')
+        if self.top_scorers is None or self.top_defenders is None or self.highlights is None:
+            raise ValueError('Los resultados del análisis no están disponibles. Ejecute analyze() antes de generar el informe HTML.')
 
         report_file = Path(output_path)
         report_file.parent.mkdir(parents=True, exist_ok=True)
@@ -100,7 +140,7 @@ class SportsAgent:
         image_folder_path.mkdir(parents=True, exist_ok=True)
 
         images = self.save_visual_report(str(image_folder_path))
-        relative_images = [Path(img).name for img in images]
+        relative_images = [Path(os.path.relpath(img, start=report_file.parent)).as_posix() for img in images if img]
 
         html = [
             '<!DOCTYPE html>',
@@ -129,9 +169,19 @@ class SportsAgent:
             f'      <div class="metric"><strong>Partidos analizados</strong><p>{self.metrics["partidos_analizados"]}</p></div>',
             f'      <div class="metric"><strong>Goles totales</strong><p>{self.metrics["goles_totales"]}</p></div>',
             f'      <div class="metric"><strong>Goles promedio</strong><p>{self.metrics["goles_promedio_por_partido"]:.2f}</p></div>',
-            f'      <div class="metric"><strong>Tarjetas amarillas</strong><p>{self.metrics["tarjetas_amarillas"]}</p></div>',
-            f'      <div class="metric"><strong>Tarjetas rojas</strong><p>{self.metrics["tarjetas_rojas"]}</p></div>',
-            f'      <div class="metric"><strong>Posesión local promedio</strong><p>{self.metrics["posesion_local_promedio"]:.1f}%</p></div>',
+            f'      <div class="metric"><strong>Tarjetas amarillas</strong><p>{self.format_html_metric("tarjetas_amarillas")}</p></div>',
+            f'      <div class="metric"><strong>Tarjetas rojas</strong><p>{self.format_html_metric("tarjetas_rojas")}</p></div>',
+        ]
+
+        if self.metrics.get('posesion_local_promedio') is not None:
+            html.append(f'      <div class="metric"><strong>Posesión local promedio</strong><p>{self.metrics["posesion_local_promedio"]:.1f}%</p></div>')
+        else:
+            html.append('      <div class="metric"><strong>Posesión local promedio</strong><p>No disponible</p></div>')
+
+        if self.available_optional_columns:
+            html.append(f'      <div class="metric"><strong>Campos opcionales</strong><p>{", ".join(sorted(self.available_optional_columns))}</p></div>')
+
+        html.extend([
             '    </div>',
             '  </div>',
             '  <div class="section">',
@@ -147,9 +197,12 @@ class SportsAgent:
             self.highlights[['date', 'local_team', 'visitante_team', 'goles_local', 'goles_visitante', 'goles_totales']]
                 .to_html(index=False, classes='dataframe', border=0),
             '  </div>',
+        ])
+
+        html.extend([
             '  <div class="section">',
             '    <h2>Gráficos</h2>',
-        ]
+        ])
 
         for image_name in relative_images:
             html.append(f'    <img src="{image_name}" alt="{image_name}">')
@@ -170,10 +223,18 @@ class SportsAgent:
         report_folder = Path(output_folder)
         report_folder.mkdir(parents=True, exist_ok=True)
 
-        paths = [
-            plot_goals_distribution(self.data, str(report_folder / 'goals_distribution.png')),
-            plot_possession_distribution(self.data, str(report_folder / 'possession_distribution.png')),
-            plot_card_statistics(self.data, str(report_folder / 'card_summary.png')),
-        ]
+        paths = []
+
+        goals_path = plot_goals_distribution(self.data, str(report_folder / 'goals_distribution.png'))
+        if goals_path:
+            paths.append(goals_path)
+
+        possession_path = plot_possession_distribution(self.data, str(report_folder / 'possession_distribution.png'))
+        if possession_path:
+            paths.append(possession_path)
+
+        card_path = plot_card_statistics(self.data, str(report_folder / 'card_summary.png'))
+        if card_path:
+            paths.append(card_path)
 
         return paths

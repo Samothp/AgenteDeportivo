@@ -11,6 +11,7 @@ python -m src.run_agent --data data/example_matches.csv --output reports/informe
 - `--data` : ruta al archivo CSV de partidos
 - `--output` : ruta del informe de texto generado
 - `--visual` : carpeta donde se guardan los gráficos
+- `--clean-reports` : elimina archivos anteriores en la carpeta de reportes antes de generar nuevos
 
 ## Generar informe HTML
 
@@ -27,6 +28,8 @@ python -m src.run_agent --fetch-real --competition 2014 --season 2025 --output r
 - `--fetch-real` : obtén datos desde la API en lugar de usar un CSV local
 - `--competition` : ID de la competición (`2014` = La Liga)
 - `--season` : temporada en formato `YYYY`
+
+> Nota: algunos datos opcionales como posesión o tarjetas pueden no estar disponibles en todos los conjuntos de datos/API. El informe mostrará esos valores como "No disponible" cuando no estén presentes.
 
 ## Analizar un equipo específico
 
@@ -59,6 +62,11 @@ python -m src.run_agent --data data/laliga_actual.csv --output reports/laliga_ac
 ```
 
 ## Ejemplos rápidos
+
+- Limpiar reportes anteriores antes de generar un nuevo informe:
+  ```bash
+  python -m src.run_agent --data data/example_matches.csv --output reports/informe.txt --visual reports --html-output reports/informe.html --clean-reports
+  ```
 
 - Analizar solo Mallorca en La Liga 2025:
   ```bash

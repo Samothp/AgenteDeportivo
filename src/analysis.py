@@ -6,9 +6,24 @@ def compute_overall_metrics(df: pd.DataFrame) -> Dict[str, object]:
     total_matches = len(df)
     total_goals = int(df['goles_totales'].sum())
     average_goals = float(df['goles_totales'].mean())
-    total_yellow = int(df['amarillas_local'].sum() + df['amarillas_visitante'].sum())
-    total_red = int(df['rojas_local'].sum() + df['rojas_visitante'].sum())
-    average_possession_local = float(df['posesion_local'].mean()) if 'posesion_local' in df else 0.0
+
+    yellow_available = (
+        'amarillas_local' in df and
+        'amarillas_visitante' in df and
+        df[['amarillas_local', 'amarillas_visitante']].notna().any().any()
+    )
+    total_yellow = int(df['amarillas_local'].sum(skipna=True) + df['amarillas_visitante'].sum(skipna=True)) if yellow_available else None
+
+    red_available = (
+        'rojas_local' in df and
+        'rojas_visitante' in df and
+        df[['rojas_local', 'rojas_visitante']].notna().any().any()
+    )
+    total_red = int(df['rojas_local'].sum(skipna=True) + df['rojas_visitante'].sum(skipna=True)) if red_available else None
+
+    average_possession_local = None
+    if 'posesion_local' in df and df['posesion_local'].notna().any():
+        average_possession_local = float(df['posesion_local'].mean())
 
     return {
         'partidos_analizados': total_matches,

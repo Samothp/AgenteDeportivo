@@ -88,26 +88,21 @@ def validate_match_data(df: pd.DataFrame) -> None:
 
 
 def add_missing_optional_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Agrega columnas opcionales faltantes con valores por defecto."""
+    """Agrega columnas opcionales faltantes como valores nulos cuando no están disponibles."""
     for col in OPTIONAL_COLUMNS:
         if col not in df.columns:
-            if 'posesion' in col:
-                df[col] = 50.0  # Valor por defecto para posesión
-            elif any(keyword in col for keyword in ['amarillas', 'rojas', 'faltas', 'shots', 'corners']):
-                df[col] = 0  # Valor por defecto para estadísticas numéricas
-            else:
-                df[col] = 0  # Valor por defecto general
+            df[col] = pd.NA
     return df
 
 
 def normalize_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
     for column in INTEGER_COLUMNS:
         if column in df.columns:
-            df[column] = pd.to_numeric(df[column], errors='coerce').fillna(0).astype(int)
+            df[column] = pd.to_numeric(df[column], errors='coerce')
 
     for column in PERCENT_COLUMNS:
         if column in df.columns:
-            df[column] = pd.to_numeric(df[column], errors='coerce').fillna(0.0).astype(float)
+            df[column] = pd.to_numeric(df[column], errors='coerce')
 
     return df
 
@@ -158,6 +153,10 @@ def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Opt
 
     df = normalize_column_names(df)
     validate_match_data(df)
+
+    present_optional_columns = [col for col in OPTIONAL_COLUMNS if col in df.columns]
+    df.attrs['available_optional_columns'] = present_optional_columns
+
     df = add_missing_optional_columns(df)  # Agregar columnas opcionales faltantes
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df = normalize_numeric_columns(df)

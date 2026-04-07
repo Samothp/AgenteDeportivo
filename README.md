@@ -103,6 +103,31 @@ set FOOTBALL_DATA_API_KEY=tu_api_key_aqui
 export FOOTBALL_DATA_API_KEY=tu_api_key_aqui
 ```
 
+## Datos recibidos desde la API
+
+Cuando se obtienen partidos reales con `--fetch-real`, el agente carga al menos los siguientes campos:
+
+- `date` — fecha del partido
+- `local_team` — nombre del equipo local
+- `visitante_team` — nombre del equipo visitante
+- `goles_local` — goles anotados por el equipo local
+- `goles_visitante` — goles anotados por el equipo visitante
+- `status` — estado del partido (por ejemplo, `FINISHED`)
+- `competition` — nombre de la competición
+- `season` — temporada consultada
+
+Además, el agente soporta campos opcionales cuando el dataset o la API los incluye:
+
+- `posesion_local`, `posesion_visitante`
+- `shots_local`, `shots_visitante`
+- `shots_on_target_local`, `shots_on_target_visitante`
+- `corners_local`, `corners_visitante`
+- `amarillas_local`, `amarillas_visitante`
+- `rojas_local`, `rojas_visitante`
+- `faltas_local`, `faltas_visitante`
+
+El informe mostrará solo los campos disponibles realmente. Si la API o el CSV no incluyen alguno de estos valores opcionales, se marcará como "No disponible" y el gráfico correspondiente se omitirá.
+
 ## Uso básico
 
 Ejecuta el agente con el dataset de ejemplo:
@@ -114,6 +139,14 @@ python -m src.run_agent --data data/example_matches.csv --output reports/informe
 Para una guía rápida de comandos, consulta `COMMANDS.md`.
 
 También puedes consultar el historial de cambios en `CHANGELOG.md`.
+
+Si quieres eliminar reportes previos antes de generar nuevos archivos, añade `--clean-reports`:
+
+```bash
+python -m src.run_agent --data data/example_matches.csv --output reports/informe.txt --visual reports --html-output reports/informe.html --clean-reports
+```
+
+El informe ahora incluye un listado de los campos opcionales que realmente devolvió el dataset o la API, y omite estadística falsa cuando esos valores no están disponibles.
 
 Generar también un informe HTML:
 
@@ -139,8 +172,10 @@ El comando generará:
 - `reports/informe.txt` — informe de texto con métricas y rankings
 - `reports/informe.html` — informe HTML con tablas y gráficos
 - `reports/goals_distribution.png` — histograma de goles
-- `reports/possession_distribution.png` — caja de posesión
-- `reports/card_summary.png` — resumen de tarjetas
+- `reports/possession_distribution.png` — caja de posesión (solo si hay datos de posesión disponibles)
+- `reports/card_summary.png` — resumen de tarjetas (solo si hay datos de tarjetas disponibles)
+
+> Nota: algunos campos opcionales como posesión o estadísticas avanzadas pueden no estar disponibles en todos los datasets/API. En ese caso, el informe lo mostrará como "No disponible" y el gráfico correspondiente se omitirá.
 
 ## Extensión
 

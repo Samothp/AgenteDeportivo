@@ -10,6 +10,7 @@ def parse_args():
     parser.add_argument('--output', default='reports/report.txt', help='Ruta de salida para el informe de texto')
     parser.add_argument('--html-output', default=None, help='Ruta de salida para el informe HTML')
     parser.add_argument('--visual', default='reports', help='Carpeta de salida para gráficos')
+    parser.add_argument('--clean-reports', action='store_true', help='Eliminar reportes e imágenes previas en la carpeta de salida antes de generar nuevos archivos')
     parser.add_argument('--fetch-real', action='store_true', help='Obtener datos reales de la API en lugar de usar CSV local')
     parser.add_argument('--competition', type=int, default=2014, help='ID de competición para datos reales (2014=La Liga, 2021=Premier League)')
     parser.add_argument('--season', default='2023', help='Temporada para datos reales (formato YYYY)')
@@ -20,6 +21,11 @@ def parse_args():
 def main():
     args = parse_args()
     agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team)
+
+    if args.clean_reports:
+        agent.clean_reports(args.visual)
+        print('Reportes anteriores eliminados en:', args.visual)
+
     agent.load_data()
     agent.analyze()
 
