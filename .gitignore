@@ -4,4 +4,5 @@ __pycache__/
 *.pyd
 .env
 data/*.csv
+reports/
 .ipynb_checkpoints/

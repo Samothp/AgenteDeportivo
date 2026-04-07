@@ -15,9 +15,29 @@ from .visualizer import (
 )
 
 
+from pathlib import Path
+from typing import List, Optional
+
+from .analysis import (
+    compute_overall_metrics,
+    match_highlights,
+    top_defensive_teams,
+    top_scoring_teams,
+)
+from .data_loader import load_match_data
+from .visualizer import (
+    plot_card_statistics,
+    plot_goals_distribution,
+    plot_possession_distribution,
+)
+
+
 class SportsAgent:
-    def __init__(self, data_path: str):
+    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None):
         self.data_path = data_path
+        self.fetch_real = fetch_real
+        self.competition_id = competition_id
+        self.season = season
         self.data = None
         self.metrics = {}
         self.top_scorers = None
@@ -25,7 +45,7 @@ class SportsAgent:
         self.highlights = None
 
     def load_data(self):
-        self.data = load_match_data(self.data_path)
+        self.data = load_match_data(self.data_path, self.fetch_real, self.competition_id, self.season)
         return self.data
 
     def analyze(self):

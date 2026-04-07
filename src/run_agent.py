@@ -6,16 +6,19 @@ from .agent import SportsAgent
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Ejecuta el agente de análisis deportivo')
-    parser.add_argument('--data', required=True, help='Ruta al archivo CSV de partidos')
+    parser.add_argument('--data', default='data/matches.csv', help='Ruta al archivo CSV de partidos')
     parser.add_argument('--output', default='reports/report.txt', help='Ruta de salida para el informe de texto')
     parser.add_argument('--html-output', default=None, help='Ruta de salida para el informe HTML')
     parser.add_argument('--visual', default='reports', help='Carpeta de salida para gráficos')
+    parser.add_argument('--fetch-real', action='store_true', help='Obtener datos reales de la API en lugar de usar CSV local')
+    parser.add_argument('--competition', type=int, default=2014, help='ID de competición para datos reales (2014=La Liga, 2021=Premier League)')
+    parser.add_argument('--season', default='2023', help='Temporada para datos reales (formato YYYY)')
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    agent = SportsAgent(args.data)
+    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season)
     agent.load_data()
     agent.analyze()
 
