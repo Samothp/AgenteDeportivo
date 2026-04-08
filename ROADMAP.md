@@ -26,10 +26,10 @@ Añaden capacidad analítica real sin cambiar la estructura de informes existent
 
 | # | Mejora | Descripción | Estado |
 |---|--------|-------------|--------|
-| 2.1 | **Percentiles de liga (modo Equipo)** | Para cada métrica mostrar "percentil X de la liga" además de la comparativa simple. Ej: "Tiros a puerta: 14.2 (percentil 87)". Requiere nueva función `compute_team_percentiles()` | ⬜ Pendiente |
-| 2.2 | **Puntos esperados — xPts** | Calcular qué puntos merece cada equipo según sus xG por partido. Tabla de clasificación alternativa en modo Liga | ⬜ Pendiente |
-| 2.3 | **`--format json`** | Salida en JSON además de texto/HTML. Permite encadenar el agente con otras herramientas o futuros frontends. Refactorizar `generate_report()` para devolver `dict` | ⬜ Pendiente |
-| 2.4 | **`--matchday-range START END`** | Análisis de una franja de jornadas (ej. jornadas 10-20). Actualmente solo se puede analizar una jornada exacta o toda la temporada | ⬜ Pendiente |
+| 2.1 | **Percentiles de liga (modo Equipo)** | Para cada métrica mostrar "percentil X de la liga" además de la comparativa simple. Ej: "Tiros a puerta: 14.2 (percentil 87)". Requiere nueva función `compute_team_percentiles()` | ✅ Completado |
+| 2.2 | **Puntos esperados — xPts** | Calcular qué puntos merece cada equipo según sus xG por partido. Tabla de clasificación alternativa en modo Liga | ✅ Completado |
+| 2.3 | **`--format json`** | Salida en JSON además de texto/HTML. Permite encadenar el agente con otras herramientas o futuros frontends. Refactorizar `generate_report()` para devolver `dict` | ✅ Completado |
+| 2.4 | **`--matchday-range START END`** | Análisis de una franja de jornadas (ej. jornadas 10-20). Actualmente solo se puede analizar una jornada exacta o toda la temporada | ✅ Completado |
 
 ---
 
@@ -89,3 +89,8 @@ Requieren cambios estructurales significativos. Dependen del crecimiento del pro
 | 1.3 | Abril 2026 | TTL de caché: sidecar `.meta.json` con `fetched_at`, `--refresh-cache`, `--cache-ttl N` |
 | 1.4 | Abril 2026 | Rachas máximas: sin perder, goleadora y sin marcar en `compute_team_record` |
 | 1.5 | Abril 2026 | Ratio xG/goles: `overperformance` en modo Equipo y columna `Over%` en modo Liga |
+| 2.1 | Abril 2026 | Percentiles de liga: `compute_team_percentiles()` con barra visual en HTML, texto con valoración en informe Equipo |
+| 2.2 | Abril 2026 | xPts: `compute_xpts()` vía modelo Poisson; tabla de clasificación alternativa con diferencia PTS-xPts en modo Liga |
+| 2.3 | Abril 2026 | `--format json`: `generate_json_report()` con encoder personalizado para DataFrames y tipos numpy; cambio automático de extensión `.txt`→`.json` |
+| 2.4 | Abril 2026 | `--matchday-range START END`: filtro `jornada.between(start, end)`, reutiliza pipeline Liga con título "INFORME DE RANGO"; fix `nunique()` en campo `jornadas` |
+| 2.4 | Abril 2026 | `--matchday-range START END`: filtro `jornada.between(start, end)`, reutiliza pipeline Liga con título "INFORME DE RANGO"; fix `nunique()` en `jornadas` |

@@ -25,6 +25,8 @@ def parse_args():
     parser.add_argument('--no-charts', action='store_true', dest='no_charts', help='Omitir la generación de gráficos (modo texto rápido)')
     parser.add_argument('--refresh-cache', action='store_true', dest='refresh_cache', help='Eliminar el caché local y re-descargar desde la API (implica --fetch-real)')
     parser.add_argument('--cache-ttl', type=int, default=7, dest='cache_ttl_days', help='Días antes de avisar que el caché está desactualizado (por defecto: 7)')
+    parser.add_argument('--format', choices=['text', 'json'], default='text', dest='fmt', help='Formato de salida: text (por defecto) o json')
+    parser.add_argument('--matchday-range', nargs=2, type=int, metavar=('START', 'END'), dest='matchday_range', help='Rango de jornadas a analizar (ej. --matchday-range 10 20). Incompatible con --jornada')
     return parser.parse_args()
 
 
@@ -67,7 +69,19 @@ def main():
     if args.refresh_cache:
         args.fetch_real = True
 
-    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team, seasons=args.seasons, matchday=args.jornada, match_id=args.match_id, player=args.player, top_n=args.top_n, no_charts=args.no_charts, refresh_cache=args.refresh_cache, cache_ttl_days=args.cache_ttl_days)
+    # Validar --matchday-range
+    matchday_range = None
+    if args.matchday_range:
+        start, end = args.matchday_range
+        if start > end:
+            print(f'Error: --matchday-range START ({start}) debe ser <= END ({end})', file=sys.stderr)
+            sys.exit(1)
+        if args.jornada is not None:
+            print('Error: --matchday-range y --jornada son incompatibles', file=sys.stderr)
+            sys.exit(1)
+        matchday_range = (start, end)
+
+    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team, seasons=args.seasons, matchday=args.jornada, match_id=args.match_id, player=args.player, top_n=args.top_n, no_charts=args.no_charts, refresh_cache=args.refresh_cache, cache_ttl_days=args.cache_ttl_days, matchday_range=matchday_range)
 
     if args.clean_reports:
         agent.clean_reports(args.visual)
@@ -76,20 +90,28 @@ def main():
     agent.load_data()
     agent.analyze()
 
-    report_text = agent.generate_report(output_path=args.output)
-    print('Informe de texto generado en:', args.output)
+    if args.fmt == 'json':
+        # Salida JSON: cambiar extensión del output si sigue siendo .txt
+        json_output = args.output
+        if json_output.endswith('.txt'):
+            json_output = json_output[:-4] + '.json'
+        agent.generate_json_report(output_path=json_output)
+        print('Informe JSON generado en:', json_output)
+    else:
+        report_text = agent.generate_report(output_path=args.output)
+        print('Informe de texto generado en:', args.output)
 
-    image_paths = agent.save_visual_report(args.visual)
-    if image_paths:
-        print('Gráficos generados en:')
-        for path in image_paths:
-            print('-', path)
-    elif args.no_charts:
-        print('Gráficos omitidos (--no-charts activo).')
+        image_paths = agent.save_visual_report(args.visual)
+        if image_paths:
+            print('Gráficos generados en:')
+            for path in image_paths:
+                print('-', path)
+        elif args.no_charts:
+            print('Gráficos omitidos (--no-charts activo).')
 
-    if args.html_output:
-        html_path = agent.generate_html_report(args.html_output, image_folder=args.visual)
-        print('Informe HTML generado en:', html_path)
+        if args.html_output:
+            html_path = agent.generate_html_report(args.html_output, image_folder=args.visual)
+            print('Informe HTML generado en:', html_path)
 
 
 if __name__ == '__main__':

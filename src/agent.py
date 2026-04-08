@@ -1,8 +1,10 @@
+import json
 import os
 import shutil
 from pathlib import Path
 from typing import List, Optional
 
+import numpy as np
 import pandas as pd
 
 from .analysis import (
@@ -14,6 +16,7 @@ from .analysis import (
     compute_player_profile,
     compute_player_rankings,
     compute_standings,
+    compute_team_percentiles,
     compute_team_record,
     match_highlights,
     top_defensive_teams,
@@ -43,7 +46,7 @@ from .visualizer import (
 
 
 class SportsAgent:
-    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None, player: Optional[str] = None, top_n: int = 5, no_charts: bool = False, refresh_cache: bool = False, cache_ttl_days: int = 7):
+    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None, player: Optional[str] = None, top_n: int = 5, no_charts: bool = False, refresh_cache: bool = False, cache_ttl_days: int = 7, matchday_range: Optional[tuple] = None):
         self.data_path = data_path
         self.fetch_real = fetch_real
         self.competition_id = competition_id
@@ -51,6 +54,7 @@ class SportsAgent:
         self.seasons = seasons
         self.team = team
         self.matchday = matchday
+        self.matchday_range = matchday_range  # tuple (start, end) o None
         self.match_id = match_id
         self.player = player
         self.top_n = top_n
@@ -63,6 +67,7 @@ class SportsAgent:
         self.metrics: dict = {}
         self.league_metrics: dict = {}
         self.league_comparison: list = []
+        self.league_percentiles: list = []
         self.team_record: dict = {}
         self.top_scorers: Optional[pd.DataFrame] = None
         self.top_defenders: Optional[pd.DataFrame] = None
@@ -116,6 +121,17 @@ class SportsAgent:
                 raise ValueError(f'No se encontraron partidos para la jornada: {self.matchday}')
             self.data = filtered
 
+    def filter_by_matchday_range(self):
+        if self.matchday_range is not None and self.data is not None:
+            start, end = self.matchday_range
+            self.full_data = self.data.copy()
+            filtered = self.data[
+                self.data['jornada'].between(start, end)
+            ].copy()
+            if filtered.empty:
+                raise ValueError(f'No se encontraron partidos entre las jornadas {start} y {end}')
+            self.data = filtered
+
     def analyze(self):
         if self.data is None:
             raise ValueError('Datos no cargados. Ejecute load_data() primero.')
@@ -135,6 +151,17 @@ class SportsAgent:
         if self.matchday is not None:
             self.filter_by_matchday()
             self.matchday_summary = compute_matchday_summary(self.data, self.full_data if self.full_data is not None else self.data, self.matchday)
+            self.metrics = compute_overall_metrics(self.data)
+            self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
+            self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
+            self.highlights = match_highlights(self.data, n=self.top_n)
+            return self.metrics
+
+        # Modo Rango de jornadas: --matchday-range START END
+        if self.matchday_range is not None:
+            self.filter_by_matchday_range()
+            # Reutiliza el pipeline de liga restringido al rango de jornadas
+            self.liga_summary = compute_liga_summary(self.data)
             self.metrics = compute_overall_metrics(self.data)
             self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
             self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
@@ -179,6 +206,7 @@ class SportsAgent:
         if self.full_data is not None:
             self.league_metrics = compute_overall_metrics(self.full_data)
             self.league_comparison = compute_league_comparison(self.metrics, self.league_metrics)
+            self.league_percentiles = compute_team_percentiles(self.team, self.full_data)
         # Historial W/D/L si se filtró por equipo
         if self.team:
             self.team_record = compute_team_record(self.data, self.team)
@@ -212,7 +240,11 @@ class SportsAgent:
         s = self.liga_summary
         lines: List[str] = []
 
-        title = f'INFORME DE LIGA — {s["competition"]}  |  Temporada {s["season"]}'
+        if self.matchday_range:
+            rng_label = f'Jornadas {self.matchday_range[0]}–{self.matchday_range[1]}'
+            title = f'INFORME DE RANGO — {s["competition"]}  |  Temporada {s["season"]}  |  {rng_label}'
+        else:
+            title = f'INFORME DE LIGA — {s["competition"]}  |  Temporada {s["season"]}'
         lines.append(title)
         lines.append('=' * len(title))
         lines.append(f'Jornadas disputadas: {s["jornadas"]}   |   Partidos totales: {s["partidos_totales"]}')
@@ -281,6 +313,22 @@ class SportsAgent:
             tirs = f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-'
             lines.append(f'  {row["Equipo"]:<25} {int(row["GF"]):>4} {int(row["GC"]):>4} {xg:>5} {over:>6} {pos:>5} {tirs:>6}')
         lines.append('')
+
+        # Clasificación por puntos esperados (xPts)
+        xpts = s.get('xpts_standings')
+        if xpts is not None and not xpts.empty:
+            lines.append('Clasificación por puntos esperados (xPts)')
+            lines.append('------------------------------------------')
+            lines.append(f'  {"Pos":>3}  {"Equipo":<25} {"PJ":>3} {"xPts":>6} {"PTS":>4} {"Dif":>5}')
+            lines.append(f'  {"---":>3}  {"-"*25} {"--":>3} {"----":>6} {"---":>4} {"---":>5}')
+            for _, row in xpts.iterrows():
+                diff = row['Diff']
+                diff_str = f'+{diff:.1f}' if diff > 0 else f'{diff:.1f}'
+                lines.append(
+                    f'  {int(row["Pos"]):>3}  {row["Equipo"]:<25} {int(row["PJ"]):>3}'
+                    f' {row["xPts"]:>6.1f} {int(row["PTS"]):>4} {diff_str:>5}'
+                )
+            lines.append('')
 
         # Rendimiento local/visitante
         lines.append('Rendimiento local vs visitante')
@@ -352,7 +400,11 @@ class SportsAgent:
             '</head>',
             '<body>',
             f'  <div class="header-box">',
-            f'    <h1>{s["competition"]} — {s["season"]}</h1>',
+            *(
+                [f'    <h1>{s["competition"]} — {s["season"]} &nbsp;<small style="font-size:0.6em;opacity:0.85">Jornadas {self.matchday_range[0]}–{self.matchday_range[1]}</small></h1>']
+                if self.matchday_range else
+                [f'    <h1>{s["competition"]} — {s["season"]}</h1>']
+            ),
             f'    <p>Jornadas: {s["jornadas"]} &nbsp;|&nbsp; Partidos: {s["partidos_totales"]}</p>',
             '  </div>',
 
@@ -435,6 +487,37 @@ class SportsAgent:
                 f'<td>{xg}</td><td{over_color}>{over}</td><td>{pos}</td><td>{tir}</td></tr>'
             )
         html.extend(['    </tbody>', '  </table>'])
+
+        # Clasificación por puntos esperados (xPts)
+        xpts = s.get('xpts_standings')
+        if xpts is not None and not xpts.empty:
+            html.extend([
+                '  <h2>Clasificación por puntos esperados <small style="color:#666;font-size:0.6em">(modelo Poisson sobre xG)</small></h2>',
+                '  <p style="color:#666;font-size:0.85em;margin-top:-8px">Diferencia positiva = equipo puntúa más de lo que sus xG sugieren (suerte/eficiencia). Diferencia negativa = infrarendimiento.</p>',
+                '  <table>',
+                '    <thead><tr><th>Pos</th><th class="left">Equipo</th><th>PJ</th><th>xPts</th><th>PTS reales</th><th>Diferencia</th></tr></thead>',
+                '    <tbody>',
+            ])
+            for _, row in xpts.iterrows():
+                diff = row['Diff']
+                if diff > 2:
+                    diff_color = ' style="color:#27ae60;font-weight:bold"'
+                    diff_str = f'+{diff:.1f}'
+                elif diff < -2:
+                    diff_color = ' style="color:#e74c3c;font-weight:bold"'
+                    diff_str = f'{diff:.1f}'
+                else:
+                    diff_color = ' style="color:#666"'
+                    diff_str = f'+{diff:.1f}' if diff >= 0 else f'{diff:.1f}'
+                html.append(
+                    f'      <tr><td>{int(row["Pos"])}</td>'
+                    f'<td class="left">{row["Equipo"]}</td>'
+                    f'<td>{int(row["PJ"])}</td>'
+                    f'<td><strong>{row["xPts"]:.1f}</strong></td>'
+                    f'<td>{int(row["PTS"])}</td>'
+                    f'<td{diff_color}>{diff_str}</td></tr>'
+                )
+            html.extend(['    </tbody>', '  </table>'])
 
         # Rendimiento local/visitante
         ha = s['home_away']
@@ -1186,6 +1269,29 @@ class SportsAgent:
                     f"dif: {row['signo']}{row['diferencia']})"
                 )
 
+        # Percentiles de liga
+        if self.league_percentiles:
+            report_lines.append('')
+            report_lines.append('Percentiles en la liga')
+            report_lines.append('----------------------')
+            n_eq = self.league_percentiles[0]['n_equipos']
+            report_lines.append(f'  (Posici\u00f3n relativa del equipo respecto a los {n_eq} equipos de la liga)')
+            report_lines.append(f'  {"M\u00e9trica":<32} {"Valor":>7}  {"Percentil":>9}  Valoraci\u00f3n')
+            report_lines.append(f'  {"-"*32} {"-"*7}  {"-"*9}  ----------')
+            for p in self.league_percentiles:
+                pct = p["percentil"]
+                if pct >= 80:
+                    rating = "Excelente"
+                elif pct >= 60:
+                    rating = "Por encima de la media"
+                elif pct >= 40:
+                    rating = "En la media"
+                else:
+                    rating = "Por debajo de la media"
+                report_lines.append(
+                    f'  {p["metrica"]:<32} {p["valor"]:>7.2f}  {pct:>8}%  {rating}'
+                )
+
         # Rendimiento W/D/L del equipo
         if self.team_record:
             rec = self.team_record
@@ -1277,6 +1383,91 @@ class SportsAgent:
                 item.unlink()
             elif item.is_dir():
                 shutil.rmtree(item)
+
+    def generate_json_report(self, output_path: Optional[str] = None) -> str:
+        """Serializa todo el análisis a JSON estructurado.
+
+        Convierte DataFrames a listas de registros y tipos numpy a tipos
+        Python nativos. El JSON refleja el mismo modo que genera_report().
+        """
+        if not self.metrics:
+            raise ValueError('Ejecute analyze() antes de generar el informe.')
+
+        def _df_to_list(df) -> list:
+            if df is None or (hasattr(df, 'empty') and df.empty):
+                return []
+            return [
+                {k: (None if (isinstance(v, float) and np.isnan(v)) else
+                     int(v) if isinstance(v, (np.integer,)) else
+                     float(v) if isinstance(v, (np.floating,)) else v)
+                 for k, v in row.items()}
+                for row in df.to_dict(orient='records')
+            ]
+
+        def _clean(obj):
+            if isinstance(obj, pd.DataFrame):
+                return _df_to_list(obj)
+            if isinstance(obj, dict):
+                return {k: _clean(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_clean(i) for i in obj]
+            if isinstance(obj, (np.integer,)):
+                return int(obj)
+            if isinstance(obj, (np.floating,)):
+                return None if np.isnan(obj) else float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            return obj
+
+        # Modo
+        if self.match_id is not None and self.match_detail:
+            modo = 'partido'
+        elif self.matchday is not None and self.matchday_summary:
+            modo = 'jornada'
+        elif self.player_profile:
+            modo = 'jugador'
+        elif self.liga_summary:
+            modo = 'liga'
+        else:
+            modo = 'equipo'
+
+        payload: dict = {
+            'modo':              modo,
+            'metrics':           _clean(self.metrics),
+            'league_comparison': self.league_comparison,
+            'league_percentiles': self.league_percentiles,
+            'team_record':       _clean(self.team_record),
+            'top_scorers':       _df_to_list(self.top_scorers),
+            'top_defenders':     _df_to_list(self.top_defenders),
+            'highlights':        _df_to_list(self.highlights),
+        }
+
+        if self.liga_summary:
+            ls = {k: v for k, v in self.liga_summary.items()}
+            for df_key in ('clasificacion', 'stats_por_equipo', 'home_away', 'xpts_standings'):
+                ls[df_key] = _df_to_list(ls.get(df_key))
+            payload['liga_summary'] = _clean(ls)
+
+        if self.match_detail:
+            payload['match_detail'] = _clean(self.match_detail)
+
+        if self.matchday_summary:
+            payload['matchday_summary'] = _clean(self.matchday_summary)
+
+        if self.player_profile:
+            payload['player_profile'] = _clean(self.player_profile)
+
+        if self.player_rankings:
+            payload['player_rankings'] = _clean(self.player_rankings)
+
+        json_str = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+
+        if output_path:
+            out = Path(output_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json_str, encoding='utf-8')
+
+        return json_str
 
     def generate_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
         if not self.metrics:
@@ -1466,6 +1657,45 @@ class SportsAgent:
                     f'<td>{row["equipo"]}</td>'
                     f'<td>{row["liga"]}</td>'
                     f'<td style="color:{color};font-weight:bold">{signo}{diff}</td>'
+                    f'</tr>'
+                )
+            html.extend(['      </tbody>', '    </table>', '  </div>'])
+
+        # Sección Percentiles de liga en HTML
+        if self.league_percentiles:
+            n_eq = self.league_percentiles[0]['n_equipos']
+            html.extend([
+                '  <div class="section">',
+                f'    <h2>Percentiles en la liga <small style="color:#666;font-size:0.6em">({n_eq} equipos)</small></h2>',
+                '    <table>',
+                '      <thead><tr><th>Métrica</th><th>Valor</th><th>Percentil</th><th>Valoración</th></tr></thead>',
+                '      <tbody>',
+            ])
+            for p in self.league_percentiles:
+                pct = p['percentil']
+                if pct >= 80:
+                    bar_color = '#27ae60'
+                    rating = 'Excelente'
+                elif pct >= 60:
+                    bar_color = '#2e86de'
+                    rating = 'Por encima de la media'
+                elif pct >= 40:
+                    bar_color = '#f39c12'
+                    rating = 'En la media'
+                else:
+                    bar_color = '#e74c3c'
+                    rating = 'Por debajo de la media'
+                bar_html = (
+                    f'<div style="background:#eee;border-radius:4px;height:10px;width:120px;display:inline-block;vertical-align:middle">'
+                    f'<div style="background:{bar_color};width:{pct}%;height:100%;border-radius:4px"></div></div>'
+                    f' <span style="color:{bar_color};font-weight:bold">{pct}%</span>'
+                )
+                html.append(
+                    f'        <tr>'
+                    f'<td>{p["metrica"]}</td>'
+                    f'<td>{p["valor"]:.2f}</td>'
+                    f'<td>{bar_html}</td>'
+                    f'<td style="color:{bar_color}">{rating}</td>'
                     f'</tr>'
                 )
             html.extend(['      </tbody>', '    </table>', '  </div>'])

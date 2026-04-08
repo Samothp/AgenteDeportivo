@@ -1,4 +1,5 @@
 from typing import Dict, List, Optional
+import numpy as np
 import pandas as pd
 
 
@@ -312,6 +313,124 @@ def compute_team_record(df: pd.DataFrame, team: str) -> Dict:
         'racha_sin_marcar_max': racha_sin_marcar_max,
         'tabla_resultados': results,
     }
+
+
+def compute_team_percentiles(team: str, df_full: pd.DataFrame) -> List[Dict]:
+    """Calcula el percentil del equipo en cada métrica clave respecto al resto de la liga.
+
+    Para cada equipo de la liga calcula el valor promedio de:
+    goles a favor, goles en contra, xG, tiros, posesión y overperformance.
+    Luego indica en qué percentil está el equipo analizado.
+
+    Para métricas donde menos es mejor (goles en contra, faltas) el percentil
+    se invierte: percentil 90 = mejor que el 90% de la liga en esa métrica.
+
+    Returns:
+        Lista de dicts con: metrica, valor, percentil, n_equipos, lower_is_better.
+    """
+    if df_full.empty:
+        return []
+
+    teams = sorted(
+        set(df_full['local_team'].dropna().unique()) |
+        set(df_full['visitante_team'].dropna().unique())
+    )
+    n = len(teams)
+    if n < 2:
+        return []
+
+    team_lower = team.strip().lower()
+
+    def _team_stats(t: str) -> Dict:
+        df_l = df_full[df_full['local_team'] == t]
+        df_v = df_full[df_full['visitante_team'] == t]
+        pj_l = len(df_l)
+        pj_v = len(df_v)
+        pj = pj_l + pj_v
+        if pj == 0:
+            return {}
+
+        gf = float(df_l['goles_local'].sum() + df_v['goles_visitante'].sum())
+        gc = float(df_l['goles_visitante'].sum() + df_v['goles_local'].sum())
+
+        def _wavg(col_l: str, col_v: str) -> Optional[float]:
+            if col_l not in df_full.columns:
+                return None
+            vals_l = df_l[col_l].dropna()
+            vals_v = df_v[col_v].dropna() if col_v in df_full.columns else pd.Series([], dtype=float)
+            total = len(vals_l) + len(vals_v)
+            if total == 0:
+                return None
+            return float((vals_l.sum() + vals_v.sum()) / total)
+
+        xg   = _wavg('xg_local', 'xg_visitante')
+        shots = _wavg('shots_local', 'shots_visitante')
+        pos  = _wavg('posesion_local', 'posesion_visitante')
+
+        gf_pp = gf / pj
+        gc_pp = gc / pj
+        over = round(gf / (xg * pj), 2) if xg and xg > 0 else None
+
+        return {
+            'gf_pp':  gf_pp,
+            'gc_pp':  gc_pp,
+            'xg':     xg,
+            'shots':  shots,
+            'pos':    pos,
+            'over':   over,
+        }
+
+    # Construir tabla con stats de todos los equipos
+    all_stats: Dict[str, Dict] = {}
+    target_name = None
+    for t in teams:
+        s = _team_stats(t)
+        if not s:
+            continue
+        all_stats[t] = s
+        if t.lower().find(team_lower) >= 0 or team_lower in t.lower():
+            target_name = t
+
+    if target_name is None or target_name not in all_stats:
+        return []
+
+    target = all_stats[target_name]
+
+    def _percentile(metric: str, lower_is_better: bool) -> Optional[int]:
+        values = [v[metric] for v in all_stats.values() if v.get(metric) is not None]
+        my_val = target.get(metric)
+        if my_val is None or len(values) < 2:
+            return None
+        arr = np.array(values, dtype=float)
+        if lower_is_better:
+            pct = int(round((np.sum(arr >= my_val) / len(arr)) * 100))
+        else:
+            pct = int(round((np.sum(arr <= my_val) / len(arr)) * 100))
+        return max(1, min(99, pct))
+
+    METRICS = [
+        ('gf_pp',  'Goles a favor / partido',  False),
+        ('gc_pp',  'Goles en contra / partido', True),
+        ('xg',     'xG propio (prom.)',          False),
+        ('shots',  'Tiros propios (prom.)',       False),
+        ('pos',    'Posesión % (prom.)',          False),
+        ('over',   'Eficiencia (goles/xG)',       False),
+    ]
+
+    result = []
+    for key, label, lib in METRICS:
+        val = target.get(key)
+        pct = _percentile(key, lib)
+        if val is None or pct is None:
+            continue
+        result.append({
+            'metrica':         label,
+            'valor':           round(val, 2),
+            'percentil':       pct,
+            'n_equipos':       n,
+            'lower_is_better': lib,
+        })
+    return result
 
 
 def compute_league_comparison(team_metrics: Dict, league_metrics: Dict) -> List[Dict]:
@@ -780,6 +899,94 @@ def compute_match_detail(df: pd.DataFrame, match_id: int) -> Dict:
     }
 
 
+def compute_xpts(df: pd.DataFrame) -> pd.DataFrame:
+    """Clasificación alternativa basada en puntos esperados (xPts) via modelo Poisson.
+
+    Para cada partido con datos de xG estima P(victoria local), P(empate) y
+    P(victoria visitante) usando distribuciones de Poisson independientes e
+    iid, y calcula los xPts que debería haber obtenido cada equipo.
+
+    Returns:
+        DataFrame con columnas: Pos, Equipo, PJ, xPts, PTS, Diff
+        Ordenado por xPts descendente. Vacío si no hay datos xG disponibles.
+    """
+    MAX_G = 8
+    k_arr = np.arange(MAX_G + 1, dtype=float)
+    log_fact = np.zeros(MAX_G + 1)
+    for i in range(1, MAX_G + 1):
+        log_fact[i] = log_fact[i - 1] + np.log(i)
+
+    def _pmf(lam: float) -> np.ndarray:
+        if lam <= 0:
+            p = np.zeros(MAX_G + 1)
+            p[0] = 1.0
+            return p
+        log_p = -lam + k_arr * np.log(lam) - log_fact
+        return np.exp(np.clip(log_p, -700, 700))
+
+    def _match_xpts(xg_l: float, xg_v: float):
+        P = np.outer(_pmf(xg_l), _pmf(xg_v))  # P[i,j] = P(local=i)·P(visita=j)
+        p_home = float(np.tril(P, -1).sum())   # i > j → local gana
+        p_draw  = float(np.trace(P))
+        p_away  = float(np.triu(P, 1).sum())   # j > i → visitante gana
+        return 3 * p_home + p_draw, 3 * p_away + p_draw
+
+    teams = sorted(set(df['local_team'].dropna()) | set(df['visitante_team'].dropna()))
+    xpts_map: Dict[str, float] = {t: 0.0 for t in teams}
+    pts_map:  Dict[str, int]   = {t: 0   for t in teams}
+    pj_map:   Dict[str, int]   = {t: 0   for t in teams}
+
+    for _, row in df.iterrows():
+        local = row.get('local_team')
+        away  = row.get('visitante_team')
+        xg_l  = row.get('xg_local')
+        xg_v  = row.get('xg_visitante')
+        if pd.isna(local) or pd.isna(away) or pd.isna(xg_l) or pd.isna(xg_v):
+            continue
+        try:
+            xg_l_f, xg_v_f = float(xg_l), float(xg_v)
+        except (TypeError, ValueError):
+            continue
+        if xg_l_f < 0 or xg_v_f < 0:
+            continue
+
+        xp_l, xp_v = _match_xpts(xg_l_f, xg_v_f)
+        xpts_map[local] += xp_l
+        xpts_map[away]  += xp_v
+        pj_map[local]   += 1
+        pj_map[away]    += 1
+
+        try:
+            gl = int(row.get('goles_local', 0) or 0)
+            gv = int(row.get('goles_visitante', 0) or 0)
+        except (TypeError, ValueError):
+            gl, gv = 0, 0
+        if gl > gv:
+            pts_map[local] += 3
+        elif gl == gv:
+            pts_map[local] += 1
+            pts_map[away]  += 1
+        else:
+            pts_map[away] += 3
+
+    rows_xpts = [
+        {
+            'Equipo': t,
+            'PJ':     pj_map[t],
+            'xPts':   round(xpts_map[t], 1),
+            'PTS':    pts_map[t],
+            'Diff':   round(pts_map[t] - xpts_map[t], 1),
+        }
+        for t in teams if pj_map[t] > 0
+    ]
+    if not rows_xpts:
+        return pd.DataFrame(columns=['Pos', 'Equipo', 'PJ', 'xPts', 'PTS', 'Diff'])
+
+    df_xpts = pd.DataFrame(rows_xpts).sort_values('xPts', ascending=False).reset_index(drop=True)
+    df_xpts.insert(0, 'Pos', range(1, len(df_xpts) + 1))
+    return df_xpts
+
+
 def compute_liga_summary(df: pd.DataFrame) -> Dict:
     """Resumen completo de una temporada de liga.
 
@@ -800,7 +1007,7 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
 
     competition = _normalize_competition(str(df['competition'].iloc[0]) if 'competition' in df.columns else '-')
     season = str(df['season'].iloc[0]) if 'season' in df.columns else '-'
-    jornadas = int(df['jornada'].max()) if 'jornada' in df.columns and df['jornada'].notna().any() else 0
+    jornadas = int(df['jornada'].nunique()) if 'jornada' in df.columns and df['jornada'].notna().any() else 0
     partidos_totales = len(df)
     goles_totales = int(df['goles_totales'].sum())
     goles_promedio = round(float(df['goles_totales'].mean()), 2)
@@ -960,6 +1167,9 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
         })
     home_away = pd.DataFrame(home_away_rows).sort_values('Pts_L', ascending=False).reset_index(drop=True)
 
+    # Clasificación alternativa por xPts
+    xpts_standings = compute_xpts(df)
+
     return {
         'competition':          competition,
         'season':               season,
@@ -972,6 +1182,7 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
         'stats_por_equipo':     stats_por_equipo,
         'records':              records,
         'home_away':            home_away,
+        'xpts_standings':       xpts_standings,
     }
 
 
