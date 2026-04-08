@@ -132,6 +132,21 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
         if h_avg is not None and a_avg is not None:
             liga_tech[f'{prefix}_liga_promedio'] = (h_avg + a_avg) / 2.0
 
+    # Eficiencia ofensiva: ratio goles reales / xG esperados
+    overperformance = None
+    overperformance_desc = None
+    if team and goles_a_favor is not None:
+        xg_prom = team_tech.get('xg_equipo_promedio')
+        if xg_prom is not None and xg_prom > 0 and total_matches > 0:
+            total_xg = xg_prom * total_matches
+            overperformance = round(goles_a_favor / total_xg, 2)
+            if overperformance > 1.2:
+                overperformance_desc = 'sobrerendimiento (convierte más de lo esperado)'
+            elif overperformance < 0.8:
+                overperformance_desc = 'infrarendimiento (convierte menos de lo esperado)'
+            else:
+                overperformance_desc = 'rendimiento esperado'
+
     return {
         'partidos_analizados': total_matches,
         'goles_totales': total_goals,
@@ -173,6 +188,9 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
         'tarjetas_rojas_equipo':       tarjetas_rojas_equipo,
         # stats técnicas perspectiva equipo (sólo con filtro de equipo)
         **team_tech,
+        # Eficiencia ofensiva
+        'overperformance':      overperformance,
+        'overperformance_desc': overperformance_desc,
         # Referencia de liga para comparativa
         'goles_por_equipo_promedio':   goles_por_equipo_promedio,
         **liga_tech,
@@ -201,14 +219,29 @@ def match_highlights(df: pd.DataFrame, n: int = 5) -> pd.DataFrame:
     return highlights.sort_values(['goles_totales', 'margen_victoria'], ascending=[False, False]).head(n)
 
 
+def _max_streak(results: list, condition_fn) -> int:
+    """Calcula la racha máxima consecutiva de partidos que cumplen condition_fn(r)."""
+    max_streak = current = 0
+    for r in results:
+        if condition_fn(r):
+            current += 1
+            max_streak = max(max_streak, current)
+        else:
+            current = 0
+    return max_streak
+
+
 def compute_team_record(df: pd.DataFrame, team: str) -> Dict:
-    """Calcula el historial W/D/L, puntos y racha del equipo.
+    """Calcula el historial W/D/L, puntos y rachas del equipo.
 
     Ordena los partidos por jornada (o fecha) y determina para cada uno
     si el equipo ganó, empató o perdió, teniendo en cuenta si jugó de local
     o visitante. Devuelve:
       - victorias, empates, derrotas, puntos
       - racha_actual: string como 'VVEEDD' (últimos 5 partidos, orden cronológico)
+      - racha_sin_perder_max: racha consecutiva más larga sin derrota (V o E)
+      - racha_goleadora_max: racha consecutiva más larga marcando al menos 1 gol
+      - racha_sin_marcar_max: racha consecutiva más larga sin marcar ningún gol
       - tabla_resultados: lista de dicts [{jornada, rival, gf, gc, resultado}]
     """
     data = df.copy()
@@ -263,12 +296,20 @@ def compute_team_record(df: pd.DataFrame, team: str) -> Dict:
     ultimos = results[-5:]
     racha_actual = ''.join(r['resultado'] for r in ultimos)
 
+    # Rachas máximas históricas
+    racha_sin_perder_max = _max_streak(results, lambda r: r['resultado'] in ('V', 'E'))
+    racha_goleadora_max  = _max_streak(results, lambda r: r['gf'] > 0)
+    racha_sin_marcar_max = _max_streak(results, lambda r: r['gf'] == 0)
+
     return {
         'victorias': victorias,
         'empates': empates,
         'derrotas': derrotas,
         'puntos': puntos,
         'racha_actual': racha_actual,
+        'racha_sin_perder_max': racha_sin_perder_max,
+        'racha_goleadora_max': racha_goleadora_max,
+        'racha_sin_marcar_max': racha_sin_marcar_max,
         'tabla_resultados': results,
     }
 
@@ -813,6 +854,10 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
         xg = round((xg_l or 0) * pj_l / max(pj_l + pj_v, 1) +
                    (xg_v or 0) * pj_v / max(pj_l + pj_v, 1), 2) if (xg_l or xg_v) else None
 
+        pj_total = pj_l + pj_v
+        total_xg_equipo = xg * pj_total if xg is not None and pj_total > 0 else None
+        over = round(int(gf) / total_xg_equipo, 2) if total_xg_equipo and total_xg_equipo > 0 else None
+
         pos_l = avg_col(df_l, 'posesion_local')
         pos_v = avg_col(df_v, 'posesion_visitante')
         pos = round((pos_l or 0) * pj_l / max(pj_l + pj_v, 1) +
@@ -829,6 +874,7 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
             'GF':     int(gf),
             'GC':     int(gc),
             'xG':     xg,
+            'Over%':  over,
             'Pos%':   pos,
             'Tiros':  shots,
         })
@@ -929,7 +975,7 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
     }
 
 
-def compute_player_profile(df_players: pd.DataFrame, player_name: str) -> Dict:
+def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: int = 5) -> Dict:
     """Perfil de rendimiento individual de un jugador.
 
     Busca al jugador por nombre (insensible a mayúsculas, coincidencia parcial).
@@ -993,8 +1039,8 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str) -> Dict:
     def _translate_pos(pos: str) -> str:
         return _POS_ES.get(str(pos).strip().upper(), str(pos))
 
-    def _top5(df: pd.DataFrame, col: str) -> pd.DataFrame:
-        top = df.sort_values(col, ascending=False).head(5)
+    def _top_n(df: pd.DataFrame, col: str) -> pd.DataFrame:
+        top = df.sort_values(col, ascending=False).head(top_n)
         return pd.DataFrame({
             'Jugador':     top['player_name'].values,
             'Pos':         [_translate_pos(p) for p in top['position'].values],
@@ -1003,8 +1049,8 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str) -> Dict:
             'Asistencias': top['assists'].values,
         }).reset_index(drop=True)
 
-    compañeros_goleadores  = _top5(df_team, 'goals')
-    compañeros_asistentes  = _top5(df_team, 'assists')
+    compañeros_goleadores  = _top_n(df_team, 'goals')
+    compañeros_asistentes  = _top_n(df_team, 'assists')
 
     return {
         'found':                    True,

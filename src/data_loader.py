@@ -1,4 +1,6 @@
+import json
 import pandas as pd
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -136,6 +138,32 @@ def get_db_path(competition_id: int, season: str) -> Path:
     return Path(f"data/db_{competition_id}_{season_norm}.csv")
 
 
+def _get_meta_path(db_path: Path) -> Path:
+    """Sidecar JSON con metadatos de caché (junto al CSV de la DB)."""
+    return db_path.with_suffix('.meta.json')
+
+
+def _save_cache_meta(db_path: Path) -> None:
+    """Escribe el timestamp de descarga en el sidecar JSON."""
+    meta = {'fetched_at': datetime.now(timezone.utc).isoformat()}
+    _get_meta_path(db_path).write_text(json.dumps(meta), encoding='utf-8')
+
+
+def get_cache_age_days(competition_id: int, season: str) -> Optional[float]:
+    """Devuelve la antigüedad del caché en días, o None si no hay metadatos."""
+    db_path = get_db_path(competition_id, season)
+    meta_path = _get_meta_path(db_path)
+    if not meta_path.exists():
+        return None
+    try:
+        meta = json.loads(meta_path.read_text(encoding='utf-8'))
+        fetched_at = datetime.fromisoformat(meta['fetched_at'])
+        now = datetime.now(timezone.utc)
+        return (now - fetched_at).total_seconds() / 86400
+    except Exception:
+        return None
+
+
 def list_available_teams(competition_id: int, season: str) -> List[str]:
     """Devuelve la lista ordenada de equipos presentes en la DB local.
 
@@ -154,6 +182,8 @@ def load_multiple_seasons(
     competition_id: int,
     seasons: List[str],
     fetch_real: bool = False,
+    refresh_cache: bool = False,
+    cache_ttl_days: int = 7,
 ) -> pd.DataFrame:
     """Carga y combina múltiples temporadas en un solo DataFrame.
 
@@ -163,7 +193,7 @@ def load_multiple_seasons(
     dfs = []
     optional_cols: set = set()
     for season in seasons:
-        df = load_match_data(csv_path, fetch_real=fetch_real, competition_id=competition_id, season=season)
+        df = load_match_data(csv_path, fetch_real=fetch_real, competition_id=competition_id, season=season, refresh_cache=refresh_cache, cache_ttl_days=cache_ttl_days)
         df['season'] = str(season)
         optional_cols.update(df.attrs.get('available_optional_columns', []))
         dfs.append(df)
@@ -222,7 +252,7 @@ def add_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None) -> pd.DataFrame:
+def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, refresh_cache: bool = False, cache_ttl_days: int = 7) -> pd.DataFrame:
     """
     Carga datos de partidos desde un archivo CSV o API real.
 
@@ -244,7 +274,15 @@ def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Opt
     else:
         db_path = path
 
-    if fetch_real:
+    # --refresh-cache: eliminar el CSV y el sidecar para forzar re-descarga completa
+    if refresh_cache and db_path.exists():
+        print(f"Eliminando caché existente: {db_path}")
+        db_path.unlink()
+        meta_path = _get_meta_path(db_path)
+        if meta_path.exists():
+            meta_path.unlink()
+
+    if fetch_real or refresh_cache:
         from .api_client import SportsDBAPI, fetch_real_matches
 
         # 1. Cargar DB existente (puede estar vacía en el primer uso)
@@ -312,6 +350,7 @@ def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Opt
 
                 db_path.parent.mkdir(parents=True, exist_ok=True)
                 df_db.to_csv(db_path, index=False)
+                _save_cache_meta(db_path)
                 print(f"DB guardada en: {db_path} ({len(df_db)} partidos totales)")
             else:
                 print("La DB ya está al día, no hay partidos nuevos ni pendientes.")
@@ -321,6 +360,13 @@ def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Opt
     elif db_path.exists():
         print(f"Cargando datos desde: {db_path}")
         df = pd.read_csv(db_path)
+        # Advertir si el caché supera el TTL configurado
+        if competition_id and season:
+            age = get_cache_age_days(competition_id, season)
+            if age is None:
+                print(f"Aviso: no hay metadatos de caché. Usa --refresh-cache para actualizar.")
+            elif age > cache_ttl_days:
+                print(f"Aviso: el caché tiene {age:.0f} días de antigüedad (TTL: {cache_ttl_days}d). Usa --refresh-cache para actualizar.")
     elif path.exists():
         print(f"Cargando datos desde: {csv_path}")
         df = pd.read_csv(path)

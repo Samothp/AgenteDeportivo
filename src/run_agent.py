@@ -21,6 +21,10 @@ def parse_args():
     parser.add_argument('--player', type=str, default=None, help='Nombre del jugador para informe individual (requiere --team)')
     parser.add_argument('--list-teams', action='store_true', help='Lista los equipos disponibles en la DB local para la competition+season indicada y termina')
     parser.add_argument('--seasons', nargs='+', default=None, metavar='YEAR', help='Lista de temporadas a combinar en un solo análisis (ej. --seasons 2024 2025). Tiene prioridad sobre --season')
+    parser.add_argument('--top-n', type=int, default=5, dest='top_n', help='Número de equipos/jugadores en los rankings (por defecto: 5)')
+    parser.add_argument('--no-charts', action='store_true', dest='no_charts', help='Omitir la generación de gráficos (modo texto rápido)')
+    parser.add_argument('--refresh-cache', action='store_true', dest='refresh_cache', help='Eliminar el caché local y re-descargar desde la API (implica --fetch-real)')
+    parser.add_argument('--cache-ttl', type=int, default=7, dest='cache_ttl_days', help='Días antes de avisar que el caché está desactualizado (por defecto: 7)')
     return parser.parse_args()
 
 
@@ -59,7 +63,11 @@ def main():
     if args.html_output:
         args.html_output = ensure_inside_folder(args.html_output, args.visual)
 
-    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team, seasons=args.seasons, matchday=args.jornada, match_id=args.match_id, player=args.player)
+    # --refresh-cache implica --fetch-real
+    if args.refresh_cache:
+        args.fetch_real = True
+
+    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team, seasons=args.seasons, matchday=args.jornada, match_id=args.match_id, player=args.player, top_n=args.top_n, no_charts=args.no_charts, refresh_cache=args.refresh_cache, cache_ttl_days=args.cache_ttl_days)
 
     if args.clean_reports:
         agent.clean_reports(args.visual)
@@ -72,9 +80,12 @@ def main():
     print('Informe de texto generado en:', args.output)
 
     image_paths = agent.save_visual_report(args.visual)
-    print('Gráficos generados en:')
-    for path in image_paths:
-        print('-', path)
+    if image_paths:
+        print('Gráficos generados en:')
+        for path in image_paths:
+            print('-', path)
+    elif args.no_charts:
+        print('Gráficos omitidos (--no-charts activo).')
 
     if args.html_output:
         html_path = agent.generate_html_report(args.html_output, image_folder=args.visual)

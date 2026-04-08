@@ -43,7 +43,7 @@ from .visualizer import (
 
 
 class SportsAgent:
-    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None, player: Optional[str] = None):
+    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None, player: Optional[str] = None, top_n: int = 5, no_charts: bool = False, refresh_cache: bool = False, cache_ttl_days: int = 7):
         self.data_path = data_path
         self.fetch_real = fetch_real
         self.competition_id = competition_id
@@ -53,6 +53,10 @@ class SportsAgent:
         self.matchday = matchday
         self.match_id = match_id
         self.player = player
+        self.top_n = top_n
+        self.no_charts = no_charts
+        self.refresh_cache = refresh_cache
+        self.cache_ttl_days = cache_ttl_days
         self.data: Optional[pd.DataFrame] = None
         self.full_data: Optional[pd.DataFrame] = None
         self.available_optional_columns: set[str] = set()
@@ -76,11 +80,15 @@ class SportsAgent:
             if self.competition_id is None:
                 raise ValueError('--competition es obligatorio con --seasons')
             self.data = load_multiple_seasons(
-                self.data_path, self.competition_id, self.seasons, self.fetch_real
+                self.data_path, self.competition_id, self.seasons, self.fetch_real,
+                refresh_cache=self.refresh_cache, cache_ttl_days=self.cache_ttl_days,
             )
         else:
             _season = self.seasons[0] if self.seasons and len(self.seasons) == 1 else self.season
-            self.data = load_match_data(self.data_path, self.fetch_real, self.competition_id, _season)
+            self.data = load_match_data(
+                self.data_path, self.fetch_real, self.competition_id, _season,
+                refresh_cache=self.refresh_cache, cache_ttl_days=self.cache_ttl_days,
+            )
         if self.data is not None and isinstance(self.data, pd.DataFrame):
             self.available_optional_columns = set(self.data.attrs.get('available_optional_columns', []))
         return self.data
@@ -118,9 +126,9 @@ class SportsAgent:
             # Rellenar metrics mínimas para no romper generate_report/save_visual_report
             match_row = self.data[self.data['id_event'] == self.match_id]
             self.metrics = compute_overall_metrics(match_row)
-            self.top_scorers = top_scoring_teams(match_row)
-            self.top_defenders = top_defensive_teams(match_row)
-            self.highlights = match_highlights(match_row)
+            self.top_scorers = top_scoring_teams(match_row, n=self.top_n)
+            self.top_defenders = top_defensive_teams(match_row, n=self.top_n)
+            self.highlights = match_highlights(match_row, n=self.top_n)
             return self.metrics
 
         # Modo Jornada: filtrar por número de jornada y generar resumen
@@ -128,9 +136,9 @@ class SportsAgent:
             self.filter_by_matchday()
             self.matchday_summary = compute_matchday_summary(self.data, self.full_data if self.full_data is not None else self.data, self.matchday)
             self.metrics = compute_overall_metrics(self.data)
-            self.top_scorers = top_scoring_teams(self.data)
-            self.top_defenders = top_defensive_teams(self.data)
-            self.highlights = match_highlights(self.data)
+            self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
+            self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
+            self.highlights = match_highlights(self.data, n=self.top_n)
             return self.metrics
 
         # Modo Jugador: --team + --player
@@ -143,30 +151,30 @@ class SportsAgent:
                 verbose=self.fetch_real,
             )
             self.player_rankings_raw = df_players
-            self.player_profile = compute_player_profile(df_players, self.player)
+            self.player_profile = compute_player_profile(df_players, self.player, top_n=self.top_n)
             self.player_rankings = compute_player_rankings(df_players)
             self.filter_by_team()
             self.metrics = compute_overall_metrics(self.data, team=self.team)
-            self.top_scorers = top_scoring_teams(self.data)
-            self.top_defenders = top_defensive_teams(self.data)
-            self.highlights = match_highlights(self.data)
+            self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
+            self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
+            self.highlights = match_highlights(self.data, n=self.top_n)
             return self.metrics
 
         # Modo Liga: sin equipo ni jornada → panorama completo de la temporada
         if not self.team:
             self.liga_summary = compute_liga_summary(self.data)
             self.metrics = compute_overall_metrics(self.data)
-            self.top_scorers = top_scoring_teams(self.data)
-            self.top_defenders = top_defensive_teams(self.data)
-            self.highlights = match_highlights(self.data)
+            self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
+            self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
+            self.highlights = match_highlights(self.data, n=self.top_n)
             return self.metrics
 
         # Modo Equipo: filtrar por equipo
         self.filter_by_team()
         self.metrics = compute_overall_metrics(self.data, team=self.team)
-        self.top_scorers = top_scoring_teams(self.data)
-        self.top_defenders = top_defensive_teams(self.data)
-        self.highlights = match_highlights(self.data)
+        self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
+        self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
+        self.highlights = match_highlights(self.data, n=self.top_n)
         # Comparativa vs liga si se filtró por equipo
         if self.full_data is not None:
             self.league_metrics = compute_overall_metrics(self.full_data)
@@ -185,6 +193,7 @@ class SportsAgent:
             )
             self.player_rankings = compute_player_rankings(df_players)
         return self.metrics
+
 
     def format_metric(self, key: str, label: str, is_percent: bool = False) -> str:
         value = self.metrics.get(key)
@@ -263,13 +272,14 @@ class SportsAgent:
         lines.append('Estadísticas técnicas por equipo')
         lines.append('--------------------------------')
         st = s['stats_por_equipo']
-        lines.append(f'  {"Equipo":<25} {"GF":>4} {"GC":>4} {"xG":>5} {"Pos%":>5} {"Tiros":>6}')
-        lines.append(f'  {"-"*25} {"--":>4} {"--":>4} {"---":>5} {"----":>5} {"-----":>6}')
+        lines.append(f'  {"Equipo":<25} {"GF":>4} {"GC":>4} {"xG":>5} {"Over%":>6} {"Pos%":>5} {"Tiros":>6}')
+        lines.append(f'  {"-"*25} {"--":>4} {"--":>4} {"---":>5} {"-----":>6} {"----":>5} {"-----":>6}')
         for _, row in st.iterrows():
             xg   = f'{row["xG"]:.2f}' if pd.notna(row.get('xG')) and row.get('xG') is not None else '-'
+            over = f'{row["Over%"]:.2f}' if pd.notna(row.get('Over%')) and row.get('Over%') is not None else '-'
             pos  = f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-'
             tirs = f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-'
-            lines.append(f'  {row["Equipo"]:<25} {int(row["GF"]):>4} {int(row["GC"]):>4} {xg:>5} {pos:>5} {tirs:>6}')
+            lines.append(f'  {row["Equipo"]:<25} {int(row["GF"]):>4} {int(row["GC"]):>4} {xg:>5} {over:>6} {pos:>5} {tirs:>6}')
         lines.append('')
 
         # Rendimiento local/visitante
@@ -407,17 +417,22 @@ class SportsAgent:
         html.extend([
             '  <h2>Estadísticas técnicas por equipo</h2>',
             '  <table>',
-            '    <thead><tr><th class="left">Equipo</th><th>GF</th><th>GC</th><th>xG medio</th><th>Posesión %</th><th>Tiros/partido</th></tr></thead>',
+            '    <thead><tr><th class="left">Equipo</th><th>GF</th><th>GC</th><th>xG medio</th><th>Over%</th><th>Posesión %</th><th>Tiros/partido</th></tr></thead>',
             '    <tbody>',
         ])
         for _, row in st.iterrows():
             xg  = f'{row["xG"]:.2f}' if pd.notna(row.get('xG')) and row.get('xG') is not None else '-'
+            over = f'{row["Over%"]:.2f}' if pd.notna(row.get('Over%')) and row.get('Over%') is not None else '-'
             pos = f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-'
             tir = f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-'
+            over_val = row.get('Over%')
+            over_color = ''
+            if pd.notna(over_val) and over_val is not None:
+                over_color = ' style="color:#27ae60;font-weight:bold"' if over_val > 1.2 else (' style="color:#e74c3c;font-weight:bold"' if over_val < 0.8 else '')
             html.append(
                 f'      <tr><td class="left">{row["Equipo"]}</td>'
                 f'<td>{int(row["GF"])}</td><td>{int(row["GC"])}</td>'
-                f'<td>{xg}</td><td>{pos}</td><td>{tir}</td></tr>'
+                f'<td>{xg}</td><td{over_color}>{over}</td><td>{pos}</td><td>{tir}</td></tr>'
             )
         html.extend(['    </tbody>', '  </table>'])
 
@@ -1154,6 +1169,10 @@ class SportsAgent:
             report_lines.append('Estadísticas técnicas promedio')
             report_lines.append('------------------------------')
             report_lines.extend(tech_lines)
+            over = self.metrics.get('overperformance')
+            over_desc = self.metrics.get('overperformance_desc')
+            if over is not None:
+                report_lines.append(f"  Eficiencia ofensiva (goles/xG): {over:.2f}  →  {over_desc}")
 
         # Comparativa vs liga
         if self.league_comparison:
@@ -1179,6 +1198,11 @@ class SportsAgent:
                 f"Derrotas: {rec['derrotas']}  |  Puntos: {rec['puntos']}"
             )
             report_lines.append(f"  Racha últimos 5: {racha_display}")
+            report_lines.append(
+                f"  Racha sin perder (máx.): {rec['racha_sin_perder_max']} partidos  |  "
+                f"Racha goleadora (máx.): {rec['racha_goleadora_max']} partidos  |  "
+                f"Racha sin marcar (máx.): {rec['racha_sin_marcar_max']} partidos"
+            )
             report_lines.append('')
             show_season_col = any(r.get('season') for r in rec['tabla_resultados'])
             if show_season_col:
@@ -1407,6 +1431,17 @@ class SportsAgent:
                     )
             html.append(f'      <div class="metric"><strong>{lbl}</strong><p>{fmt_total}{split_html}</p></div>')
 
+        # Eficiencia ofensiva xG
+        over = self.metrics.get('overperformance')
+        over_desc = self.metrics.get('overperformance_desc')
+        if over is not None:
+            color = '#27ae60' if over > 1.2 else ('#e74c3c' if over < 0.8 else '#f39c12')
+            html.append(
+                f'      <div class="metric"><strong>Eficiencia ofensiva (goles/xG)</strong>'
+                f'<p style="color:{color};font-size:1.3em;font-weight:bold">{over:.2f}</p>'
+                f'<small style="color:#555">{over_desc}</small></div>'
+            )
+
         html.extend([
             '    </div>',
             '  </div>',
@@ -1457,7 +1492,12 @@ class SportsAgent:
                 f'      <div class="metric"><strong>Derrotas</strong><p style="color:#e74c3c;font-size:1.4em;font-weight:bold">{rec["derrotas"]}</p></div>',
                 f'      <div class="metric"><strong>Puntos</strong><p style="font-size:1.4em;font-weight:bold">{rec["puntos"]}</p></div>',
                 '    </div>',
-                f'    <p><strong>Racha últimos 5:</strong> {racha_badges}</p>',
+                f'    <p><strong>Racha últimos 5:</strong> {racha_badges}</p>'
+                f'    <p>'
+                f'      <strong>Racha sin perder (máx.):</strong> {rec["racha_sin_perder_max"]} partidos &nbsp;&nbsp;|&nbsp;&nbsp;'
+                f'      <strong>Racha goleadora (máx.):</strong> {rec["racha_goleadora_max"]} partidos &nbsp;&nbsp;|&nbsp;&nbsp;'
+                f'      <strong>Racha sin marcar (máx.):</strong> {rec["racha_sin_marcar_max"]} partidos'
+                f'    </p>',
                 '    <table>',
             ])
             show_season_col = any(r.get('season') for r in rec['tabla_resultados'])
@@ -1554,6 +1594,9 @@ class SportsAgent:
     def save_visual_report(self, output_folder: str = 'reports') -> List[str]:
         if self.data is None:
             raise ValueError('No hay datos cargados. Ejecute load_data() primero.')
+
+        if self.no_charts:
+            return []
 
         report_folder = Path(output_folder)
         report_folder.mkdir(parents=True, exist_ok=True)
