@@ -17,8 +17,15 @@ Este archivo resume los comandos principales del agente para analizar datos depo
 --jornada        Número de jornada (activa modo Jornada)
 --match-id       ID del partido — id_event — (activa modo Partido)
 --player         Nombre del jugador (requiere --team, activa modo Jugador)
+--compare        Dos equipos a comparar (activa modo Compare)
 --list-teams     Lista los equipos disponibles en la DB y termina
---seasons        Lista de temporadas a combinar (ej. --seasons 2024 2025)
+--seasons        Lista de temporadas a combinar (ej. --seasons 2022 2023 2024)
+--top-n          Número de equipos/jugadores en los rankings (por defecto: 5)
+--no-charts      Omitir generación de gráficos (texto rápido)
+--format         Formato de salida: text (por defecto) o json
+--matchday-range Rango de jornadas a analizar (ej. --matchday-range 10 20)
+--refresh-cache  Eliminar el caché local y re-descargar desde la API
+--cache-ttl      Días antes de avisar que el caché está desactualizado (por defecto: 7)
 ```
 
 ## Detección automática del tipo de informe
@@ -27,30 +34,31 @@ El agente selecciona el modo según los argumentos:
 
 | Modo | Condición | Descripción |
 |------|-----------|-------------|
-| **Liga** | solo `--competition` + `--season` | Clasificación, récords, stats de la temporada |
-| **Equipo** | `--team` (sin `--player`) | Análisis del equipo: W/D/L, métricas, comparativa vs liga |
+| **Liga** | solo `--competition` + `--season` | Clasificación, xPts, récords, stats de la temporada |
+| **Equipo** | `--team` (sin `--player`) | W/D/L, métricas con percentiles, comparativa vs liga, rachas, conclusiones |
 | **Jornada** | `--jornada N` | Resultados y estadísticas de una jornada |
 | **Partido** | `--match-id ID` | Ficha técnica detallada de un partido |
 | **Jugador** | `--team` + `--player` | Perfil individual de un jugador |
+| **Compare** | `--compare TEAM1 TEAM2` | Radar, H2H y diferencias entre dos equipos |
 
 ---
 
 ## Informe de Liga
 
-Panorama completo de una temporada: clasificación, récords, estadísticas por equipo y rendimiento local/visitante.
+Panorama completo de una temporada: clasificación, xPts (puntos esperados), récords, estadísticas por equipo y rendimiento local/visitante.
 
 ```bash
 python -m src.run_agent --competition 2014 --season 2025 \
   --output reports/laliga.txt --html-output reports/laliga.html --visual reports/laliga
 ```
 
-Gráficos generados: `league_table.png`, `goals_per_team.png`, `xg_per_team.png`, `home_away_performance.png`
+Gráficos generados: `league_table.png`, `goals_per_team.png`, `xg_per_team.png`, `home_away_performance.png`, `points_evolution.png`
 
 ---
 
 ## Informe de Equipo
 
-Análisis filtrado por equipo: historial W/D/L, métricas técnicas, comparativa vs liga, top goleadores y asistentes.
+Análisis filtrado por equipo: historial W/D/L, rachas máximas, métricas técnicas con percentiles de liga, comparativa vs liga, overperformance xG, top goleadores y asistentes, y sección de **Conclusiones automáticas** al final.
 
 ```bash
 python -m src.run_agent --competition 2014 --season 2025 --team Mallorca \
@@ -59,7 +67,7 @@ python -m src.run_agent --competition 2014 --season 2025 --team Mallorca \
 
 El filtro usa búsqueda parcial: `Mallorca` localiza `RCD Mallorca`. Usa `--list-teams` para ver nombres exactos.
 
-Gráficos: `goals_distribution.png`, `possession_distribution.png`, `card_summary.png`, `xg_per_match.png`, `shots_comparison.png`, `temporal_evolution.png`
+Gráficos: `goals_distribution.png`, `possession_distribution.png`, `card_summary.png`, `xg_per_match.png`, `shots_comparison.png`, `temporal_evolution.png`, `shot_funnel.png`
 
 ---
 
@@ -112,6 +120,22 @@ Gráficos: `player_bar.png` (barras jugador vs media equipo), `player_radar.png`
 
 ---
 
+## Informe Compare (dos equipos)
+
+Comparati va directa entre dos equipos: radar con todas las métricas, tabla de enfrentamientos H2H en la DB y diferencias absolutas/porcentuales en cada métrica.
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 \
+  --compare "Real Madrid" "Barcelona" \
+  --output reports/compare.txt --html-output reports/compare.html --visual reports/compare
+```
+
+Ambos equipos deben existir en la DB de la misma `--competition` y `--season`.
+
+Gráficos: `compare_radar.png`, `compare_bars.png`
+
+---
+
 ## Ver equipos disponibles en la DB local
 
 Antes de generar un informe de equipo, consulta qué nombres exactos usa la DB:
@@ -135,6 +159,69 @@ Si la DB no existe aún:
 ```
 No hay DB local para competition=2014 season=2025.
 Usa --fetch-real para descargar los datos primero.
+```
+
+---
+
+## Opciones de control de salida
+
+### Informes rápidos sin gráficos
+
+`--no-charts` omite toda la generación de imágenes. útil para obtener el texto en menos de 1 segundo:
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --no-charts --output reports/mallorca_rapido.txt
+```
+
+### Rankings configurables
+
+`--top-n N` controla cuántos equipos/jugadores aparecen en los rankings (por defecto 5):
+
+```bash
+# Top 10 goleadores en vez de 5
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --top-n 10 --output reports/mallorca_top10.txt
+```
+
+### Salida JSON
+
+`--format json` serializa todo el análisis a JSON. La extensión `.txt` se transforma automáticamente a `.json`:
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --format json --output reports/mallorca.json
+```
+
+El JSON incluye todas las métricas, registros, percentiles y datos del informe, listo para integración con otras herramientas.
+
+### Análisis de rango de jornadas
+
+`--matchday-range START END` filtra el dataset a las jornadas indicadas y genera un informe de liga parcial:
+
+```bash
+# Primera vuelta (jornadas 1–19)
+python -m src.run_agent --competition 2014 --season 2025 --matchday-range 1 19 --output reports/primera_vuelta.txt
+
+# Segunda vuelta
+python -m src.run_agent --competition 2014 --season 2025 --matchday-range 20 38 --output reports/segunda_vuelta.txt
+```
+
+No es compatible con `--jornada`.
+
+### Análisis multi-temporada con narrativa intertemporada
+
+`--seasons` combina varias temporadas en un solo DataFrame y genera al final del informe la evolución porcentual de las métricas clave entre la primera y la última temporada:
+
+```bash
+python -m src.run_agent --competition 2014 --team Barcelona --seasons 2022 2023 2024 \
+  --output reports/barca_evolucion.txt
+```
+
+Salida esperada al final del informe:
+```
+Evolución intertemporada  (2022 → 2024)
+------------------------------------------------
+  Goles a favor/partido              1.70 →   2.67  (+57.1%)  Mejora
+  Goles encajados/partido            1.40 →   0.97  (-30.7%)  Mejora
+  ...
 ```
 
 ## Base de datos local incremental

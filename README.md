@@ -45,17 +45,23 @@ print(competitions)
 
 **¡El agente deportivo está completamente funcional!**
 
-- ✅ **Datos reales**: Acceso a competiciones europeas con API premium
+- ✅ **Datos reales**: Acceso a competiciones europeas con API premium (TheSportsDB)
 - ✅ **Temporada actual**: Datos de La Liga 2025 (temporada 2025-2026) disponibles
 - ✅ **Análisis completo**: Métricas, rankings y visualizaciones automáticas
-- ✅ **Informes múltiples**: Texto plano, HTML interactivo y gráficos
+- ✅ **Informes múltiples**: Texto plano, HTML interactivo, JSON y gráficos
 - ✅ **Flexibilidad**: Maneja datasets con columnas opcionales
-- ✅ **DB local incremental**: Caché por competición/temporada, informes de equipo sin API
+- ✅ **DB local incremental**: Caché por competición/temporada con TTL configurable
 - ✅ **18 estadísticas técnicas**: xG, tiros, posesión, corners, pases, paradas, etc.
 - ✅ **Evolución temporal**: gráfico de línea por jornada (goles, xG, tiros a puerta)
 - ✅ **Comparativa vs liga**: cada métrica del equipo frente a la media de la competición
+- ✅ **Percentiles de liga**: percentil de cada métrica del equipo sobre el resto de equipos
+- ✅ **xPts (puntos esperados)**: modelo Poisson sobre xG, clasificación alternativa en modo Liga
+- ✅ **Eficiencia ofensiva**: ratio `goles reales / xG` (overperformance) en todos los modos
+- ✅ **Rachas máximas**: sin perder, goleadora y sin marcar en el historial del equipo
+- ✅ **Conclusiones automáticas**: bloque de insights basado en reglas al final de cada informe
+- ✅ **Narrativa intertemporada**: con `--seasons`, evolución % de métricas entre temporadas
 - ✅ **Listado de equipos**: `--list-teams` muestra los equipos disponibles en la DB local
-- ✅ **5 tipos de informe**: Liga, Equipo, Jornada, Partido y Jugador
+- ✅ **6 tipos de informe**: Liga, Equipo, Jornada, Partido, Jugador y Compare
 
 ### Último análisis disponible
 
@@ -128,11 +134,12 @@ El agente detecta automáticamente el tipo de informe según los argumentos prop
 
 | Tipo | Argumentos necesarios | Descripción |
 |------|----------------------|-------------|
-| **Liga** | solo `--competition` y `--season` | Clasificación, récords y stats de toda la temporada |
-| **Equipo** | `--team <nombre>` | Análisis del equipo: W/D/L, métricas, comparativa vs liga, top jugadores |
+| **Liga** | solo `--competition` y `--season` | Clasificación, xPts, récords y stats de toda la temporada |
+| **Equipo** | `--team <nombre>` | W/D/L, métricas con percentiles, comparativa vs liga, rachas, conclusiones |
 | **Jornada** | `--jornada <N>` | Todos los resultados y estadísticas de una jornada concreta |
 | **Partido** | `--match-id <id>` | Ficha técnica detallada y estadísticas cara a cara de un partido |
 | **Jugador** | `--team <nombre>` + `--player <nombre>` | Perfil individual: stats, ratios, ranking y gráficos comparativos |
+| **Compare** | `--compare TEAM1 TEAM2` | Radar comparativo, H2H y diferencias en todas las métricas entre dos equipos |
 
 ## Uso básico
 
@@ -172,13 +179,43 @@ python -m src.run_agent --competition 2014 --season 2025 --match-id 2279399 --ou
 python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --player "Vedat Muriqi" --output reports/muriqi.txt --html-output reports/muriqi.html --visual reports/muriqi
 ```
 
+**Comparativa entre dos equipos:**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --compare "Real Madrid" "Barcelona" --output reports/compare.txt --html-output reports/compare.html
+```
+
+**Análisis de un rango de jornadas:**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --matchday-range 1 17 --output reports/primera_vuelta.txt
+```
+
+**Análisis multi-temporada con narrativa intertemporada:**
+
+```bash
+python -m src.run_agent --competition 2014 --team Barcelona --seasons 2022 2023 2024 --output reports/barca_evolucion.txt
+```
+
+**Informe rápido sin gráficos (solo texto):**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --no-charts --output reports/mallorca_rapido.txt
+```
+
+**Salida en formato JSON:**
+
+```bash
+python -m src.run_agent --competition 2014 --season 2025 --team Mallorca --format json --output reports/mallorca.json
+```
+
 **Construir/actualizar la DB de una competición:**
 
 ```bash
 python -m src.run_agent --fetch-real --competition 2014 --season 2025 --output reports/laliga_2025.txt --html-output reports/laliga_2025.html --visual reports/laliga_2025
 ```
 
-Para una guía completa de todos los comandos, consulta `COMMANDS.md`.
+Para una guía completa de todos los comandos y flags, consulta `COMMANDS.md`.
 Para el historial de cambios, consulta `CHANGELOG.md`.
 
 **Obtener datos de otras competiciones:**
@@ -192,6 +229,9 @@ python -m src.run_agent --fetch-real --competition 2021 --season 2025 --output r
 
 # Bundesliga 2024
 python -m src.run_agent --fetch-real --competition 2002 --season 2024 --output reports/bundesliga_2024.txt --visual reports/bundesliga_2024
+
+# UEFA Champions League 2025
+python -m src.run_agent --fetch-real --competition 2001 --season 2025 --output reports/ucl_2025.txt --visual reports/ucl_2025
 ```
 
 ## Extensión

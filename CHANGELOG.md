@@ -4,6 +4,50 @@ Todos los cambios importantes de este proyecto se documentarán en este archivo.
 
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [3.0.0] — 2026-04-08
+
+### Añadido
+
+**Fase 1 — Fundamentos**
+- `--top-n N`: número configurable de equipos/jugadores en todos los rankings (antes hardcoded a 5).
+- `--no-charts`: omitir generación de gráficos para obtener informes de texto rápidos.
+- TTL de caché: sidecar `.meta.json` junto a cada CSV con `fetched_at`. Nuevo argumento `--refresh-cache` para forzar re-descarga. Nuevo argumento `--cache-ttl N` para configurar el número de días antes de avisar de desactualización (por defecto 7).
+- `compute_team_record()` devuelve ahora tres rachas máximas históricas: `racha_sin_perder_max`, `racha_goleadora_max` y `racha_sin_marcar_max`.
+- `overperformance` (ratio goles reales / xG): campo en `compute_overall_metrics()`. Columna `Over%` en la tabla de clasificación del modo Liga. Icono contextual en el informe Equipo.
+
+**Fase 2 — Nuevos análisis**
+- `compute_team_percentiles()` en `analysis.py`: percentil de cada métrica del equipo sobre el resto de la liga. Barra visual en HTML y valoración textual en el informe Equipo.
+- `compute_xpts()` en `analysis.py`: puntos esperados según modelo Poisson sobre xG por partido. Tabla de clasificación alternativa con diferencia `PTS - xPts` en el modo Liga.
+- `--format json`: `generate_json_report()` serializa todos los datos del análisis a JSON con encoder personalizado para DataFrames y tipos numpy. La extensión `.txt` se transforma a `.json` automáticamente.
+- `--matchday-range START END`: análisis de una franja de jornadas (ej. jornadas 10–20). Reutiliza el pipeline de Liga con título "INFORME DE RANGO".
+
+**Fase 3 — Nuevas visualizaciones**
+- `plot_shot_funnel()`: embudo de conversión tiros totales → tiros a puerta → goles para local y visitante.
+- `plot_points_evolution()`: línea temporal de puntos acumulados por jornada para el top-N de equipos.
+- Modo `--compare TEAM1 TEAM2`: nuevo modo de informe con radar comparativo, tabla H2H de enfrentamientos directos y diferencias en todas las métricas. Texto (`_generate_compare_report`) y HTML (`_generate_compare_html_report`) en `agent.py`. Función `compute_head_to_head()` en `analysis.py`.
+- `plot_results_heatmap()`: mapa de calor N×N con resultado medio para cada par local–visitante.
+
+**Fase 4 — Soporte de fuentes de datos**
+- `player_loader.py`: mapa `_ESPN_LEAGUE` extendido con `2001: "uefa.champions"` y `2146: "uefa.europa"`.
+- `_fetch_roster_thesportsdb()`: fallback a TheSportsDB cuando ESPN no tiene el equipo/liga. Cargado automáticamente si `team_id` es `None` en ESPN.
+- Variable de entorno `THESPORTSDB_API_KEY` leída con `python-dotenv` en `player_loader.py`.
+
+**Fase 5 — Narrativa automática**
+- `_generate_conclusions()` / `_generate_conclusions_html()` en `agent.py`: bloque "Conclusiones" al final de todos los informes Equipo y Liga. Muestra siempre la forma reciente (últimos 5 partidos), balance global con etiqueta contextual, promedios ofensivo/defensivo, eficiencia xG y percentiles extremos de liga.
+- `_generate_interseason_narrative()` en `agent.py`: con `--seasons`, compara métricas clave (GF/GC/xG/tiros/posesión) entre la primera y última temporada con variación porcentual y etiqueta Mejora/Empeora/Sin cambio significativo.
+
+### Cambiado
+- `agent.py`: `analyze()` soporta ahora un séptimo modo (`compare`) además de los cinco originales.
+- `run_agent.py`: añadidos argumentos `--compare`, `--top-n`, `--no-charts`, `--refresh-cache`, `--cache-ttl`, `--matchday-range` y `--format`.
+- `README.md` y `COMMANDS.md` actualizados con todos los nuevos modos, argumentos y ejemplos.
+- `ROADMAP.md` actualizado: Fases 1–5 marcadas como completadas.
+
+### Corregido
+- Bug en `_generate_conclusions()` modo Liga: `escolta` es una pandas `Series`, comparación `if escolta is not None` en lugar de `if escolta` para evitar `ValueError: The truth value of a Series is ambiguous`.
+- `compute_team_record()`: ordenación multi-temporada usa `['season', 'jornada']` para preservar el orden cronológico correcto al combinar varias temporadas con `--seasons`.
+
+---
+
 ## [2.0.0] — 2026-04-08
 
 ### Añadido
