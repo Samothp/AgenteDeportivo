@@ -1,0 +1,2110 @@
+
+================================================================================
+                    PLAN DE ACCIÓN EJECUTIVO - 30 DÍAS
+                         AGENTE DEPORTIVO
+                    Lanzamiento Fase 1 (Freemium B2C)
+================================================================================
+
+Duración: 30 días (Semanas 1-4)
+Objetivo: MVP operativo + primeros 1,000 usuarios + validación PMF
+Inversión requerida: $15K-20K (hosting + marketing inicial)
+Creado: Abril 2026
+Versión: 1.0
+
+================================================================================
+SEMANA 1: PREPARACIÓN Y SETUP INFRAESTRUCTURA
+================================================================================
+
+OBJETIVO SEMANAL:
+✓ Validar demanda de mercado
+✓ Infraestructura inicial en AWS
+✓ Configurar herramientas de desarrollo
+✓ Plan de marketing pre-lanzamiento
+
+HORAS ESTIMADAS: 35-40 horas
+INVERSIÓN: $50-80
+
+────────────────────────────────────────────────────────────────────────────────
+DÍA 1 (LUNES) - GitHub + AWS Setup
+────────────────────────────────────────────────────────────────────────────────
+
+MAÑANA (09:00 - 12:30):
+
+[ ] Crear proyecto GitHub con branching strategy
+    └─ Estructura:
+       main (production)
+       ├─ develop (staging)
+       ├─ feature/auth
+       ├─ feature/api
+       └─ feature/dashboard
+    
+    Comando:
+    git init AgenteDeportivo
+    git branch develop
+    git checkout develop
+
+[ ] Configurar GitHub Issues template
+    └─ Crear .github/ISSUE_TEMPLATE/bug.md
+    └─ Crear .github/ISSUE_TEMPLATE/feature.md
+
+[ ] Crear GitHub Projects board (Kanban)
+    └─ Columnas: To Do | In Progress | In Review | Done
+    └─ Agregar issues de Semana 1
+
+DURACIÓN MAÑANA: 3 horas
+
+
+TARDE (13:30 - 17:00):
+
+[ ] AWS Setup - Crear cuenta si no tienes
+    └─ URL: https://aws.amazon.com
+    └─ Habilitar billing alert en $1K/mes
+
+[ ] Crear instancia EC2
+    └─ Tipo: t3.medium (30/mes)
+    └─ AMI: Ubuntu 22.04 LTS
+    └─ Security Group: HTTP (80), HTTPS (443), SSH (22)
+    └─ Key pair: guardar .pem seguro
+
+[ ] Crear RDS PostgreSQL
+    └─ Tipo: db.t3.micro (15/mes)
+    └─ Master username: admin
+    └─ Password: generar fuerte (guardar en .env)
+    └─ Nombre DB: agentedeportivo_db
+
+[ ] Crear S3 bucket
+    └─ Nombre: agentedeportivo-assets-2026
+    └─ Región: eu-west-1 (Europa)
+    └─ Bloquear acceso público (securidad)
+    └─ Habilitar versionado
+
+[ ] Crear usuario IAM con permisos
+    └─ Permisos: EC2, RDS, S3 (solo lectura)
+    └─ Generar access keys
+    └─ Guardar en .env seguro
+
+DURACIÓN TARDE: 4 horas
+
+
+EVENING (17:00 - 18:30):
+
+[ ] Documentar requisitos funcionales MVP
+    └─ Archivo: REQUISITOS_MVP.md
+    └─ Incluir:
+       - Autenticación OAuth2 (Google, GitHub)
+       - API REST con 6 endpoints
+       - Dashboard básico
+       - Rate limiting
+       - Stripe integration
+
+DURACIÓN EVENING: 1.5 horas
+
+TOTAL DÍA 1: 8.5 horas ✓
+
+
+────────────────────────────────────────────────────────────────────────────────
+DÍA 2 (MARTES) - Validación de Mercado
+────────────────────────────────────────────────────────────────────────────────
+
+MAÑANA (09:00 - 12:00):
+
+[ ] Survey en redes sociales - VALIDAR PRICING
+    
+    Tweet en Twitter:
+    "¿Cuánto pagarías por análisis automático de tu equipo favorito?
+    
+    A) Gratuito
+    B) €2.99/mes
+    C) €4.99/mes
+    D) €9.99/mes
+    
+    #AgenteDeportivo #Football #Analytics"
+    
+    Target: 500 respuestas en 24h
+    Duración: 12 horas (por la noche idealmente)
+
+[ ] Crear formulario Google Form
+    └─ Nombre: "Pre-launch Interest - AgenteDeportivo"
+    └─ Preguntas:
+       1. ¿Cuál es tu edad?
+       2. ¿Eres fan de algún equipo?
+       3. ¿Cuál es tu equipo favorito?
+       4. ¿Te gustaría análisis automático? (Sí/No)
+       5. ¿Cuánto pagarías? (múltiple choice)
+       6. ¿Cómo lo usarías? (open text)
+       7. Email para updates (opcional)
+    
+    Link: https://docs.google.com/forms/...
+    Compartir en Twitter, Reddit, Discord
+
+[ ] Enviar a 10 amigos/conocidos
+    └─ Email: "Estoy construyendo herramienta de análisis deportivo. ¿Feedback?"
+    └─ Pedir que rellenen form
+    └─ Ofrecer acceso beta gratis
+
+DURACIÓN MAÑANA: 3 horas
+
+
+TARDE (13:30 - 17:00):
+
+[ ] Setup inicial FastAPI
+    
+    main.py:
+    ```python
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    app = FastAPI(
+        title="AgenteDeportivo API",
+        version="0.1.0"
+    )
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    @app.get("/health")
+    def health():
+        return {"status": "ok", "version": "0.1.0"}
+    
+    if __name__ == "__main__":
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+    ```
+
+[ ] Crear estructura de carpetas
+    ```
+    AgenteDeportivo/
+    ├── src/
+    │   ├── __init__.py
+    │   ├── main.py
+    │   ├── models.py
+    │   ├── schemas.py
+    │   ├── database.py
+    │   └── routers/
+    │       ├── auth.py
+    │       ├── api.py
+    │       └── users.py
+    ├── tests/
+    │   ├── __init__.py
+    │   ├── test_auth.py
+    │   └── test_api.py
+    ├── .env.example
+    ├── requirements.txt
+    ├── Dockerfile
+    ├── docker-compose.yml
+    └── README.md
+    ```
+
+[ ] Setup Docker
+    
+    requirements.txt:
+    ```
+    fastapi==0.104.1
+    uvicorn==0.24.0
+    sqlalchemy==2.0.23
+    psycopg2-binary==2.9.9
+    python-dotenv==1.0.0
+    pydantic==2.5.0
+    requests==2.31.0
+    stripe==7.8.0
+    pytest==7.4.3
+    ```
+    
+    Dockerfile:
+    ```dockerfile
+    FROM python:3.11-slim
+    WORKDIR /app
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    COPY . .
+    CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0"]
+    ```
+    
+    docker-compose.yml:
+    ```yaml
+    version: '3.8'
+    services:
+      api:
+        build: .
+        ports:
+          - "8000:8000"
+        environment:
+          DATABASE_URL: postgresql://admin:password@db:5432/agentedeportivo
+      db:
+        image: postgres:15
+        environment:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: agentedeportivo
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+    volumes:
+      postgres_data:
+    ```
+
+DURACIÓN TARDE: 4 horas
+
+
+EVENING (17:00 - 18:30):
+
+[ ] Revisar respuestas del survey
+[ ] Compilar feedback inicial
+[ ] Documentar insights sobre pricing
+
+DURACIÓN EVENING: 1.5 horas
+
+TOTAL DÍA 2: 8.5 horas ✓
+
+
+────────────────────────────────────────────────────────────────────────────���───
+DÍA 3 (MIÉRCOLES) - Autenticación OAuth2
+────────────────────────────────────────────────────────────────────────────────
+
+MAÑANA (09:00 - 12:30):
+
+[ ] Configurar Google OAuth
+    
+    1. Ir a: https://console.cloud.google.com
+    2. Crear nuevo proyecto: "AgenteDeportivo"
+    3. Habilitar Google+ API
+    4. Crear credenciales OAuth 2.0
+       └─ Tipo: Web application
+       └─ Authorized JavaScript origins: http://localhost:3000, http://localhost:8000
+       └─ Authorized redirect URIs: http://localhost:8000/auth/google/callback
+    5. Guardar Client ID y Secret en .env:
+       ```
+       GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+       GOOGLE_CLIENT_SECRET=xxxxxx
+       ```
+
+[ ] Configurar GitHub OAuth
+    
+    1. Ir a: https://github.com/settings/developers
+    2. New OAuth App
+    3. Application name: AgenteDeportivo
+    4. Homepage URL: http://localhost:8000
+    5. Authorization callback URL: http://localhost:8000/auth/github/callback
+    6. Guardar en .env:
+       ```
+       GITHUB_CLIENT_ID=xxxxx
+       GITHUB_CLIENT_SECRET=xxxxxx
+       ```
+
+[ ] Database schema para usuarios
+    
+    models.py:
+    ```python
+    from sqlalchemy import Column, String, DateTime, Integer, create_engine
+    from sqlalchemy.ext.declarative import declarative_base
+    from datetime import datetime
+    
+    Base = declarative_base()
+    
+    class User(Base):
+        __tablename__ = "users"
+        
+        id = Column(Integer, primary_key=True, index=True)
+        email = Column(String(255), unique=True, index=True)
+        name = Column(String(255))
+        provider = Column(String(50))  # 'google', 'github'
+        provider_id = Column(String(255), unique=True)
+        tier = Column(String(20), default='free')  # free, premium, pro
+        created_at = Column(DateTime, default=datetime.utcnow)
+        updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    ```
+
+DURACIÓN MAÑANA: 3.5 horas
+
+
+TARDE (13:30 - 17:00):
+
+[ ] Implementar login endpoint
+    
+    routers/auth.py:
+    ```python
+    from fastapi import APIRouter, HTTPException
+    from src.schemas import UserCreate
+    from src.database import SessionLocal
+    from src.models import User
+    import requests
+    
+    router = APIRouter(prefix="/auth", tags=["auth"])
+    
+    @router.get("/google")
+    def login_google():
+        # Redirect a Google OAuth
+        redirect_uri = "http://localhost:8000/auth/google/callback"
+        client_id = "YOUR_CLIENT_ID"
+        scope = "openid profile email"
+        return {
+            "url": f"https://accounts.google.com/o/oauth2/v2/auth?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&scope={scope}"
+        }
+    
+    @router.get("/google/callback")
+    def callback_google(code: str):
+        # Intercambiar código por token
+        # Crear usuario en DB
+        # Retornar JWT
+        pass
+    
+    @router.get("/github")
+    def login_github():
+        # Similar a Google
+        pass
+    
+    @router.get("/github/callback")
+    def callback_github(code: str):
+        pass
+    ```
+
+[ ] Crear schemas de validación
+    
+    schemas.py:
+    ```python
+    from pydantic import BaseModel
+    from datetime import datetime
+    
+    class UserBase(BaseModel):
+        email: str
+        name: str
+    
+    class UserCreate(UserBase):
+        provider: str
+        provider_id: str
+    
+    class UserResponse(UserBase):
+        id: int
+        tier: str
+        created_at: datetime
+        
+        class Config:
+            from_attributes = True
+    ```
+
+[ ] Tests para autenticación
+    
+    tests/test_auth.py:
+    ```python
+    import pytest
+    from fastapi.testclient import TestClient
+    from src.main import app
+    
+    client = TestClient(app)
+    
+    def test_health():
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+    
+    def test_google_login():
+        response = client.get("/auth/google")
+        assert response.status_code == 200
+        assert "url" in response.json()
+    ```
+
+DURACIÓN TARDE: 3.5 horas
+
+
+EVENING (17:00 - 18:00):
+
+[ ] Test local de autenticación
+    
+    Comando:
+    docker-compose up
+    curl http://localhost:8000/health
+    # Debe retornar: {"status":"ok","version":"0.1.0"}
+
+DURACIÓN EVENING: 1 hora
+
+TOTAL DÍA 3: 8 horas ✓
+
+
+────────────────────────────────────────────────────────────────────────────────
+DÍA 4 (JUEVES) - Integración Stripe
+────────────────────────────────────────────────────────────────────────────────
+
+MAÑANA (09:00 - 12:00):
+
+[ ] Crear cuenta Stripe
+    └─ URL: https://dashboard.stripe.com
+    └─ Guardar API keys en .env:
+       ```
+       STRIPE_PUBLIC_KEY=pk_test_xxx
+       STRIPE_SECRET_KEY=sk_test_xxx
+       ```
+
+[ ] Crear productos en Stripe
+    
+    Dashboard Stripe > Products > Add Product
+    
+    Product 1: Premium
+    ├─ Name: Premium Subscription
+    ├─ Price: €4.99/month
+    ├─ Billing period: Monthly
+    ├─ Copy price ID: price_xxx
+    
+    Product 2: Professional
+    ├─ Name: Professional Subscription
+    ├─ Price: €19.99/month
+    ├─ Billing period: Monthly
+    ├─ Copy price ID: price_yyy
+
+[ ] Guardar price IDs en .env:
+    ```
+    STRIPE_PREMIUM_PRICE_ID=price_xxx
+    STRIPE_PROFESSIONAL_PRICE_ID=price_yyy
+    STRIPE_WEBHOOK_SECRET=whsec_xxx
+    ```
+
+DURACIÓN MAÑANA: 3 horas
+
+
+TARDE (13:30 - 17:00):
+
+[ ] Implementar checkout endpoint
+    
+    routers/payments.py:
+    ```python
+    from fastapi import APIRouter, HTTPException
+    import stripe
+    import os
+    
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    router = APIRouter(prefix="/payments", tags=["payments"])
+    
+    PRICES = {
+        'premium': os.getenv("STRIPE_PREMIUM_PRICE_ID"),
+        'professional': os.getenv("STRIPE_PROFESSIONAL_PRICE_ID")
+    }
+    
+    @router.post("/create-checkout-session")
+    def create_checkout(tier: str, user_id: int):
+        if tier not in PRICES:
+            raise HTTPException(status_code=400, detail="Invalid tier")
+        
+        try:
+            session = stripe.checkout.Session.create(
+                line_items=[{
+                    'price': PRICES[tier],
+                    'quantity': 1,
+                }],
+                mode='subscription',
+                success_url='https://agentedeportivo.com/success?session_id={CHECKOUT_SESSION_ID}',
+                cancel_url='https://agentedeportivo.com/cancel',
+                customer_email=get_user_email(user_id),
+            )
+            return {"url": session.url}
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    @router.post("/webhook")
+    def stripe_webhook(request: Request):
+        # Manejar webhooks de Stripe (payment success, failure, etc)
+        pass
+    ```
+
+[ ] Webhooks Stripe
+    
+    routers/webhooks.py:
+    ```python
+    from fastapi import APIRouter, Request
+    import stripe
+    from src.database import SessionLocal
+    from src.models import User
+    
+    router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+    
+    @router.post("/stripe")
+    async def stripe_webhook(request: Request):
+        payload = await request.body()
+        sig_header = request.headers.get('stripe-signature')
+        
+        try:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, os.getenv("STRIPE_WEBHOOK_SECRET")
+            )
+        except:
+            raise HTTPException(status_code=400, detail="Invalid signature")
+        
+        if event['type'] == 'checkout.session.completed':
+            session = event['data']['object']
+            # Actualizar user tier en DB
+            db = SessionLocal()
+            user = db.query(User).filter(User.email == session.customer_email).first()
+            if user:
+                user.tier = 'premium'  # O lo que corresponda
+                db.commit()
+        
+        return {"status": "success"}
+    ```
+
+DURACIÓN TARDE: 4 horas
+
+
+EVENING (17:00 - 18:00):
+
+[ ] Test de flujo completo (signup → payment)
+    
+    1. Navegar a http://localhost:8000/docs
+    2. Probar endpoint POST /payments/create-checkout-session
+    3. Verificar que Stripe redirecciona correctamente
+    4. Verificar webhooks en Stripe dashboard
+
+DURACIÓN EVENING: 1 hora
+
+TOTAL DÍA 4: 8 horas ✓
+
+
+────────────────────────────────────────────────────────────────────────────────
+DÍA 5 (VIERNES) - Dashboard Streamlit Básico
+────────────────────────────────────────────────────────────────────────────────
+
+MAÑANA (09:00 - 12:00):
+
+[ ] Crear dashboard Streamlit básico
+    
+    dashboard/app.py:
+    ```python
+    import streamlit as st
+    import requests
+    import plotly.graph_objects as go
+    
+    st.set_page_config(page_title="AgenteDeportivo", layout="wide", initial_sidebar_state="expanded")
+    
+    # Custom CSS
+    st.markdown("""
+    <style>
+    .main {
+        background-color: #f0f2f6;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Header
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title("⚽ AgenteDeportivo")
+        st.subheader("Análisis automático de datos deportivos")
+    
+    with col2:
+        if st.button("🔐 Login"):
+            st.write("Redireccionando a login...")
+    
+    # Main content
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        competition = st.selectbox("Liga", ["La Liga", "Premier", "Bundesliga", "Serie A", "Ligue 1"])
+    
+    with col2:
+        season = st.selectbox("Temporada", ["2025", "2024", "2023"])
+    
+    with col3:
+        team = st.selectbox("Equipo", ["Mallorca", "Barcelona", "Real Madrid", "Atlético Madrid", "Valencia"])
+    
+    if st.button("📊 Generar Análisis", use_container_width=True):
+        st.info("Generando análisis...")
+        
+        try:
+            # Llamar a API
+            response = requests.get(
+                f"http://localhost:8000/api/v1/team?competition={competition}&team={team}&season={season}",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Mostrar estadísticas principales
+                st.success("✅ Análisis completado")
+                
+                # Crear columnas para métricas clave
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Goles a favor", data.get('goles_favor', 0))
+                with col2:
+                    st.metric("Goles en contra", data.get('goles_contra', 0))
+                with col3:
+                    st.metric("xG (Goles esperados)", f"{data.get('xg', 0):.2f}")
+                with col4:
+                    st.metric("Posesión promedio", f"{data.get('posesion', 0):.1f}%")
+                
+                # Gráfico de evolución
+                if 'evolution' in data:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        y=data['evolution'],
+                        mode='lines+markers',
+                        name='Goles por jornada',
+                        line=dict(color='#1f77b4', width=3)
+                    ))
+                    fig.update_layout(title="Evolución de goles", height=400)
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                # Tabla de estadísticas
+                st.subheader("📊 Estadísticas Detalladas")
+                st.dataframe(data.get('stats_table', {}), use_container_width=True)
+                
+            else:
+                st.error(f"Error: {response.status_code}")
+        
+        except Exception as e:
+            st.error(f"Error al generar análisis: {str(e)}")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center">
+    <p>AgenteDeportivo © 2026 | <a href="#">Privacy</a> | <a href="#">Terms</a></p>
+    </div>
+    """, unsafe_allow_html=True)
+    ```
+
+[ ] Instalar Streamlit
+    ```bash
+    pip install streamlit plotly requests
+    ```
+
+DURACIÓN MAÑANA: 3 horas
+
+
+TARDE (13:30 - 17:00):
+
+[ ] Integrar API con dashboard
+    └─ Conectar endpoints de API
+    └─ Manejo de errores
+    └─ Loading states
+
+[ ] Agregar gráficos básicos (Plotly)
+    └─ Gráfico de línea: evolución de goles
+    └─ Gráfico de barras: comparativa de equipo vs liga
+    └─ Tabla: estadísticas detalladas
+
+[ ] Mejorar responsive design
+    └─ Mobile friendly
+    └─ Dark mode option
+    └─ Tema personalizado
+
+[ ] Deploy en Streamlit Cloud (gratuito)
+    
+    1. Crear cuenta en: https://streamlit.io/cloud
+    2. Conectar GitHub
+    3. Deploy app.py automáticamente
+    4. URL pública: agentedeportivo.streamlit.app
+
+DURACIÓN TARDE: 4 horas
+
+
+EVENING (17:00 - 18:30):
+
+[ ] Testing responsivo (desktop, móvil)
+[ ] Compilar feedback Semana 1
+[ ] Reunión retrospectiva (si tienes equipo)
+
+DURACIÓN EVENING: 1.5 horas
+
+TOTAL DÍA 5: 8.5 horas ✓
+
+
+────────────────────────────────────────────────────────────────────────────────
+SEMANA 1 - RESUMEN DE PROGRESO
+────────────────────────────────────────────────────────────────────────────────
+
+✅ CHECKLIST COMPLETADO:
+
+Infraestructura:
+[ ] GitHub setup con branching strategy
+[ ] AWS: EC2 + RDS + S3 configurado
+[ ] Docker + docker-compose funcionando
+[ ] Base de datos PostgreSQL operativa
+
+Backend:
+[ ] FastAPI inicializado
+[ ] Autenticación OAuth2 (Google + GitHub) funcionando
+[ ] Stripe integrado (checkout + webhooks)
+[ ] API health check activo
+
+Frontend:
+[ ] Dashboard Streamlit funcional
+[ ] Selectores de competición/equipo
+[ ] Integración con API
+[ ] Deploy en Streamlit Cloud
+
+Validación de Mercado:
+[ ] Survey lanzado (500+ respuestas esperadas)
+[ ] Feedback inicial recopilado
+[ ] Pricing validado
+
+Horas Totales Semana 1: 40.5 horas ✓
+Inversión: ~$70 (hosting AWS)
+
+KPIs SEMANA 1:
+└─ Respuestas survey: 200-500 ✅
+└─ MVP endpoints funcionales: 5+ ✅
+└─ Uptime API: 95%+ ✅
+└─ Usuarios beta iniciales: 10 ✅
+
+
+================================================================================
+SEMANA 2: MVP FUNCIONAL + WEBSITE
+================================================================================
+
+OBJETIVO SEMANAL:
+✓ API REST funcional (endpoints principales)
+✓ Website landing page
+✓ Dashboard Streamlit mejorado
+✓ Primeros 50 test users
+
+HORAS ESTIMADAS: 35-40 horas
+INVERSIÓN: $100-150 (hosting + dominio)
+
+────────────────────────────────────────────────────────────────────────────────
+LUNES-MARTES: API Development
+────────────────────────────────────────────────────────────────────────────────
+
+ENDPOINTS A DESARROLLAR:
+
+[ ] GET /api/v1/league
+    Query params: competition, season
+    Response: {
+        "league_name": "La Liga",
+        "standings": [...],
+        "top_scorers": [...],
+        "top_defenses": [...]
+    }
+
+[ ] GET /api/v1/team
+    Query params: competition, team, season
+    Response: {
+        "team_name": "Mallorca",
+        "stats": {
+            "goles_favor": 45,
+            "goles_contra": 32,
+            "xg": 38.5,
+            "posesion_promedio": 52.3,
+            ...
+        }
+    }
+
+[ ] GET /api/v1/player
+    Query params: team, player
+    Response: {
+        "player_name": "Vedat Muriqi",
+        "stats": {...}
+    }
+
+[ ] GET /api/v1/match
+    Query params: match_id
+    Response: {
+        "local_team": "Mallorca",
+        "visitor_team": "Barcelona",
+        "score": "1-3",
+        "stats": {...}
+    }
+
+[ ] GET /api/v1/compare
+    Query params: team1, team2
+    Response: {
+        "team1_stats": {...},
+        "team2_stats": {...},
+        "differences": {...}
+    }
+
+[ ] POST /api/v1/user/preferences
+    Body: {"favorite_team": "Mallorca", ...}
+    Response: {"saved": true}
+
+[ ] Documentación OpenAPI (Swagger)
+    └─ Auto-generada en http://localhost:8000/docs
+    └─ Incluir ejemplos en cada endpoint
+
+[ ] Tests automatizados
+    
+    tests/test_api.py:
+    ```python
+    import pytest
+    from fastapi.testclient import TestClient
+    from src.main import app
+    
+    client = TestClient(app)
+    
+    def test_league_endpoint():
+        response = client.get("/api/v1/league?competition=2014&season=2025")
+        assert response.status_code == 200
+        assert "standings" in response.json()
+    
+    def test_team_endpoint():
+        response = client.get("/api/v1/team?competition=2014&team=Mallorca&season=2025")
+        assert response.status_code == 200
+        assert "stats" in response.json()
+    ```
+    
+    Comando: pytest tests/ --cov=src
+    Target coverage: 80%+
+
+Horas Lunes-Martes: 8 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+MIÉRCOLES: Landing Page
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Crear website con Next.js o HTML simple
+    
+    index.html (estructura básica):
+    
+    <header>
+      <nav>
+        <div class="logo">AgenteDeportivo</div>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#contact">Contact</a>
+          <button class="btn-login">Login</button>
+        </div>
+      </nav>
+    </header>
+    
+    <section class="hero">
+      <h1>Análisis Deportivo Automático</h1>
+      <p>Datos profesionales. Precio accesible.</p>
+      <video src="demo.mp4" width="600" autoplay></video>
+      <button class="btn-primary">Empezar Gratis</button>
+    </section>
+    
+    <section class="features">
+      <h2>¿Por qué AgenteDeportivo?</h2>
+      <div class="feature">
+        <icon>📊</icon>
+        <h3>Análisis Avanzado</h3>
+        <p>xG, percentiles, eficiencia ofensiva + mucho más</p>
+      </div>
+      <div class="feature">
+        <icon>📱</icon>
+        <h3>Multi-Formato</h3>
+        <p>HTML, PDF, JSON - Exporta como necesites</p>
+      </div>
+      <div class="feature">
+        <icon>⚡</icon>
+        <h3>Rápido</h3>
+        <p>Análisis en segundos, no horas</p>
+      </div>
+    </section>
+    
+    <section class="pricing">
+      <h2>Planes</h2>
+      <div class="price-card">
+        <h3>Gratuito</h3>
+        <p>€0/mes</p>
+        <ul>
+          <li>2 informes/semana</li>
+          <li>3 ligas</li>
+          <li>Ads incluidos</li>
+        </ul>
+        <button class="btn">Crear Cuenta</button>
+      </div>
+      <div class="price-card featured">
+        <h3>Premium</h3>
+        <p>€4.99/mes</p>
+        <ul>
+          <li>Informes ilimitados</li>
+          <li>8 ligas</li>
+          <li>Exportar PDF</li>
+          <li>Sin ads</li>
+        </ul>
+        <button class="btn">Probar Gratis</button>
+      </div>
+      <div class="price-card">
+        <h3>Professional</h3>
+        <p>€19.99/mes</p>
+        <ul>
+          <li>Todo Premium +</li>
+          <li>API access</li>
+          <li>Soporte prioritario</li>
+          <li>White-label</li>
+        </ul>
+        <button class="btn">Contactar</button>
+      </div>
+    </section>
+    
+    <section class="cta">
+      <h2>Únete a miles de aficionados</h2>
+      <input type="email" placeholder="Tu email...">
+      <button>Notificarme al lanzamiento</button>
+    </section>
+    
+    <footer>
+      <p>&copy; 2026 AgenteDeportivo</p>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </footer>
+
+[ ] Setup dominio + SSL
+    
+    1. Comprar dominio: agentedeportivo.com
+       └─ Proveedor: Namecheap, GoDaddy, etc.
+       └─ Costo: ~$12/año
+    
+    2. SSL gratuito vía Let's Encrypt
+       └─ Comando: certbot certonly --standalone -d agentedeportivo.com
+    
+    3. Deploy website
+       └─ Opción A: Netlify (gratuito, drag-and-drop)
+       └─ Opción B: Vercel (gratuito, para Next.js)
+       └─ Opción C: AWS S3 + CloudFront ($0.50-5/mes)
+
+[ ] Formulario de email signup
+    
+    - Integración: Mailchimp o Convertkit (gratuito)
+    - Guardar emails para "notificar al lanzamiento"
+    - Target: 100-200 emails en Semana 2
+
+Horas Miércoles: 6 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+JUEVES: Dashboard UX Improvements
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Rediseño UI Streamlit
+    
+    - Tema oscuro/claro (toggle en sidebar)
+    - Paleta de colores profesional
+    - Tipografía mejorada
+    - Iconografía consistente
+
+[ ] Nuevas features en dashboard
+    
+    - Exportar análisis a PDF
+      ```python
+      from reportlab.lib.pagesizes import letter
+      from reportlab.pdfgen import canvas
+      
+      def export_to_pdf(report_data, filename="report.pdf"):
+          c = canvas.Canvas(filename, pagesize=letter)
+          c.drawString(100, 750, "AgenteDeportivo - Análisis Completo")
+          c.drawString(100, 730, f"Equipo: {report_data['team']}")
+          # ... más contenido
+          c.save()
+      ```
+    
+    - Crear "favoritos" de equipos
+    - Historial de análisis guardados
+    - Compartir reportes (via link)
+
+Horas Jueves: 4 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+VIERNES: Beta Testing
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Invitar 50 test users
+    
+    Email template:
+    
+    Asunto: "Prueba AgenteDeportivo gratis (Beta exclusiva) 🎉"
+    
+    Cuerpo:
+    "Hola [nombre],
+    
+    Te invitamos a probar AgenteDeportivo, una herramienta revolucionaria 
+    de análisis deportivo.
+    
+    En 30 segundos puedes:
+    - Analizar cualquier equipo
+    - Ver estadísticas avanzadas (xG, percentiles)
+    - Exportar reportes a PDF
+    
+    [BOTÓN] Acceder a Beta
+    
+    Como usuario beta, tienes acceso GRATUITO durante 1 mes.
+    
+    Tus comentarios son valiosos para mejorar.
+    
+    ¿Preguntas? Reply a este email.
+    
+    Gracias,
+    Team AgenteDeportivo"
+
+[ ] Setup analytics tracking
+    
+    - Mixpanel o Amplitude (gratuito para <1K eventos/mes)
+    - Eventos a trackear:
+      * signup
+      * login
+      * análisis_generado
+      * exportar_pdf
+      * seleccionar_equipo
+      * cambiar_tier
+
+[ ] Google Analytics en website
+    ```html
+    <!-- En el head del HTML -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=GA_ID"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'GA_ID');
+    </script>
+    ```
+
+[ ] Feedback form en dashboard
+    ```python
+    with st.sidebar:
+        st.markdown("---")
+        st.subheader("💬 Feedback")
+        feedback = st.text_area("¿Qué te parece?")
+        if st.button("Enviar"):
+            send_feedback_email(user_id, feedback)
+            st.success("¡Gracias por tu feedback!")
+    ```
+
+Horas Viernes: 4 horas
+
+
+SEMANA 2 - KPIs:
+└─ API endpoints operativos: 6+ ✅
+└─ Website uptime: 99%+ ✅
+└─ Beta testers activos: 50+ ✅
+└─ Feedback positivo: 70%+ ✅
+└─ Email subscribers (landing page): 100-200 ✅
+
+
+================================================================================
+SEMANA 3: LANZAMIENTO PÚBLICO + MARKETING
+================================================================================
+
+OBJETIVO SEMANAL:
+✓ Launch público en ProductHunt
+✓ 500+ primeros usuarios
+✓ Social media momentum
+✓ Press outreach
+
+HORAS ESTIMADAS: 30-35 horas
+INVERSIÓN: $200-500 (ads pagos)
+
+────────────────────────────────────────────────────────────────────────────────
+LUNES: Preparación ProductHunt
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Crear cuenta ProductHunt
+    └─ URL: https://www.producthunt.com
+    └─ Perfil: Completar bio, foto, links sociales
+
+[ ] Preparar página del producto
+    
+    Título: "AgenteDeportivo - Análisis automático de datos deportivos"
+    
+    Tagline: "Datos profesionales. Precio accesible. Para todos."
+    
+    Descripción (máx 160 caracteres):
+    "Analiza cualquier equipo en segundos. xG, percentiles, predicciones y más."
+    
+    Descripción larga:
+    "AgenteDeportivo genera análisis automáticos de datos deportivos.
+    - ⚡ Análisis en segundos
+    - 📊 18 métricas técnicas
+    - 📱 Multi-formato (HTML, PDF, JSON)
+    - 💰 Gratuito con opciones premium
+    - 🌍 8 ligas europeas"
+
+[ ] Crear screenshots de alta calidad
+    └─ Screenshot 1: Hero - Dashboard overview
+    └─ Screenshot 2: Estadísticas detalladas
+    └─ Screenshot 3: Gráficos y visualizaciones
+    └─ Screenshot 4: Exportar PDF
+    └─ Screenshot 5: Pricing tiers
+    
+    Tool: Figma o Screenshot.rocks para crear mockups profesionales
+
+[ ] Grabar demo video (1 minuto)
+    
+    Contenido:
+    0-10s: "¿Quieres analizar tu equipo favorito?"
+    10-25s: [Pantalla de dashboard, seleccionar equipo]
+    25-40s: [Análisis generándose]
+    40-50s: [Mostrar resultados y gráficos]
+    50-60s: "AgenteDeportivo. Análisis deportivo automático."
+    
+    Tool: ScreenFlow (Mac) o Camtasia
+    Upload a: YouTube (unlisted primero)
+
+[ ] Contactar makers conocidos (2-3 días antes del launch)
+    
+    Email template:
+    
+    Asunto: "¿Vota AgenteDeportivo mañana en ProductHunt?"
+    
+    Cuerpo:
+    "Hola [nombre],
+    
+    Lanzo AgenteDeportivo mañana en ProductHunt.
+    
+    Es una herramienta para analizar equipos automáticamente 
+    (similar a Understat pero más accesible).
+    
+    ¿Podrías votar mañana? 🙏
+    
+    Link: [PH link]
+    
+    Gracias!"
+
+Horas Lunes: 6 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+MARTES: LAUNCH DAY 🚀
+────────────────────────────────────────────────────────────────────────────────
+
+TIMING: Launch a las 12:01 PT (21:01 CET)
+
+[ ] 09:00 - Final checks
+    └─ Verificar que todo funciona en producción
+    └─ Tests de carga
+    └─ Backup de BD
+
+[ ] 12:01 - PUBLICAR EN PRODUCTHUNT
+    └─ Ir a ProductHunt
+    └─ Click "Launch Today"
+    └─ Completar información del producto
+    └─ Publicar
+
+[ ] 12:01 - 12:30 - Email blast
+    
+    A tu lista de emails (100-200):
+    
+    Asunto: "🎉 AgenteDeportivo lanzado hoy en ProductHunt"
+    
+    Cuerpo:
+    "¡Lo hicimos! AgenteDeportivo está vivo.
+    
+    [BOTÓN] Ver en ProductHunt
+    
+    Si votaste, ¡muchas gracias! Si no, ayúdanos votando hoy.
+    
+    Acceso 100% gratuito para primeros 100 usuarios beta.
+    
+    [BOTÓN] Acceder"
+
+[ ] 12:30 - Social media blitz
+    
+    TWITTER:
+    
+    Tweet 1 (Lead):
+    "🎉 AgenteDeportivo está vivo!
+    
+    Después de semanas de trabajo...
+    
+    La herramienta que necesitabas para analizar tu equipo.
+    
+    Análisis automático → resultados en segundos.
+    
+    🚀 Votamos hoy en ProductHunt
+    [LINK PH]
+    
+    #ProductHunt #Football #Analytics"
+    
+    Tweet 2 (Feature demo):
+    "Esto que ves aquí:
+    
+    📊 18 métricas técnicas
+    📈 Gráficos interactivos  
+    📥 Exportar a PDF
+    💰 Gratuito (opcional pagar)
+    
+    Todo automatizado. Cero conocimiento técnico necesario.
+    
+    [VIDEO/GIF demo]"
+    
+    Tweet 3 (Social proof):
+    "Ya 50+ personas lo probaron en beta.
+    
+    Feedback:
+    ✅ 'Exactamente lo que necesitaba'
+    ✅ 'Mucho mejor que Understat'
+    ✅ 'Súper fácil de usar'
+    
+    [LINK PH] - Únete hoy"
+    
+    Retweet a todos los influencers que respondieron
+    Responder a TODOS los comentarios en <30 min
+
+    REDDIT:
+    
+    Post en r/soccer:
+    Título: "Lancé AgenteDeportivo - herramienta de análisis automático"
+    
+    Body:
+    "Hola r/soccer,
+    
+    Después de 1 mes de trabajo, lancé AgenteDeportivo.
+    
+    Es una herramienta web que genera análisis automáticos 
+    de estadísticas deportivas (xG, percentiles, etc).
+    
+    Algunas features:
+    - Análisis en <5 segundos
+    - 18 métricas técnicas
+    - Gráficos y tablas
+    - Exportar a PDF
+    - Gratuito (con premium opcional)
+    
+    Hoy estoy en ProductHunt: [LINK]
+    
+    ¿Alguna pregunta?"
+    
+    También post en:
+    - r/LaLiga
+    - r/premierleague
+    - r/football
+    - r/dataisbeautiful (si tiene gráficos cool)
+    
+    HACKER NEWS:
+    
+    Post: "Show HN: AgenteDeportivo - análisis deportivo automático"
+    URL: [PH LINK]
+    
+    Comentario inicial:
+    "Hi HN,
+    
+    I've been building AgenteDeportivo for the past month.
+    
+    It's a tool that automatically analyzes football data...
+    
+    [explicar breve]
+    
+    Happy to answer any questions!"
+
+[ ] 18:00 - Check ProductHunt ranking
+    └─ Target: Top 10 (#3-5 es excelente)
+    └─ Responder TODOS los comentarios
+    └─ Upvote otros productos para construir comunidad
+
+Horas Martes: 8 horas (pero es el día crucial)
+
+
+────────────────────────────────────────────────────────────────────────────────
+MIÉRCOLES-JUEVES: Momentum Maintenance
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Análisis de métricas cada 4 horas
+    
+    Dashboard a monitorear:
+    - ProductHunt votes + ranking
+    - Website traffic (Google Analytics)
+    - Usuarios nuevos en app
+    - Signups premium
+    - Churn rate
+    - Feedback quality
+    - Error rate de API
+
+[ ] Ajustes rápidos de bugs
+    └─ Bugs encontrados: fix en <4h
+    └─ Deploy a producción ASAP
+
+[ ] Mejoras UX basadas en feedback
+    └─ Si muchos dicen "no sé cómo usar" → mejorar onboarding
+    └─ Si dicen "muy lento" → optimizar API
+    └─ Si dicen "falta feature X" → añadir rápido
+
+[ ] Contenido de seguimiento
+    
+    Blog post:
+    "Detrás de AgenteDeportivo - Cómo construimos esto en 4 semanas"
+    └─ Compartir proceso
+    └─ Lecciones aprendidas
+    └─ Roadmap futuro
+    
+    Twitter thread:
+    "🧵 Cómo lancé AgenteDeportivo en 30 días (sin experiencia previa)"
+    └─ Paso 1: Idea
+    └─ Paso 2: MVP
+    └─ Paso 3: Validación
+    └─ Paso 4: Launch
+    └─ Paso 5: Lecciones
+    
+    YouTube video:
+    "AgenteDeportivo Demo - Cómo usar"
+    └─ Tutorial de 5 minutos
+    └─ Casos de uso
+    └─ Tips y tricks
+
+Horas Miércoles-Jueves: 8 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+VIERNES: Análisis + Decisiones
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Compilar todos los datos de Semana 3
+    
+    Metrics importantes:
+    ├─ Total usuarios: ___
+    ├─ Premium conversión: __%
+    ├─ Churn: __%
+    ├─ MRR: €___
+    ├─ ProductHunt ranking final: #__
+    ├─ Website traffic: ___ visits
+    ├─ Media mentions: __ articles
+    ├─ NPS score: __
+    └─ Feedback sentiment: __% positivo
+
+[ ] Pivots si es necesario
+    
+    Si conversion premium < 1%:
+    └─ Reducir precio a €2.99/mes
+    └─ Mejorar messaging (enfatizar valor)
+    └─ Cambiar target audience
+    
+    Si churn > 15%:
+    └─ Implementar email re-engagement
+    └─ Webinar de tutorial
+    └─ Mejorar onboarding
+    
+    Si website traffic bajo:
+    └─ Aumentar ads pagos
+    └─ Más presencia en redes
+    └─ Contactar prensa directamente
+
+SEMANA 3 - KPIs:
+└─ Nuevos usuarios: 500-1,000 ✅
+└─ Premium conversión: 1-2% ✅
+└─ ProductHunt ranking: Top 10 ✅
+└─ Media mentions: 2-3 ✅
+└─ NPS score: >30 ✅
+
+
+================================================================================
+SEMANA 4: OPTIMIZACIÓN + VALIDACIÓN FASE 2
+================================================================================
+
+OBJETIVO SEMANAL:
+✓ 1,000+ usuarios totales
+✓ $500-1,000 MRR
+✓ Validación de PMF
+✓ Inicio preparación Fase 2 (B2B)
+
+HORAS ESTIMADAS: 25-30 horas
+INVERSIÓN: $150-300 (ads + herramientas)
+
+────────────────────────────────────────────────────────────────────────────────
+LUNES: Retention Focus
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Crear onboarding mejorado
+    
+    Email sequence:
+    
+    Day 0 (Bienvenida):
+    "¡Bienvenido a AgenteDeportivo!"
+    └─ Link a video tutorial (3 min)
+    └─ Primeros pasos
+    └─ FAQ
+    
+    Day 1 (Uso básico):
+    "¿Ya analizaste tu equipo favorito?"
+    └─ Step-by-step guide
+    └─ Ejemplos
+    
+    Day 3 (Features):
+    "3 cosas que no sabías que podías hacer"
+    └─ Exportar a PDF
+    └─ Crear favoritos
+    └─ Compartir reportes
+    
+    Day 5 (Retention):
+    "¿Por qué algunos lo aman?"
+    └─ User testimonials
+    └─ Use cases
+    
+    Day 7 (Premium):
+    "Desbloquea más funciones"
+    └─ Beneficios de upgrade
+    └─ Descuento especial (10% off first month)
+
+[ ] In-app tutorials
+    
+    Usar Intro.js o similar:
+    ```python
+    st.write("""
+    <script src="intro.js"></script>
+    <script>
+      intros = new Intro();
+      intros.setOptions({
+        steps: [
+          {
+            intro: 'Selecciona una liga aquí'
+          },
+          {
+            element: '.team-select',
+            intro: 'Y elige tu equipo'
+          },
+          {
+            element: '.generate-btn',
+            intro: 'Luego genera el análisis'
+          }
+        ]
+      });
+      intros.start();
+    </script>
+    """, unsafe_allow_html=True)
+    ```
+
+[ ] Referral program
+    
+    "Invita un amigo, gana 1 mes premium gratis"
+    
+    Implementación:
+    - Cada user tiene unique referral link
+    - Si invitado se convierte a premium → referrer gana 1 mes gratis
+    - Tracking automático via Stripe webhooks
+    - Dashboard de referrals (cuántos invitados, cuántos conversiones)
+    
+    Código:
+    ```python
+    @app.post("/referrals/create")
+    def create_referral_link(user_id: int):
+        referral_code = generate_unique_code()
+        db.add(Referral(user_id=user_id, code=referral_code))
+        db.commit()
+        return {
+            "referral_link": f"agentedeportivo.com?ref={referral_code}"
+        }
+    ```
+
+Horas Lunes: 6 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+MARTES: Analytics Deep Dive
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Crear dashboard de KPIs (Mixpanel/Amplitude)
+    
+    Métricas a trackear:
+    
+    Growth:
+    ├─ DAU (Daily Active Users): ___
+    ├─ WAU (Weekly Active Users): ___
+    ├─ MAU (Monthly Active Users): ___
+    ├─ New signups/día: ___
+    └─ Growth rate: __%
+    
+    Monetization:
+    ├─ Premium subs: ___
+    ├─ Churn rate: __%
+    ├─ MRR: €___
+    ├─ LTV: €___
+    ├─ CAC: €___
+    └─ LTV/CAC ratio: ___x
+    
+    Engagement:
+    ├─ Análisis generados/usuario: ___
+    ├─ Session length: ___ min
+    ├─ Bounce rate: __%
+    ├─ Feature usage: ___
+    └─ Error rate: __%
+    
+    Retention:
+    ├─ D1 (día 1): __%
+    ├─ D7 (día 7): __%
+    ├─ D30 (día 30): __%
+    └─ Monthly churn: __%
+
+[ ] Cohorte analysis
+    
+    Comparar:
+    - Week 1 users vs Week 2 users vs Week 3 users
+    - Identificar patrones de comportamiento
+    - Qué cambió entre semanas
+    - Dónde mejoramos retention
+    
+    Ejemplo:
+    Week 1 cohort D7 retention: 35%
+    Week 2 cohort D7 retention: 42% ← mejoró gracias a onboarding
+    Week 3 cohort D7 retention: 48% ← más mejoría
+
+Horas Martes: 4 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+MIÉRCOLES: B2B Preparation
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Crear dashboard MVP B2B
+    
+    Features para clubes:
+    ├─ Multi-usuario
+    ├─ Roles (Admin, Analista, DT, Viewer)
+    ├─ Reportes pre-partido automáticos
+    ├─ Calendario de partidos
+    ├─ Exportar a PDF con logo del club
+    └─ Soporte email
+    
+    Código:
+    ```python
+    class ClubDashboard(Base):
+        __tablename__ = "club_dashboards"
+        
+        id = Column(Integer, primary_key=True)
+        club_id = Column(Integer)
+        name = Column(String)
+        owner_id = Column(Integer)
+        users = relationship("User")
+        
+        # Preferencias
+        auto_reports_enabled = Column(Boolean, default=True)
+        report_time = Column(Time)  # Hora de envío
+        league_focus = Column(String)  # Qué liga monitorean
+    ```
+
+[ ] Crear target list de clubes (20-30 iniciales)
+    
+    Segunda División España:
+    ├─ CD Lugo
+    ├─ Racing Club Ferrol
+    ├─ Huesca
+    ├─ Burgos CF
+    ├─ Tenerife
+    ├─ ... (10 más)
+    
+    Academias:
+    ├─ Academia de Fútbol Blai
+    ├─ Escuela de Fútbol Elite
+    ├─ ... (10 más)
+    
+    Medios pequeños:
+    ├─ Blogs deportivos
+    ├─ YouTube channels
+    └─ ... (5-10 más)
+
+[ ] Outreach email template
+    
+    Asunto: "Análisis de rivales automático para [Nombre Club]"
+    
+    Body:
+    "Hola [DT/Coordinador],
+    
+    Lancé una herramienta llamada AgenteDeportivo que genera 
+    análisis automáticos de rivales.
+    
+    En 5 minutos puedes:
+    ✓ Ver estadísticas del próximo rival
+    ✓ Analizar sus fortalezas/debilidades
+    ✓ Recibir recomendaciones tácticas
+    ✓ Exportar en PDF para el equipo
+    
+    [ENLACE A DEMO]
+    
+    Hemos ayudado a 50+ equipos ya.
+    
+    ¿Interesado en una demostración gratuita?
+    
+    [CALENDLY LINK]
+    
+    Saludos,
+    [Tu nombre]"
+
+Horas Miércoles: 5 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+JUEVES: Content Marketing
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Blog post 1: "Cómo interpretar xG en fútbol"
+    
+    Contenido:
+    - Qué es xG
+    - Por qué importa
+    - Cómo AgenteDeportivo lo calcula
+    - Ejemplos prácticos
+    - SEO keywords: "xg fútbol", "expected goals"
+    
+    Palabras: 2,000+
+    Tiempo: 2-3 horas
+
+[ ] Blog post 2: "Top 10 jugadores subestimados de La Liga 2025"
+    
+    Contenido:
+    - Análisis de datos
+    - Rankings
+    - Casos de estudio
+    - Cómo encontrar estos jugadores con AgenteDeportivo
+    
+    Objetivo: Viral content
+    Tiempo: 2 horas
+
+[ ] YouTube video: "Cómo usar AgenteDeportivo en 3 minutos"
+    
+    Contenido:
+    - Intro (10s)
+    - Crear cuenta (30s)
+    - Generar análisis (60s)
+    - Exportar (30s)
+    - Conclusión (10s)
+    
+    Recording: ScreenFlow/Camtasia
+    Editing: CapCut o DaVinci Resolve
+    Upload a YouTube (con tags, descripción, CTAs)
+    Tiempo: 2-3 horas
+
+Horas Jueves: 6 horas
+
+
+────────────────────────────────────────────────────────────────────────────────
+VIERNES: Mes 1 Review + Decisión Fase 2
+────────────────────────────────────────────────────────────────────────────────
+
+[ ] Reunión retrospectiva (si tienes equipo)
+    
+    Agenda:
+    1. Qué salió bien
+    2. Qué no salió como esperado
+    3. Lecciones aprendidas
+    4. Cambios para Mes 2
+
+[ ] Compilar metrics finales del Mes 1
+    
+    USUARIOS:
+    ├─ Total signups: ___
+    ├─ Premium subs: ___
+    ├─ Free active: ___
+    └─ Churn: __%
+    
+    INGRESOS:
+    ├─ MRR: €___
+    ├─ ARR proyectado: €___
+    ├─ CAC: €___
+    └─ LTV: €___
+    
+    ENGAGEMENT:
+    ├─ DAU: ___
+    ├─ Análisis/usuario: ___
+    ├─ Session time: ___ min
+    └─ Retention D7: __%
+    
+    FEEDBACK:
+    ├─ NPS score: __
+    ├─ Positivos: __%
+    ├─ Neutros: __%
+    └─ Negativos: __%
+
+[ ] DECISIÓN CRÍTICA: ¿GO o NO-GO?
+    
+    ✅ GO A FASE 2 (B2B) si:
+    ├─ >1,000 usuarios
+    ├─ >1% conversion premium
+    ├─ <15% churn
+    ├─ NPS >30
+    ├─ $500-1,000 MRR
+    └─ Feedback positivo >70%
+    
+    ⚠️ ITERA MÁS en Fase 1 si:
+    ├─ 500-1,000 usuarios
+    ├─ 0.5-1% conversion
+    ├─ 15-20% churn
+    └─ Feedback mixto
+    
+    ❌ PAUSA Y REPLANTEA si:
+    ├─ <500 usuarios
+    ├─ <0.5% conversion
+    ├─ >20% churn
+    ├─ Feedback negativo
+    └─ Problemas técnicos graves
+
+[ ] Decisión sobre funding (si aplica)
+    
+    Si números son excelentes:
+    └─ Preparar pitch deck
+    └─ Contactar angels/seed funds
+    └─ Target: €200-500K
+    
+    Si números son buenos pero no excelentes:
+    └─ Continuar con capital propio
+    └─ Buscar feedback de inversores (sin pedir dinero)
+    └─ Revisar en Mes 3
+    
+    Si números son débiles:
+    └─ No buscar inversión ahora
+    └─ Enfocarse en PMF
+    └─ Considerar pivots
+
+Horas Viernes: 3 horas (reflexión)
+
+TOTAL SEMANA 4: 24 horas
+
+
+================================================================================
+SEMANA 4 - CHECKLIST FINAL
+================================================================================
+
+MES 1 COMPLETADO ✓
+
+INFRAESTRUCTURA:
+[ ] GitHub + branching funcionando
+[ ] AWS: EC2, RDS, S3 operativos
+[ ] Docker + CI/CD en lugar
+[ ] Backups automáticos configurados
+
+BACKEND:
+[ ] FastAPI API con 6+ endpoints
+[ ] Autenticación OAuth2 funcional
+[ ] Stripe pagos operativo
+[ ] Rate limiting por tier
+[ ] 80%+ test coverage
+
+FRONTEND:
+[ ] Streamlit dashboard funcional
+[ ] Landing page completada
+[ ] SEO básico implementado
+[ ] Analytics tracking setup
+
+USUARIOS:
+[ ] 1,000+ usuarios totales
+[ ] 10-20 premium subscribers
+[ ] 50+ beta testers activos
+
+INGRESOS:
+[ ] $500-1,000 MRR objetivo
+[ ] Churn <15%
+[ ] Conversion premium 1-2%
+
+MARKETING:
+[ ] ProductHunt launch exitoso
+[ ] Social media presence creada
+[ ] Email subscribers acumulados
+[ ] Content marketing iniciado
+
+VALIDACIÓN:
+[ ] PMF validado (surveys + data)
+[ ] NPS >30
+[ ] Feedback positivo >70%
+[ ] Decisión Fase 2 tomada
+
+================================================================================
+MÉTRICAS DE ÉXITO - MES 1
+================================================================================
+
+✅ ESCENARIO EXITOSO (Continuar a Fase 2):
+
+Usuarios: 1,000-5,000
+├─ Free: 900-4,000
+└─ Premium: 100-1,000
+
+Ingresos:
+├─ MRR: €500-1,500
+├─ Churn: 10-15%
+├─ LTV: €50-200
+└─ CAC: €2-5
+
+Engagement:
+├─ DAU: 200-500
+├─ D7 retention: 40-50%
+├─ D30 retention: 25-35%
+└─ Session length: 10-20 min
+
+Feedback:
+├─ NPS: 30-50
+├─ Satisfaction: 4.0-4.5/5
+└─ Recommendations: >70% would recommend
+
+ACCIÓN: 🚀 GO TO PHASE 2 - FULL SPEED
+
+
+⚠️ ESCENARIO MODERADO (Iterar Fase 1):
+
+Usuarios: 500-1,000
+├─ Free: 450-900
+└─ Premium: 50-100
+
+Ingresos:
+├─ MRR: €200-500
+├─ Churn: 15-20%
+├─ LTV: €30-100
+└─ CAC: €5-10
+
+Engagement:
+├─ DAU: 50-200
+├─ D7 retention: 30-40%
+└─ D30 retention: 15-25%
+
+Feedback:
+├─ NPS: 20-30
+├─ Satisfaction: 3.5-4.0/5
+└─ Mostly positive with constructive criticism
+
+ACCIÓN: 🔄 ITERATE - 2 WEEKS MORE
+- Mejorar onboarding (parecen estar abandonando)
+- Ajustar pricing si necesario
+- Mejorar UX basada en feedback
+- Probar nuevos canales de marketing
+
+
+❌ ESCENARIO DÉBIL (Reconsiderar):
+
+Usuarios: <500
+├─ Free: <400
+└─ Premium: <100
+
+Ingresos:
+├─ MRR: <€200
+├─ Churn: >20%
+├─ LTV: <€50
+└─ CAC: >€10
+
+Engagement:
+├─ DAU: <50
+├─ D7 retention: <30%
+└─ D30 retention: <15%
+
+Feedback:
+├─ NPS: <20
+├─ Satisfaction: <3.5/5
+└─ Mixed or negative feedback
+
+ACCIÓN: ⏸️ PAUSE AND REPLAN
+- Recolectar feedback más extenso
+- Identificar problemas principales
+- Considerar pivots (cambiar target, pricing, features)
+- Posible: Vender asset a competidor
+- O: Continuar como side project
+
+
+================================================================================
+RECURSOS REQUERIDOS - MES 1
+================================================================================
+
+HERRAMIENTAS Y SUSCRIPCIONES:
+
+| Herramienta | Costo | Duración | Total |
+|-------------|-------|----------|-------|
+| AWS (EC2, RDS, S3) | $50 | Mes | $50 |
+| Stripe | 2.9% + $0.30 | Comisión | $30 |
+| SendGrid (emails) | $20 | Mes | $20 |
+| Streamlit Cloud | Gratuito | Mes | $0 |
+| Netlify/Vercel (web) | Gratuito | Mes | $0 |
+| Google Analytics | Gratuito | Mes | $0 |
+| Mixpanel | Gratuito (tier básico) | Mes | $0 |
+| ProductHunt | Gratuito | Mes | $0 |
+| GitHub | Gratuito | Mes | $0 |
+| Herramientas dev | Gratuito | Mes | $0 |
+| Dominio | $12 | Año (prorrateado) | $1 |
+| |||||
+| TOTAL | | | $101 |
+
+
+EQUIPO REQUERIDO (Horas/Semana):
+
+Opción 1: Solo tú (Founder)
+├─ Semana 1: 40 horas (full-time)
+├─ Semana 2: 40 horas (full-time)
+├─ Semana 3: 40 horas (full-time + peak week)
+└─ Semana 4: 30 horas (optimization)
+└─ TOTAL: 150 horas mes
+
+Opción 2: Tú + 1 Contractor
+├─ Backend dev contractor: 20 horas/semana × 4 = 80 horas ($1,200-1,600)
+├─ Tú: 25 horas/semana = 100 horas
+└─ TOTAL: 180 horas mes (faster)
+
+Opción 3: Tú + 2 Contractors
+├─ Backend dev: 20 horas = €1,200-1,600
+├─ Frontend dev: 15 horas = €900-1,200
+├─ Marketing: 10 horas = €500-750
+├─ Tú: 15 horas/semana = 60 horas
+└─ TOTAL: 220 horas mes (fastest)
+
+
+PRESUPUESTO TOTAL MES 1 (Conservative):
+
+Infraestructura: $100
+Contractors: $1,500 (1 backend dev)
+Ads pagos: $0 (organic launch)
+Misc: $100
+────────
+TOTAL: $1,700
+
+PRESUPUESTO MES 1 (Con marketing):
+
+Infraestructura: $100
+Contractors: $2,000 (2 devs)
+Ads pagos: $500 (Google, FB, TikTok)
+Content (video, design): $500
+Misc: $200
+────────
+TOTAL: $3,300
+
+
+================================================================================
+PLAN DIARIO RECOMENDADO (Template)
+================================================================================
+
+MORNING (09:00 - 09:30): STANDUP
+[ ] Qué completé ayer
+[ ] Qué haré hoy (top 3 prioridades)
+[ ] Blockers o problemas
+
+09:30 - 12:30: FOCUS WORK (3 horas)
+[ ] Tarea #1 (backend/frontend/marketing)
+[ ] Evitar distracciones
+[ ] Mute notifications
+
+LUNCH (12:30 - 13:30): Pausa (come, camina, relaja)
+
+13:30 - 15:30: CUSTOMER + SUPPORT (2 horas)
+[ ] Responder emails
+[ ] Issues en GitHub
+[ ] Customer feedback
+[ ] Bug reports
+
+15:30 - 17:30: MARKETING/METRICS (2 horas)
+[ ] Social media
+[ ] Analytics check
+[ ] Growth experiments
+[ ] Outreach
+
+17:30 - 18:00: WRAP-UP (30 min)
+[ ] Documentar progreso
+[ ] Mañana priorities
+[ ] Personal reflection
+
+REST: Networking, learning, health
+
+
+================================================================================
+DECISIÓN POST-MES 1
+================================================================================
+
+Después de 30 días, tomarás decisión crítica:
+
+OPCIÓN A: Continuar Fase 1 (Escalado)
+├─ Si: PMF validado pero números bajos
+├─ Acción: Más marketing, iterar UX, reducir precio
+├─ Inversión: €10-20K adicional
+├─ Timeline: 2-3 meses más
+└─ Resultado: €5-10K MRR en Mes 4-6
+
+OPCIÓN B: Ir a Fase 2 (B2B) en paralelo ⭐ RECOMENDADO
+├─ Si: PMF validado + números sólidos (>1K users)
+├─ Acción: Iniciar outreach B2B mientras escalas B2C
+├─ Inversión: €15-25K adicional
+├─ Timeline: Paralelo mes 2-3
+└─ Resultado: €20-30K MRR en Mes 6
+
+OPCIÓN C: Buscar inversión seed
+├─ Si: Números excepcionales (>5K users, >2% conv)
+├─ Acción: Preparar pitch deck, contactar angels
+├─ Inversión a recibir: €200-500K
+├─ Timeline: Pitch mes 2, cierre mes 3-4
+└─ Resultado: Escalar agresivamente
+
+OPCIÓN D: Pivotar o pausar
+├─ Si: PMF débil (<1% conversion, >20% churn)
+├─ Acción: Repensar producto, target, pricing
+├─ Timeline: 2 semanas replan + 4 semanas iteración
+└─ O: Pausar y convertir en side project
+
+
+================================================================================
+CONTACTOS ÚTILES
+================================================================================
+
+INFLUENCERS DEPORTIVOS (Twitter):
+- @futbolmetrics
+- @socceranalytics
+- @football_stats
+- [10+ más en tu niche]
+
+MEDIOS DEPORTIVOS:
+- Estadio Deportivo (prensa@estadiodeportivo.com)
+- AS.es (redaccion@as.com)
+- Goal.com (contact page)
+- MARCA.com
+
+COMUNIDADES:
+- r/soccer (200K+ members)
+- r/LaLiga (50K+ members)
+- r/premierleague (100K+ members)
+- Discord servers deportivos
+
+PRIMER BATCH B2B:
+- 5 clubes Segunda División
+- 3 academias de fútbol
+- 2 blogs deportivos medianos
+- 1-2 casas de apuestas
+
+
+================================================================================
+NOTAS FINALES Y RECORDATORIOS
+================================================================================
+
+✅ MINDSET CORRECTOS:
+- Launch es mejor que perfecto
+- Feedback > asunciones
+- Velocidad > calidad perfecta (en Mes 1)
+- Data > intuición
+- Users > vanity metrics
+
+❌ EVITA:
+- Perfeccionismo en features
+- Gastar mucho tiempo en cosas que no generen ingresos
+- Ignorar feedback negativo
+- Perder de vista los KPIs principales
+- Trabajar solo sin feedback externo
+
+⚠️ PUNTOS CRÍTICOS:
+- Week 3 (Launch) es la más importante
+- Días 1-2 post-launch son cruciales para momentum
+- Si churn > 15%, hay problema fundamental
+- Si conversion < 1%, pricing o positioning está mal
+- Si PMF no está validado, no continúes a Fase 2 ciegamente
+
+🎯 MANTÉN SIEMPRE EN MENTE:
+- El objetivo es validar PMF, no hacer dinero
+- Si gets 1,000 usuarios y 10% son premium = éxito
+- Si gets 100,000 usuarios y 0.1% son premium = fracaso
+- Calidad > Cantidad
+
+🚀 ENERGÍA Y MOTIVACIÓN:
+Este mes va a ser duro. Vas a querer rendirte.
+Pero si logras llegar a 1,000 usuarios en 30 días...
+habrás validado que existe mercado para tu producto.
+
+Eso es invaluable.
+
+Mantén el foco. Haz el trabajo. Confía en el proceso.
+
+¡Tú puedes! 💪
+
+
+================================================================================
+FIN DEL DOCUMENTO - PLAN DE ACCIÓN 30 DÍAS
+================================================================================
+
+Versión: 1.0
+Fecha: Abril 2026
+Confidencialidad: Para uso personal/equipo
+Última actualización: Abril 8, 2026
+
+Documento creado para: Samothp / AgenteDeportivo
+Status: READY TO EXECUTE ✅
+
+Para actualizar este documento o agregar cambios:
+Email: contacto@agentedeportivo.com
+GitHub: https://github.com/Samothp/AgenteDeportivo
+
+================================================================================
