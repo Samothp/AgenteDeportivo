@@ -253,6 +253,251 @@ class SportsAgent:
         value = self.metrics.get(key)
         return f"{value:.1f}%" if value is not None and isinstance(value, float) else (str(value) if value is not None else 'No disponible')
 
+    # ------------------------------------------------------------------
+    # Fase 5.1 — Narrativa automática por reglas
+    # ------------------------------------------------------------------
+
+    def _generate_conclusions(self) -> List[str]:
+        """Genera un bloque de conclusiones textuales basado en reglas sobre las métricas calculadas.
+
+        Aplica en: modo Equipo (con team_record y league_percentiles)
+                   modo Liga  (con liga_summary)
+        Retorna lista de strings (líneas) lista para insertar en el informe.
+        """
+        lines: List[str] = []
+
+        # ── Modo equipo ──────────────────────────────────────────────
+        if self.team and self.team_record:
+            rec = self.team_record
+            m = self.metrics
+
+            # Racha actual — siempre se muestra
+            racha = rec.get('racha_actual', '')
+            ultimos = list(racha[-5:]) if racha else []
+            if ultimos:
+                victorias_recientes = ultimos.count('V')
+                empates_recientes   = ultimos.count('E')
+                derrotas_recientes  = ultimos.count('D')
+                forma_str = ' '.join(ultimos)
+                if victorias_recientes >= 4:
+                    lines.append(f'  ✅ Gran momento de forma: {victorias_recientes}V en los últimos {len(ultimos)} partidos ({forma_str}).')
+                elif victorias_recientes >= 3:
+                    lines.append(f'  ✅ Buen estado de forma: {victorias_recientes}V en los últimos {len(ultimos)} partidos ({forma_str}).')
+                elif derrotas_recientes >= 4:
+                    lines.append(f'  ⚠️  Racha negativa: {derrotas_recientes}D en los últimos {len(ultimos)} partidos ({forma_str}).')
+                elif derrotas_recientes >= 3:
+                    lines.append(f'  ⚠️  Momento difícil: {derrotas_recientes}D en los últimos {len(ultimos)} partidos ({forma_str}).')
+                elif victorias_recientes >= 2:
+                    lines.append(f'  🔄 Forma reciente aceptable: {victorias_recientes}V-{empates_recientes}E-{derrotas_recientes}D en los últimos {len(ultimos)} ({forma_str}).')
+                else:
+                    lines.append(f'  📋 Últimos {len(ultimos)} partidos: {forma_str} ({victorias_recientes}V-{empates_recientes}E-{derrotas_recientes}D).')
+
+            # Balance global
+            v = rec.get('victorias', 0)
+            e = rec.get('empates', 0)
+            d = rec.get('derrotas', 0)
+            pts = rec.get('puntos', 0)
+            total = v + e + d
+            if total > 0:
+                pct_victorias = v / total * 100
+                if pct_victorias >= 55:
+                    lines.append(f'  🏆 Excelente rendimiento global: {pct_victorias:.0f}% de victorias ({v}V/{e}E/{d}D, {pts} pts).')
+                elif pct_victorias >= 40:
+                    lines.append(f'  📊 Rendimiento sólido: {v}V/{e}E/{d}D — {pts} puntos en {total} partidos.')
+                elif pct_victorias >= 25:
+                    lines.append(f'  📊 Rendimiento medio: {v}V/{e}E/{d}D — {pts} puntos en {total} partidos.')
+                else:
+                    lines.append(f'  ⚠️  Bajo rendimiento: solo {pct_victorias:.0f}% victorias ({v}V/{e}E/{d}D, {pts} pts).')
+
+            # Racha máxima sin perder
+            rsm = rec.get('racha_sin_perder_max', 0)
+            if rsm >= 5:
+                lines.append(f'  🏅 Racha más larga sin perder: {rsm} partidos consecutivos.')
+
+            # Ofensiva
+            gf_p = m.get('goles_a_favor_promedio')
+            gc_p = m.get('goles_concedidos_promedio')
+            if gf_p is not None:
+                if gf_p >= 2.0:
+                    lines.append(f'  ⚽ Ataque destacado: {gf_p:.2f} goles/partido.')
+                elif gf_p >= 1.5:
+                    lines.append(f'  ⚽ Ataque por encima de la media: {gf_p:.2f} goles/partido.')
+                elif gf_p < 1.0:
+                    lines.append(f'  ⚠️  Ataque pobre: solo {gf_p:.2f} goles/partido.')
+                else:
+                    lines.append(f'  📊 Promedio ofensivo: {gf_p:.2f} goles anotados por partido.')
+
+            # Defensiva
+            if gc_p is not None:
+                if gc_p < 1.0:
+                    lines.append(f'  🛡️  Defensa muy sólida: solo {gc_p:.2f} goles encajados/partido.')
+                elif gc_p <= 1.4:
+                    lines.append(f'  🛡️  Defensa sólida: {gc_p:.2f} goles encajados/partido.')
+                elif gc_p >= 2.0:
+                    lines.append(f'  ⚠️  Defensa vulnerable: {gc_p:.2f} goles encajados/partido.')
+                else:
+                    lines.append(f'  📊 Promedio defensivo: {gc_p:.2f} goles encajados por partido.')
+
+            # Eficiencia ofensiva (overperformance xG)
+            over = m.get('overperformance')
+            if over is not None:
+                if over >= 1.2:
+                    lines.append(f'  🎯 Muy eficiente en ataque: ratio goles/xG = {over:.2f} (convierte más de lo esperado).')
+                elif over <= 0.75:
+                    lines.append(f'  📉 Baja eficiencia ofensiva: ratio goles/xG = {over:.2f} (convierte menos de lo esperado).')
+
+            # Percentiles de liga
+            for p in self.league_percentiles:
+                pct = p['percentil']
+                met = p['metrica']
+                if pct >= 90:
+                    lines.append(f'  🏆 Top 10% de la liga en {met} (percentil {pct}).')
+                elif pct <= 10:
+                    lines.append(f'  ⚠️  Bottom 10% de la liga en {met} (percentil {pct}).')
+
+        # ── Modo liga ────────────────────────────────────────────────
+        elif self.liga_summary:
+            s = self.liga_summary
+            clf = s.get('clasificacion')
+            if clf is not None and not clf.empty:
+                lider = clf.iloc[0]
+                escolta = clf.iloc[1] if len(clf) > 1 else None
+                dif_pts = int(lider['PTS']) - (int(escolta['PTS']) if escolta is not None else 0)
+                lines.append(f'  🏆 Líder: {lider["Equipo"]} con {int(lider["PTS"])} puntos'
+                              + (f', {dif_pts} por encima del segundo.' if escolta is not None else '.'))
+
+                # Equipos en zona de riesgo de descenso
+                n = len(clf)
+                if n >= 3:
+                    descenso = clf.tail(3)['Equipo'].tolist()
+                    lines.append(f'  ⚠️  Zona de descenso: {", ".join(descenso)}.')
+
+            # Máximos goleadores (equipos)
+            r = s.get('records', {})
+            if r.get('equipo_mas_goleador'):
+                lines.append(f'  ⚽ Equipo más goleador: {r["equipo_mas_goleador"]}.')
+            if r.get('equipo_menos_goleado'):
+                lines.append(f'  🛡️  Equipo menos goleado: {r["equipo_menos_goleado"]}.')
+            if r.get('equipo_mejor_racha') and r.get('mejor_racha_victorias', 0) >= 5:
+                lines.append(f'  🔥 Mejor racha de la temporada: {r["equipo_mejor_racha"]} '
+                              f'con {r["mejor_racha_victorias"]} victorias consecutivas.')
+
+            # Goles por partido
+            gpp = s.get('goles_promedio')
+            if gpp is not None:
+                try:
+                    gpp_f = float(gpp)
+                    if gpp_f >= 3.0:
+                        lines.append(f'  📊 Temporada muy goleadora: {gpp_f:.2f} goles/partido de media.')
+                    elif gpp_f < 2.0:
+                        lines.append(f'  📊 Temporada defensiva: solo {gpp_f:.2f} goles/partido de media.')
+                except (ValueError, TypeError):
+                    pass
+
+        if not lines:
+            return []
+
+        header = ['', 'Conclusiones', '------------']
+        return header + lines + ['']
+
+    def _generate_conclusions_html(self) -> str:
+        """Versión HTML de las conclusiones (para incrustar en los informes HTML)."""
+        text_lines = self._generate_conclusions()
+        if not text_lines:
+            return ''
+
+        items = [l for l in text_lines if l.startswith('  ')]
+        if not items:
+            return ''
+
+        html_items = ''.join(f'    <li>{line.strip()}</li>\n' for line in items)
+        return (
+            '  <h2>Conclusiones</h2>\n'
+            '  <div style="background:white;border-radius:8px;padding:16px 20px;'
+            'box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:24px;">\n'
+            '  <ul style="line-height:2;margin:0;padding-left:20px;">\n'
+            f'{html_items}'
+            '  </ul></div>\n'
+        )
+
+    # ------------------------------------------------------------------
+    # Fase 5.2 — Narrativa comparativa intertemporada
+    # ------------------------------------------------------------------
+
+    def _generate_interseason_narrative(self) -> List[str]:
+        """Genera comparativas de métricas entre temporadas cuando se usa --seasons con 2+.
+
+        Requiere que self.data contenga una columna 'season' y que self.seasons tenga ≥2 entradas.
+        Retorna lista de líneas lista para insertar en el informe.
+        """
+        if not self.seasons or len(self.seasons) < 2 or self.data is None:
+            return []
+        if 'season' not in self.data.columns:
+            return []
+
+        seasons_sorted = sorted(self.seasons, key=lambda s: int(str(s).split('-')[0]))
+        if len(seasons_sorted) < 2:
+            return []
+
+        def _metrics_for_season(s: str) -> dict:
+            mask = self.data['season'].astype(str).str.startswith(str(s))
+            sub = self.data[mask]
+            if sub.empty:
+                return {}
+            return compute_overall_metrics(sub, team=self.team)
+
+        first_season = str(seasons_sorted[0])
+        last_season  = str(seasons_sorted[-1])
+        m_old = _metrics_for_season(first_season)
+        m_new = _metrics_for_season(last_season)
+
+        if not m_old or not m_new:
+            return []
+
+        COMPARE_METRICS = [
+            ('goles_a_favor_promedio',          'Goles a favor/partido',      True),
+            ('goles_concedidos_promedio',        'Goles encajados/partido',    False),
+            ('xg_equipo_promedio',               'xG/partido',                 True),
+            ('tiros_equipo_promedio',            'Tiros/partido',              True),
+            ('tiros_a_puerta_equipo_promedio',   'Tiros a puerta/partido',     True),
+            ('posesion_equipo_promedio',         'Posesión (%)',               True),
+            ('goles_promedio_por_partido',       'Goles/partido (liga)',       True),
+        ]
+
+        lines: List[str] = ['', f'Evolución intertemporada  ({first_season} → {last_season})',
+                            '-' * 48]
+        found_any = False
+        for key, label, higher_is_better in COMPARE_METRICS:
+            v_old = m_old.get(key)
+            v_new = m_new.get(key)
+            if v_old is None or v_new is None:
+                continue
+            try:
+                v_old_f = float(v_old)
+                v_new_f = float(v_new)
+            except (ValueError, TypeError):
+                continue
+            if v_old_f == 0:
+                continue
+            pct = (v_new_f - v_old_f) / abs(v_old_f) * 100
+            if abs(pct) < 2:
+                direction = 'Sin cambio significativo'
+                sign = ' '
+            elif (pct > 0) == higher_is_better:
+                direction = 'Mejora'
+                sign = '+'
+            else:
+                direction = 'Empeora'
+                sign = '+' if pct > 0 else ''
+            lines.append(f'  {label:<32} {v_old_f:>6.2f} → {v_new_f:>6.2f}  ({sign}{pct:+.1f}%)  {direction}')
+            found_any = True
+
+        if not found_any:
+            return []
+
+        lines.append('')
+        return lines
+
     def _generate_compare_report(self, output_path: Optional[str] = None) -> str:
         """Informe de texto para el modo Compare (dos equipos)."""
         c = self.compare_data
@@ -614,6 +859,12 @@ class SportsAgent:
                 f'  {int(row["PJ_V"]):>5} {int(row["Pts_V"]):>6}'
             )
 
+        # 5.1 Conclusiones automáticas (modo liga)
+        lines.extend(self._generate_conclusions())
+
+        # 5.2 Narrativa intertemporada (si --seasons)
+        lines.extend(self._generate_interseason_narrative())
+
         report_text = '\n'.join(lines)
         if output_path:
             out = Path(output_path)
@@ -812,6 +1063,19 @@ class SportsAgent:
             for img in relative_images:
                 html.append(f'    <img src="{img}" alt="Gráfico de liga">')
             html.append('  </div>')
+
+        conclusions_html = self._generate_conclusions_html()
+        if conclusions_html:
+            html.append(conclusions_html)
+
+        interseason = self._generate_interseason_narrative()
+        if interseason:
+            html.append('  <h2>Evolución intertemporada</h2>')
+            html.append('  <div style="background:white;border-radius:8px;padding:16px 20px;'
+                        'box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:24px;">')
+            html.append('  <pre style="font-family:monospace;font-size:0.88em;margin:0;">')
+            html.append('\n'.join(interseason))
+            html.append('  </pre></div>')
 
         html.extend(['</body>', '</html>'])
         report_file.write_text('\n'.join(html), encoding='utf-8')
@@ -1638,6 +1902,12 @@ class SportsAgent:
         report_lines.extend(self.highlights[['date', 'local_team', 'visitante_team', 'goles_local', 'goles_visitante', 'goles_totales']]
                             .to_string(index=False).splitlines())
 
+        # 5.1 Conclusiones automáticas (modo equipo)
+        report_lines.extend(self._generate_conclusions())
+
+        # 5.2 Narrativa intertemporada (si --seasons)
+        report_lines.extend(self._generate_interseason_narrative())
+
         report_text = '\n'.join(report_lines)
         if output_path:
             output_file = Path(output_path)
@@ -2090,10 +2360,23 @@ class SportsAgent:
         for image_name in relative_images:
             html.append(f'    <img src="{image_name}" alt="{image_name}">')
 
+        conclusions_html = self._generate_conclusions_html()
+        if conclusions_html:
+            html.append(conclusions_html)
+
+        interseason = self._generate_interseason_narrative()
+        if interseason:
+            html.append('  <h2>Evolución intertemporada</h2>')
+            html.append('  <div style="background:white;border-radius:8px;padding:16px 20px;'
+                        'box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:24px;">')
+            html.append('  <pre style="font-family:monospace;font-size:0.88em;margin:0;">')
+            html.append('\n'.join(interseason))
+            html.append('  </pre></div>')
+
         html.extend([
-            '  </div>',
-            '</body>',
-            '</html>',
+          '  </div>',
+          '</body>',
+          '</html>',
         ])
 
         report_file.write_text('\n'.join(html), encoding='utf-8')

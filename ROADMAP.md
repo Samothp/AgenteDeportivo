@@ -56,14 +56,14 @@ Gráficos que añaden valor informativo con datos que ya se tienen en la DB.
 
 ---
 
-## Fase 5 — Narrativa automática `[FUTURO]`
+## Fase 5 — Narrativa automática `[COMPLETADO]`
 
 Enriquecimiento de los informes con insights generados por reglas, sin necesidad de LLM.
 
 | # | Mejora | Descripción | Estado |
 |---|--------|-------------|--------|
-| 5.1 | **Sección "Conclusiones" con reglas** | Bloque de insights al final de cada informe: racha positiva/negativa, ataque por encima de media, portero rendimiento, eficiencia ofensiva, etc. Solo condicionales sobre `metrics` ya calculados | ⬜ Pendiente |
-| 5.2 | **Narrativa comparativa intertemporada** | Con `--seasons`, generar texto como "En 2024-2025 el equipo mejoró un 23% en tiros a puerta respecto a 2023-2024". Usa datos multi-temporada que ya se procesan | ⬜ Pendiente |
+| 5.1 | **Sección "Conclusiones" con reglas** | Bloque de insights al final de cada informe: racha positiva/negativa, ataque por encima de media, portero rendimiento, eficiencia ofensiva, etc. Solo condicionales sobre `metrics` ya calculados | ✅ Completado |
+| 5.2 | **Narrativa comparativa intertemporada** | Con `--seasons`, generar texto como "En 2024-2025 el equipo mejoró un 23% en tiros a puerta respecto a 2023-2024". Usa datos multi-temporada que ya se procesan | ✅ Completado |
 
 ---
 
@@ -94,3 +94,5 @@ Requieren cambios estructurales significativos. Dependen del crecimiento del pro
 | 2.3 | Abril 2026 | `--format json`: `generate_json_report()` con encoder personalizado para DataFrames y tipos numpy; cambio automático de extensión `.txt`→`.json` |
 | 2.4 | Abril 2026 | `--matchday-range START END`: filtro `jornada.between(start, end)`, reutiliza pipeline Liga con título "INFORME DE RANGO"; fix `nunique()` en campo `jornadas` |
 | 2.4 | Abril 2026 | `--matchday-range START END`: filtro `jornada.between(start, end)`, reutiliza pipeline Liga con título "INFORME DE RANGO"; fix `nunique()` en `jornadas` |
+| 5.1 | Abril 2026 | Sección "Conclusiones" con reglas en informes Equipo y Liga: racha reciente siempre visible, balance global, GF/GC por partido, eficiencia xG y percentiles extremos |
+| 5.2 | Abril 2026 | Narrativa intertemporada con `--seasons`: evolución % de métricas clave entre primera y última temporada seleccionada |
