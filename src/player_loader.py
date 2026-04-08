@@ -17,21 +17,31 @@ Estructura del cache local:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Slug de liga en ESPN
 _ESPN_LEAGUE = {
-    2014: "esp.1",   # La Liga
-    2021: "eng.1",   # Premier League
-    2002: "ger.1",   # Bundesliga
-    2019: "ita.1",   # Serie A
-    2015: "fra.1",   # Ligue 1
-    2017: "por.1",   # Primeira Liga
+    2014: "esp.1",          # La Liga
+    2021: "eng.1",          # Premier League
+    2002: "ger.1",          # Bundesliga
+    2019: "ita.1",          # Serie A
+    2015: "fra.1",          # Ligue 1       (verificado: 18 equipos)
+    2017: "por.1",          # Primeira Liga (verificado: 18 equipos)
+    2001: "uefa.champions", # UEFA Champions League (verificado: 36 equipos)
+    2146: "uefa.europa",    # UEFA Europa League    (verificado: 36 equipos)
 }
+
+# TheSportsDB — fallback cuando ESPN no encuentra el equipo
+_TSDB_API_KEY = os.getenv("THESPORTSDB_API_KEY", "3")  # '3' = key pública de prueba
+_TSDB_BASE = f"https://www.thesportsdb.com/api/v1/json/{_TSDB_API_KEY}"
 
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 _DATA_DIR = Path(__file__).parent.parent / "data"
@@ -117,6 +127,82 @@ def _fetch_roster(team_id: int, league_slug: str, team_name: str) -> list[dict]:
     return rows
 
 
+def _fetch_roster_thesportsdb(team_name: str, verbose: bool = False) -> list[dict]:
+    """Fallback: obtiene roster desde TheSportsDB cuando ESPN no encuentra el equipo.
+
+    Devuelve filas con nombre y posición del jugador. Las estadísticas
+    (goles, asistencias, etc.) se rellenan con 0 porque TheSportsDB no
+    expone stats de partidos en su API pública/premium de roster.
+    """
+    if verbose:
+        print(f"  [fallback] Intentando TheSportsDB para '{team_name}'...")
+
+    try:
+        r = requests.get(
+            f"{_TSDB_BASE}/searchteams.php",
+            params={"t": team_name},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        teams = r.json().get("teams") or []
+    except Exception as e:
+        if verbose:
+            print(f"  [fallback] TheSportsDB searchteams falló: {e}")
+        return []
+
+    if not teams:
+        if verbose:
+            print(f"  [fallback] Equipo '{team_name}' no encontrado en TheSportsDB.")
+        return []
+
+    team_id = teams[0]["idTeam"]
+    canonical_name = teams[0].get("strTeam", team_name)
+    if verbose:
+        print(f"  [fallback] TheSportsDB team_id={team_id} ({canonical_name}). Descargando roster...")
+
+    try:
+        r2 = requests.get(
+            f"{_TSDB_BASE}/lookup_all_players.php",
+            params={"id": team_id},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=15,
+        )
+        r2.raise_for_status()
+        players = r2.json().get("player") or []
+    except Exception as e:
+        if verbose:
+            print(f"  [fallback] TheSportsDB lookup_all_players falló: {e}")
+        return []
+
+    if not players:
+        if verbose:
+            print("  [fallback] Sin jugadores en TheSportsDB.")
+        return []
+
+    if verbose:
+        print(f"  [fallback] {len(players)} jugadores obtenidos (sin stats de partido — solo roster).")
+
+    rows = []
+    for p in players:
+        if p.get("strStatus", "Active") != "Active":
+            continue
+        rows.append({
+            "player_id": int(p.get("idPlayer") or 0),
+            "player_name": p.get("strPlayer", ""),
+            "team": canonical_name,
+            "position": p.get("strPosition", ""),
+            "appearances": 0,
+            "goals": 0,
+            "assists": 0,
+            "yellow_cards": 0,
+            "red_cards": 0,
+            "shots_on_target": 0,
+            "goals_assists": 0,
+        })
+    return rows
+
+
 def fetch_player_stats(
     team_name: str,
     competition_id: int = 2014,
@@ -141,8 +227,18 @@ def fetch_player_stats(
     team_id = _find_team_id(team_name, league_slug)
     if team_id is None:
         if verbose:
-            print(f"  [warn] Equipo '{team_name}' no encontrado en ESPN.")
-        return pd.DataFrame()
+            print(f"  [warn] Equipo '{team_name}' no encontrado en ESPN. Probando fallback TheSportsDB...")
+        rows = _fetch_roster_thesportsdb(team_name, verbose=verbose)
+        if not rows:
+            return pd.DataFrame()
+        season_year = _season_to_year(season)
+        df = pd.DataFrame(rows)
+        df["season"] = f"{season_year}-{season_year + 1}"
+        df["competition_id"] = competition_id
+        csv_path = _players_csv_path(competition_id, season)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(csv_path, index=False)
+        return df
 
     if verbose:
         print(f"  ESPN team_id={team_id}. Descargando roster...")

@@ -46,13 +46,13 @@ Gráficos que añaden valor informativo con datos que ya se tienen en la DB.
 
 ---
 
-## Fase 4 — Soporte de fuentes de datos `[PLANIFICADO]`
+## Fase 4 — Soporte de fuentes de datos `[COMPLETADO]`
 
 | # | Mejora | Descripción | Estado |
 |---|--------|-------------|--------|
-| 4.1 | **ESPN para UCL / Europa League** | Añadir `"uefa.champions"` y `"uefa.europa"` al dict `_ESPN_LEAGUE` en `player_loader.py`. Actualmente falla silenciosamente con competiciones 2001 y 2146 | ⬜ Pendiente |
-| 4.2 | **Fallback TheSportsDB para jugadores** | Si ESPN no tiene el equipo/liga, intentar obtener stats de jugadores desde TheSportsDB como segunda fuente | ⬜ Pendiente |
-| 4.3 | **Verificar Primeira Liga / Ligue 1** | Confirmar que los slugs ESPN para competiciones 2017 y 2015 funcionan correctamente (posibles fallos silenciosos no detectados) | ⬜ Pendiente |
+| 4.1 | **ESPN para UCL / Europa League** | Añadir `"uefa.champions"` y `"uefa.europa"` al dict `_ESPN_LEAGUE` en `player_loader.py`. Actualmente falla silenciosamente con competiciones 2001 y 2146 | ✅ Completado |
+| 4.2 | **Fallback TheSportsDB para jugadores** | Si ESPN no tiene el equipo/liga, intentar obtener stats de jugadores desde TheSportsDB como segunda fuente | ✅ Completado |
+| 4.3 | **Verificar Primeira Liga / Ligue 1** | Confirmar que los slugs ESPN para competiciones 2017 y 2015 funcionan correctamente (posibles fallos silenciosos no detectados) | ✅ Completado |
 
 ---
 
