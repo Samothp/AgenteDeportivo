@@ -315,6 +315,101 @@ def compute_team_record(df: pd.DataFrame, team: str) -> Dict:
     }
 
 
+def compute_compare(team1: str, team2: str, df: pd.DataFrame) -> Dict:
+    """Comparativa completa entre dos equipos sobre el mismo dataset.
+
+    Returns un Dict con:
+      team1, team2,
+      metrics1, metrics2 (compute_overall_metrics con team=),
+      record1, record2 (compute_team_record),
+      h2h: list de partidos directos entre ambos equipos,
+      h2h_summary: {pj, wins1, draws, wins2, gf1, gf2},
+      radar_labels, radar_vals1, radar_vals2  (métricas normalizadas para radar).
+    """
+    t1 = team1.strip().lower()
+    t2 = team2.strip().lower()
+
+    df1 = df[
+        df['local_team'].str.lower().str.contains(t1, na=False) |
+        df['visitante_team'].str.lower().str.contains(t1, na=False)
+    ].copy()
+    df2 = df[
+        df['local_team'].str.lower().str.contains(t2, na=False) |
+        df['visitante_team'].str.lower().str.contains(t2, na=False)
+    ].copy()
+
+    metrics1 = compute_overall_metrics(df1, team=team1)
+    metrics2 = compute_overall_metrics(df2, team=team2)
+    record1  = compute_team_record(df1, team1) if not df1.empty else {}
+    record2  = compute_team_record(df2, team2) if not df2.empty else {}
+
+    # Partidos H2H
+    h2h_rows = df[
+        (df['local_team'].str.lower().str.contains(t1, na=False) & df['visitante_team'].str.lower().str.contains(t2, na=False)) |
+        (df['local_team'].str.lower().str.contains(t2, na=False) & df['visitante_team'].str.lower().str.contains(t1, na=False))
+    ].copy()
+
+    h2h: List[Dict] = []
+    wins1 = draws = wins2 = gf1 = gf2 = 0
+    for _, row in h2h_rows.iterrows():
+        is_home1 = str(row.get('local_team', '')).lower().find(t1) >= 0
+        gl = int(row.get('goles_local', 0) or 0)
+        gv = int(row.get('goles_visitante', 0) or 0)
+        g1 = gl if is_home1 else gv
+        g2 = gv if is_home1 else gl
+        local_name = row.get('local_team', '-')
+        visit_name = row.get('visitante_team', '-')
+        if g1 > g2:   wins1 += 1
+        elif g1 == g2: draws += 1
+        else:          wins2 += 1
+        gf1 += g1; gf2 += g2
+        h2h.append({
+            'jornada': row.get('jornada'), 'season': row.get('season'),
+            'local': local_name, 'visitante': visit_name,
+            'goles_local': gl, 'goles_visitante': gv,
+        })
+
+    h2h_summary = {
+        'pj': len(h2h), 'wins1': wins1, 'draws': draws, 'wins2': wins2,
+        'gf1': gf1, 'gf2': gf2,
+    }
+
+    # Métricas normalizadas para radar (6 ejes)
+    def _safe(m: Dict, key: str, default: float = 0.0) -> float:
+        v = m.get(key)
+        return float(v) if v is not None else default
+
+    raw1 = [
+        _safe(metrics1, 'goles_a_favor_promedio'),
+        max(0.0, 3.0 - _safe(metrics1, 'goles_concedidos_promedio')),  # invertido
+        _safe(metrics1, 'xg_equipo_promedio'),
+        _safe(metrics1, 'tiros_equipo_promedio'),
+        _safe(metrics1, 'posesion_equipo_promedio'),
+        _safe(metrics1, 'tiros_a_puerta_equipo_promedio'),
+    ]
+    raw2 = [
+        _safe(metrics2, 'goles_a_favor_promedio'),
+        max(0.0, 3.0 - _safe(metrics2, 'goles_concedidos_promedio')),
+        _safe(metrics2, 'xg_equipo_promedio'),
+        _safe(metrics2, 'tiros_equipo_promedio'),
+        _safe(metrics2, 'posesion_equipo_promedio'),
+        _safe(metrics2, 'tiros_a_puerta_equipo_promedio'),
+    ]
+    radar_labels = ['Goles/partido', 'Solidez def.', 'xG/partido', 'Tiros/partido', 'Posesión %', 'Tiros puerta/p']
+    maxima = [max(a, b, 0.01) for a, b in zip(raw1, raw2)]
+    radar_vals1 = [v / m for v, m in zip(raw1, maxima)]
+    radar_vals2 = [v / m for v, m in zip(raw2, maxima)]
+
+    return {
+        'team1': team1, 'team2': team2,
+        'metrics1': metrics1, 'metrics2': metrics2,
+        'record1': record1, 'record2': record2,
+        'h2h': h2h, 'h2h_summary': h2h_summary,
+        'radar_labels': radar_labels,
+        'radar_vals1': radar_vals1, 'radar_vals2': radar_vals2,
+    }
+
+
 def compute_team_percentiles(team: str, df_full: pd.DataFrame) -> List[Dict]:
     """Calcula el percentil del equipo en cada métrica clave respecto al resto de la liga.
 

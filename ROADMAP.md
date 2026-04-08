@@ -33,16 +33,16 @@ Añaden capacidad analítica real sin cambiar la estructura de informes existent
 
 ---
 
-## Fase 3 — Nuevas visualizaciones `[PLANIFICADO]`
+## Fase 3 — Nuevas visualizaciones `[COMPLETADO]`
 
 Gráficos que añaden valor informativo con datos que ya se tienen en la DB.
 
 | # | Mejora | Descripción | Estado |
 |---|--------|-------------|--------|
-| 3.1 | **Shot conversion funnel** | Embudo: tiros totales → tiros a puerta → goles, por equipo o local/visitante. Datos disponibles, solo falta el gráfico | ⬜ Pendiente |
-| 3.2 | **Puntos acumulados por jornada (modo Liga)** | Línea temporal para el top-N de equipos mostrando cómo se fue formando la clasificación jornada a jornada | ⬜ Pendiente |
-| 3.3 | **Modo `--compare` (dos equipos)** | Nuevo modo: `--compare "Real Madrid" "FC Barcelona"`. Genera radar comparativo, tabla H2H de partidos directos en la DB y diferencias en todas las métricas | ⬜ Pendiente |
-| 3.4 | **Mapa de calor de resultados** | Matriz N×N con colores verde/rojo/amarillo para cada par local-visitante. Visual para detectar patrones de dominio entre equipos en una liga | ⬜ Pendiente |
+| 3.1 | **Shot conversion funnel** | Embudo: tiros totales → tiros a puerta → goles, por equipo o local/visitante. Datos disponibles, solo falta el gráfico | ✅ Completado |
+| 3.2 | **Puntos acumulados por jornada (modo Liga)** | Línea temporal para el top-N de equipos mostrando cómo se fue formando la clasificación jornada a jornada | ✅ Completado |
+| 3.3 | **Modo `--compare` (dos equipos)** | Nuevo modo: `--compare "Real Madrid" "FC Barcelona"`. Genera radar comparativo, tabla H2H de partidos directos en la DB y diferencias en todas las métricas | ✅ Completado |
+| 3.4 | **Mapa de calor de resultados** | Matriz N×N con colores verde/rojo/amarillo para cada par local-visitante. Visual para detectar patrones de dominio entre equipos en una liga | ✅ Completado |
 
 ---
 

@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from .analysis import (
+    compute_compare,
     compute_league_comparison,
     compute_liga_summary,
     compute_match_detail,
@@ -27,6 +28,8 @@ from .player_loader import load_player_stats
 from .visualizer import (
     plot_attendance,
     plot_card_statistics,
+    plot_compare_radar,
+    plot_cumulative_points,
     plot_goals_distribution,
     plot_goals_per_team,
     plot_home_away_performance,
@@ -38,6 +41,8 @@ from .visualizer import (
     plot_player_bar,
     plot_player_radar,
     plot_possession_distribution,
+    plot_results_heatmap,
+    plot_shot_funnel,
     plot_shots_comparison,
     plot_temporal_evolution,
     plot_xg_per_match,
@@ -46,7 +51,7 @@ from .visualizer import (
 
 
 class SportsAgent:
-    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None, player: Optional[str] = None, top_n: int = 5, no_charts: bool = False, refresh_cache: bool = False, cache_ttl_days: int = 7, matchday_range: Optional[tuple] = None):
+    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None, player: Optional[str] = None, top_n: int = 5, no_charts: bool = False, refresh_cache: bool = False, cache_ttl_days: int = 7, matchday_range: Optional[tuple] = None, compare: Optional[tuple] = None):
         self.data_path = data_path
         self.fetch_real = fetch_real
         self.competition_id = competition_id
@@ -78,6 +83,8 @@ class SportsAgent:
         self.liga_summary: dict = {}  # resumen completo de liga (solo modo Liga)
         self.player_profile: dict = {}  # perfil del jugador (solo modo Jugador)
         self.player_rankings_raw: Optional[pd.DataFrame] = None  # CSV jugadores cargado
+        self.compare: Optional[tuple] = compare  # (team1, team2) para modo --compare
+        self.compare_data: dict = {}  # resultado de compute_compare()
 
     def load_data(self):
         if self.seasons and len(self.seasons) > 1:
@@ -135,6 +142,17 @@ class SportsAgent:
     def analyze(self):
         if self.data is None:
             raise ValueError('Datos no cargados. Ejecute load_data() primero.')
+
+        # Modo Compare: --compare TEAM1 TEAM2
+        if self.compare is not None:
+            team1, team2 = self.compare
+            self.compare_data = compute_compare(team1, team2, self.data)
+            # metrics mínimas para no romper generate_report
+            self.metrics = {'partidos_analizados': len(self.data)}
+            self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
+            self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
+            self.highlights = match_highlights(self.data, n=self.top_n)
+            return self.metrics
 
         # Modo Partido: ficha técnica de un partido específico
         if self.match_id is not None:
@@ -234,6 +252,260 @@ class SportsAgent:
     def format_html_metric(self, key: str) -> str:
         value = self.metrics.get(key)
         return f"{value:.1f}%" if value is not None and isinstance(value, float) else (str(value) if value is not None else 'No disponible')
+
+    def _generate_compare_report(self, output_path: Optional[str] = None) -> str:
+        """Informe de texto para el modo Compare (dos equipos)."""
+        c = self.compare_data
+        team1 = c.get('team1', '?')
+        team2 = c.get('team2', '?')
+        m1 = c.get('metrics1', {})
+        m2 = c.get('metrics2', {})
+        r1 = c.get('record1', {})
+        r2 = c.get('record2', {})
+        h2h = c.get('h2h', [])
+        hs = c.get('h2h_summary', {})
+
+        title = f'COMPARATIVA — {team1}  vs  {team2}'
+        lines: List[str] = [title, '=' * len(title), '']
+
+        # Métricas globales
+        lines.append(f'{"Métrica":<30} {team1:>22} {team2:>22}')
+        lines.append(f'{"-"*30} {"-"*22} {"-"*22}')
+        for key, label in [
+            ('goles_a_favor_promedio', 'Goles a favor / partido'),
+            ('goles_concedidos_promedio', 'Goles encajados / partido'),
+            ('xg_equipo_promedio', 'xG / partido'),
+            ('tiros_equipo_promedio', 'Tiros / partido'),
+            ('posesion_equipo_promedio', 'Posesión media (%)'),
+            ('tiros_a_puerta_equipo_promedio', 'Tiros a puerta / partido'),
+        ]:
+            v1 = m1.get(key)
+            v2 = m2.get(key)
+            s1 = f'{v1:.2f}' if v1 is not None else '-'
+            s2 = f'{v2:.2f}' if v2 is not None else '-'
+            lines.append(f'  {label:<28} {s1:>22} {s2:>22}')
+        lines.append('')
+
+        # Historial (W/D/L)
+        lines.append(f'{"Historial":<30} {team1:>22} {team2:>22}')
+        lines.append(f'{"-"*30} {"-"*22} {"-"*22}')
+        pj1 = len(r1.get('tabla_resultados', []))
+        pj2 = len(r2.get('tabla_resultados', []))
+        gf1 = sum(x['gf'] for x in r1.get('tabla_resultados', []))
+        gc1 = sum(x['gc'] for x in r1.get('tabla_resultados', []))
+        gf2 = sum(x['gf'] for x in r2.get('tabla_resultados', []))
+        gc2 = sum(x['gc'] for x in r2.get('tabla_resultados', []))
+        dif1 = gf1 - gc1
+        dif2 = gf2 - gc2
+        for key, label in [('victorias', 'Victorias'), ('empates', 'Empates'), ('derrotas', 'Derrotas'), ('puntos', 'Puntos')]:
+            v1 = r1.get(key, '-')
+            v2 = r2.get(key, '-')
+            lines.append(f'  {label:<28} {str(v1):>22} {str(v2):>22}')
+        lines.append(f'  {"Partidos":<28} {str(pj1):>22} {str(pj2):>22}')
+        lines.append(f'  {"Goles a favor (GF)":<28} {str(gf1):>22} {str(gf2):>22}')
+        lines.append(f'  {"Goles en contra (GC)":<28} {str(gc1):>22} {str(gc2):>22}')
+        dif1_str = f'+{dif1}' if dif1 > 0 else str(dif1)
+        dif2_str = f'+{dif2}' if dif2 > 0 else str(dif2)
+        lines.append(f'  {"Diferencia de goles":<28} {dif1_str:>22} {dif2_str:>22}')
+        lines.append('')
+
+        # Cara a cara H2H
+        lines.append(f'Enfrentamientos directos ({hs.get("pj", 0)} partidos)')
+        lines.append('-' * 40)
+        lines.append(
+            f'  Victorias {team1}: {hs.get("wins1", 0)}  |  '
+            f'Empates: {hs.get("draws", 0)}  |  '
+            f'Victorias {team2}: {hs.get("wins2", 0)}'
+        )
+        lines.append(f'  Goles {team1}: {hs.get("gf1", 0)}  —  Goles {team2}: {hs.get("gf2", 0)}')
+        lines.append('')
+        if h2h:
+            lines.append(f'  {"Jornada":>7}  {"Local":<20} {"Result":>8}  {"Visitante":<20}')
+            lines.append(f'  {"-------":>7}  {"-"*20} {"------":>8}  {"-"*20}')
+            for m in h2h[-10:]:  # últimos 10
+                jor = str(m.get('jornada', '?'))
+                loc = m.get('local', '?')
+                vis = m.get('visitante', '?')
+                res = f'{m.get("goles_local", "?")} - {m.get("goles_visitante", "?")}'
+                lines.append(f'  {jor:>7}  {loc:<20} {res:>8}  {vis:<20}')
+
+        report_text = '\n'.join(lines)
+        if output_path:
+            out = Path(output_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(report_text, encoding='utf-8')
+        return report_text
+
+    def _generate_compare_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
+        """Informe HTML para el modo Compare (dos equipos)."""
+        c = self.compare_data
+        team1 = c.get('team1', '?')
+        team2 = c.get('team2', '?')
+        m1 = c.get('metrics1', {})
+        m2 = c.get('metrics2', {})
+        r1 = c.get('record1', {})
+        r2 = c.get('record2', {})
+        h2h = c.get('h2h', [])
+        hs = c.get('h2h_summary', {})
+
+        report_file = Path(output_path)
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        image_folder_path = Path(image_folder) if image_folder else report_file.parent
+        image_folder_path.mkdir(parents=True, exist_ok=True)
+        images = self.save_visual_report(str(image_folder_path))
+        relative_images = [
+            Path(os.path.relpath(img, start=report_file.parent)).as_posix()
+            for img in images if img
+        ]
+
+        def fmt(v):
+            if v is None:
+                return '-'
+            try:
+                return f'{float(v):.2f}'
+            except (ValueError, TypeError):
+                return str(v)
+
+        metric_rows = [
+            ('goles_a_favor_promedio', 'Goles / partido'),
+            ('goles_concedidos_promedio', 'Goles encajados / p'),
+            ('xg_equipo_promedio', 'xG / partido'),
+            ('tiros_equipo_promedio', 'Tiros / partido'),
+            ('posesion_equipo_promedio', 'Posesión (%)'),
+            ('tiros_a_puerta_equipo_promedio', 'Tiros a ptas / p'),
+        ]
+        record_rows = [('victorias', 'Victorias'), ('empates', 'Empates'), ('derrotas', 'Derrotas'), ('puntos', 'Puntos')]
+
+        def better(v1, v2, higher_is_better=True):
+            """Retorna (bold1, bold2) css class."""
+            try:
+                f1, f2 = float(v1), float(v2)
+                if f1 == f2:
+                    return '', ''
+                if higher_is_better:
+                    return ('font-weight:bold;color:#27ae60', '') if f1 > f2 else ('', 'font-weight:bold;color:#27ae60')
+                else:
+                    return ('font-weight:bold;color:#27ae60', '') if f1 < f2 else ('', 'font-weight:bold;color:#27ae60')
+            except (ValueError, TypeError):
+                return '', ''
+
+        html = [
+            '<!DOCTYPE html>',
+            '<html lang="es">',
+            '<head>',
+            '  <meta charset="UTF-8">',
+            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+            f'  <title>Comparativa: {team1} vs {team2}</title>',
+            '  <style>',
+            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
+            '    h2 { color: #2c7bb6; border-bottom: 2px solid #d0e4f7; padding-bottom: 4px; }',
+            '    .header-box { background: linear-gradient(135deg, #2e86de 0%, #e74c3c 100%);',
+            '      color: white; border-radius: 12px; padding: 20px 28px; margin-bottom: 24px; }',
+            '    .header-box h1 { color: white; margin: 0; }',
+            '    table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.92em; }',
+            '    th, td { padding: 8px 12px; border: 1px solid #d7dbe3; text-align: center; }',
+            '    th { background: #e4efff; }',
+            '    th.t1 { background: #dbeafe; color: #1e40af; }',
+            '    th.t2 { background: #fee2e2; color: #991b1b; }',
+            '    td.left { text-align: left; }',
+            '    img { max-width: 100%; border-radius: 8px; margin: 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
+            '  </style>',
+            '</head>',
+            '<body>',
+            '  <div class="header-box">',
+            f'    <h1>{team1}  vs  {team2}</h1>',
+            f'    <p>Comparativa de rendimiento en la temporada</p>',
+            '  </div>',
+
+            # Métricas
+            '  <h2>Métricas de rendimiento</h2>',
+            '  <table>',
+            f'    <thead><tr><th class="left">Métrica</th><th class="t1">{team1}</th><th class="t2">{team2}</th></tr></thead>',
+            '    <tbody>',
+        ]
+        low_is_better = {'goles_concedidos_promedio'}
+        for key, label in metric_rows:
+            v1 = m1.get(key)
+            v2 = m2.get(key)
+            s1 = fmt(v1)
+            s2 = fmt(v2)
+            hib = key not in low_is_better
+            b1, b2 = better(v1, v2, hib)
+            html.append(f'      <tr><td class="left">{label}</td>'
+                        f'<td style="{b1}">{s1}</td>'
+                        f'<td style="{b2}">{s2}</td></tr>')
+        html.append('    </tbody></table>')
+
+        # Historial
+        html.extend([
+            '  <h2>Historial de la temporada</h2>',
+            '  <table>',
+            f'    <thead><tr><th class="left">Historial</th><th class="t1">{team1}</th><th class="t2">{team2}</th></tr></thead>',
+            '    <tbody>',
+        ])
+        for key, label in record_rows:
+            v1 = r1.get(key, '-')
+            v2 = r2.get(key, '-')
+            b1, b2 = better(v1, v2)
+            html.append(f'      <tr><td class="left">{label}</td>'
+                        f'<td style="{b1}">{v1}</td>'
+                        f'<td style="{b2}">{v2}</td></tr>')
+        pj1 = len(r1.get('tabla_resultados', []))
+        pj2 = len(r2.get('tabla_resultados', []))
+        gf1_tot = sum(x['gf'] for x in r1.get('tabla_resultados', []))
+        gc1_tot = sum(x['gc'] for x in r1.get('tabla_resultados', []))
+        gf2_tot = sum(x['gf'] for x in r2.get('tabla_resultados', []))
+        gc2_tot = sum(x['gc'] for x in r2.get('tabla_resultados', []))
+        dif1_tot = gf1_tot - gc1_tot
+        dif2_tot = gf2_tot - gc2_tot
+        dif1_str = f'+{dif1_tot}' if dif1_tot > 0 else str(dif1_tot)
+        dif2_str = f'+{dif2_tot}' if dif2_tot > 0 else str(dif2_tot)
+        b1pj, b2pj = better(pj1, pj2)
+        b1gf, b2gf = better(gf1_tot, gf2_tot)
+        b1gc, b2gc = better(gc1_tot, gc2_tot, higher_is_better=False)
+        b1dif, b2dif = better(dif1_tot, dif2_tot)
+        html.append(f'      <tr><td class="left">Partidos</td><td style="{b1pj}">{pj1}</td><td style="{b2pj}">{pj2}</td></tr>')
+        html.append(f'      <tr><td class="left">Goles a favor (GF)</td><td style="{b1gf}">{gf1_tot}</td><td style="{b2gf}">{gf2_tot}</td></tr>')
+        html.append(f'      <tr><td class="left">Goles en contra (GC)</td><td style="{b1gc}">{gc1_tot}</td><td style="{b2gc}">{gc2_tot}</td></tr>')
+        html.append(f'      <tr><td class="left">Diferencia de goles</td><td style="{b1dif}">{dif1_str}</td><td style="{b2dif}">{dif2_str}</td></tr>')
+        html.append('    </tbody></table>')
+
+        # H2H
+        html.extend([
+            f'  <h2>Cara a cara ({hs.get("pj", 0)} partidos)</h2>',
+            '  <table>',
+            '    <tbody>',
+            f'      <tr><td class="left">Victorias {team1}</td><td colspan="2" class="t1">{hs.get("wins1", 0)}</td></tr>',
+            f'      <tr><td class="left">Empates</td><td colspan="2">{hs.get("draws", 0)}</td></tr>',
+            f'      <tr><td class="left">Victorias {team2}</td><td colspan="2" class="t2">{hs.get("wins2", 0)}</td></tr>',
+            f'      <tr><td class="left">Goles {team1} / {team2}</td><td>{hs.get("gf1", 0)}</td><td>{hs.get("gf2", 0)}</td></tr>',
+            '    </tbody></table>',
+        ])
+        if h2h:
+            html.extend([
+                '  <table>',
+                '    <thead><tr><th>Jornada</th><th>Local</th><th>Resultado</th><th>Visitante</th></tr></thead>',
+                '    <tbody>',
+            ])
+            for m in h2h[-10:]:
+                jor = m.get('jornada', '?')
+                loc = m.get('local', '?')
+                vis = m.get('visitante', '?')
+                res = f'{m.get("goles_local", "?")} - {m.get("goles_visitante", "?")}'
+                html.append(f'      <tr><td>{jor}</td><td>{loc}</td><td>{res}</td><td>{vis}</td></tr>')
+            html.append('    </tbody></table>')
+
+        # Gráfico radar
+        if relative_images:
+            html.extend(['  <h2>Radar comparativo</h2>', '  <div>'])
+            for img in relative_images:
+                html.append(f'    <img src="{img}" alt="Radar comparativo">')
+            html.append('  </div>')
+
+        html.extend(['</body>', '</html>'])
+        content = '\n'.join(html)
+        report_file.write_text(content, encoding='utf-8')
+        return output_path
 
     def _generate_liga_report(self, output_path: Optional[str] = None) -> str:
         """Informe de texto para el modo Liga."""
@@ -1144,6 +1416,9 @@ class SportsAgent:
         if self.match_id is not None and self.match_detail:
             return self._generate_match_report(output_path)
 
+        if self.compare is not None and self.compare_data:
+            return self._generate_compare_report(output_path)
+
         if self.matchday is not None and self.matchday_summary:
             return self._generate_matchday_report(output_path)
 
@@ -1477,6 +1752,9 @@ class SportsAgent:
 
         if self.match_id is not None and self.match_detail:
             return self._generate_match_html_report(output_path, image_folder=image_folder)
+
+        if self.compare is not None and self.compare_data:
+            return self._generate_compare_html_report(output_path, image_folder=image_folder)
 
         if self.matchday is not None and self.matchday_summary:
             return self._generate_matchday_html_report(output_path, image_folder=image_folder)
@@ -1831,6 +2109,14 @@ class SportsAgent:
         report_folder = Path(output_folder)
         report_folder.mkdir(parents=True, exist_ok=True)
 
+        # Modo Compare: radar comparativo entre dos equipos
+        if self.compare is not None and self.compare_data:
+            paths = []
+            radar_path = plot_compare_radar(self.compare_data, str(report_folder / 'compare_radar.png'))
+            if radar_path:
+                paths.append(radar_path)
+            return paths
+
         # Modo Partido: gráficos de estadísticas cara a cara
         if self.match_id is not None:
             paths = []
@@ -1885,6 +2171,12 @@ class SportsAgent:
             if xgt: paths.append(xgt)
             hap = plot_home_away_performance(self.liga_summary['home_away'], str(report_folder / 'home_away_performance.png'))
             if hap: paths.append(hap)
+            # 3.2 Puntos acumulados por jornada
+            cup = plot_cumulative_points(self.data, str(report_folder / 'cumulative_points.png'), top_n=self.top_n)
+            if cup: paths.append(cup)
+            # 3.4 Mapa de calor de resultados
+            hmap = plot_results_heatmap(self.data, str(report_folder / 'results_heatmap.png'))
+            if hmap: paths.append(hmap)
             return paths
 
         paths = []
@@ -1916,5 +2208,10 @@ class SportsAgent:
         evolution_path = plot_temporal_evolution(self.data, self.team, str(report_folder / 'temporal_evolution.png'))
         if evolution_path:
             paths.append(evolution_path)
+
+        # 3.1 Embudo de conversión de tiros
+        funnel_path = plot_shot_funnel(self.data, str(report_folder / 'shot_funnel.png'), team=self.team)
+        if funnel_path:
+            paths.append(funnel_path)
 
         return paths

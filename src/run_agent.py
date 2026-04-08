@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument('--cache-ttl', type=int, default=7, dest='cache_ttl_days', help='Días antes de avisar que el caché está desactualizado (por defecto: 7)')
     parser.add_argument('--format', choices=['text', 'json'], default='text', dest='fmt', help='Formato de salida: text (por defecto) o json')
     parser.add_argument('--matchday-range', nargs=2, type=int, metavar=('START', 'END'), dest='matchday_range', help='Rango de jornadas a analizar (ej. --matchday-range 10 20). Incompatible con --jornada')
+    parser.add_argument('--compare', nargs=2, metavar=('TEAM1', 'TEAM2'), default=None, help='Comparar dos equipos (ej. --compare Mallorca Sevilla)')
     return parser.parse_args()
 
 
@@ -81,7 +82,7 @@ def main():
             sys.exit(1)
         matchday_range = (start, end)
 
-    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team, seasons=args.seasons, matchday=args.jornada, match_id=args.match_id, player=args.player, top_n=args.top_n, no_charts=args.no_charts, refresh_cache=args.refresh_cache, cache_ttl_days=args.cache_ttl_days, matchday_range=matchday_range)
+    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team, seasons=args.seasons, matchday=args.jornada, match_id=args.match_id, player=args.player, top_n=args.top_n, no_charts=args.no_charts, refresh_cache=args.refresh_cache, cache_ttl_days=args.cache_ttl_days, matchday_range=matchday_range, compare=tuple(args.compare) if args.compare else None)
 
     if args.clean_reports:
         agent.clean_reports(args.visual)

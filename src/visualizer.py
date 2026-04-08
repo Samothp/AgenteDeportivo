@@ -602,3 +602,171 @@ def plot_player_radar(profile: dict, output_path: str) -> Optional[str]:
     plt.close(fig)
     return output_path
 
+
+# ── Fase 3: nuevas visualizaciones ───────────────────────────────────────────
+
+def plot_shot_funnel(df: pd.DataFrame, output_path: str, team: Optional[str] = None) -> Optional[str]:
+    """Embudo tiros totales → tiros a puerta → goles (local + visitante)."""
+    needed = ['shots_local', 'shots_on_target_local', 'goles_local',
+              'shots_visitante', 'shots_on_target_visitante', 'goles_visitante']
+    if not all(c in df.columns for c in needed):
+        return None
+    data = df[needed].dropna()
+    if data.empty:
+        return None
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    tiros_l  = data['shots_local'].mean()
+    puerta_l = data['shots_on_target_local'].mean()
+    goles_l  = data['goles_local'].mean()
+    tiros_v  = data['shots_visitante'].mean()
+    puerta_v = data['shots_on_target_visitante'].mean()
+    goles_v  = data['goles_visitante'].mean()
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 6))
+    title_suffix = f' \u2014 {team}' if team else ''
+    fig.suptitle(f'Embudo de conversi\u00f3n{title_suffix}', fontsize=13, fontweight='bold')
+
+    def _funnel(ax, vals, labels, colors, title):
+        max_v = max(vals)
+        for i, (v, lbl, c) in enumerate(zip(vals, labels, colors)):
+            width = v / max_v
+            left = (1 - width) / 2
+            ax.barh(i, width, left=left, color=c, height=0.55)
+            ax.text(0.5, i, f'{lbl}  {v:.1f}', ha='center', va='center',
+                    fontsize=10, fontweight='bold', color='white')
+        ax.set_xlim(0, 1)
+        ax.set_ylim(-0.5, len(vals) - 0.5)
+        ax.invert_yaxis()  # Tiros arriba → Goles abajo
+        ax.axis('off')
+        ax.set_title(title, fontsize=11, pad=8)
+
+    _funnel(axes[0], [tiros_l, puerta_l, goles_l],
+            ['Tiros', 'A puerta', 'Goles'],
+            ['#2e86de', '#54a0ff', '#1abc9c'], 'Local')
+    _funnel(axes[1], [tiros_v, puerta_v, goles_v],
+            ['Tiros', 'A puerta', 'Goles'],
+            ['#e74c3c', '#ff6b6b', '#e67e22'], 'Visitante')
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_cumulative_points(df: pd.DataFrame, output_path: str, top_n: int = 5) -> Optional[str]:
+    """Puntos acumulados por jornada para el top-N de equipos."""
+    if 'jornada' not in df.columns:
+        return None
+    data = df.dropna(subset=['jornada', 'local_team', 'visitante_team',
+                              'goles_local', 'goles_visitante'])
+    if data.empty:
+        return None
+
+    jornadas = sorted(data['jornada'].unique())
+    from src.analysis import compute_standings
+    final_standings = compute_standings(data)
+    if final_standings.empty:
+        return None
+    top_teams = final_standings['Equipo'].head(top_n).tolist()
+
+    cumpts: dict = {t: [] for t in top_teams}
+    for t in top_teams:
+        acum = 0
+        for j in jornadas:
+            df_j = data[data['jornada'] == j]
+            for _, r in df_j[df_j['local_team'] == t].iterrows():
+                if r['goles_local'] > r['goles_visitante']:    acum += 3
+                elif r['goles_local'] == r['goles_visitante']: acum += 1
+            for _, r in df_j[df_j['visitante_team'] == t].iterrows():
+                if r['goles_visitante'] > r['goles_local']:    acum += 3
+                elif r['goles_visitante'] == r['goles_local']: acum += 1
+            cumpts[t].append(acum)
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    palette = sns.color_palette('tab10', top_n)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for (team_name, pts), color in zip(cumpts.items(), palette):
+        ax.plot(jornadas, pts, marker='o', markersize=3, linewidth=2,
+                label=team_name, color=color)
+    ax.set_xlabel('Jornada')
+    ax.set_ylabel('Puntos acumulados')
+    ax.set_title(f'Puntos acumulados por jornada \u2014 Top {top_n}')
+    ax.legend(loc='upper left', fontsize=8)
+    ax.grid(True, alpha=0.4)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+    return output_path
+
+
+def plot_results_heatmap(df: pd.DataFrame, output_path: str) -> Optional[str]:
+    """Matriz de calor de resultados (DIF media de goles) para todos los pares de equipos."""
+    needed = ['local_team', 'visitante_team', 'goles_local', 'goles_visitante']
+    if not all(c in df.columns for c in needed):
+        return None
+    data = df[needed].dropna()
+    if data.empty:
+        return None
+
+    teams = sorted(set(data['local_team']) | set(data['visitante_team']))
+    n = len(teams)
+    matrix = pd.DataFrame(np.nan, index=teams, columns=teams)
+    for _, row in data.iterrows():
+        l, v = row['local_team'], row['visitante_team']
+        diff = float(row['goles_local']) - float(row['goles_visitante'])
+        if pd.isna(matrix.at[l, v]):
+            matrix.at[l, v] = diff
+        else:
+            matrix.at[l, v] = (matrix.at[l, v] + diff) / 2
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    figsize = max(8, n * 0.55)
+    fig, ax = plt.subplots(figsize=(figsize, figsize * 0.9))
+    sns.heatmap(
+        matrix.astype(float), annot=(n <= 20), fmt='.1f',
+        cmap='RdYlGn', center=0, linewidths=0.5,
+        ax=ax, cbar_kws={'label': 'DIF goles (local \u2212 visitante)'},
+        annot_kws={'fontsize': 7},
+    )
+    ax.set_title('Mapa de calor de resultados\n(DIF media de goles como local)', fontsize=12)
+    ax.set_xlabel('Visitante')
+    ax.set_ylabel('Local')
+    plt.xticks(rotation=45, ha='right', fontsize=7)
+    plt.yticks(rotation=0, fontsize=7)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return output_path
+
+
+def plot_compare_radar(compare: dict, output_path: str) -> Optional[str]:
+    """Radar comparativo entre dos equipos (6 métricas normalizadas 0-1)."""
+    labels = compare.get('radar_labels', [])
+    vals1  = compare.get('radar_vals1', [])
+    vals2  = compare.get('radar_vals2', [])
+    if not labels or not vals1 or not vals2:
+        return None
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    N = len(labels)
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
+    v1c = vals1 + vals1[:1]
+    v2c = vals2 + vals2[:1]
+    ac  = angles + angles[:1]
+
+    fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': 'polar'})
+    ax.plot(ac, v1c, 'o-', linewidth=2, color='#2e86de', label=compare['team1'])
+    ax.fill(ac, v1c, alpha=0.18, color='#2e86de')
+    ax.plot(ac, v2c, 's-', linewidth=2, color='#e74c3c', label=compare['team2'])
+    ax.fill(ac, v2c, alpha=0.18, color='#e74c3c')
+    ax.set_thetagrids(np.degrees(angles), labels, fontsize=9)
+    ax.set_ylim(0, 1)
+    ax.set_yticklabels([])
+    ax.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1), fontsize=10)
+    ax.set_title(f'{compare["team1"]}  vs  {compare["team2"]}', fontsize=12, pad=22)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return output_path
