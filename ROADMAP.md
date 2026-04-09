@@ -45,8 +45,7 @@ Inversi�n en sostenibilidad del proyecto. Sin esto, el c�digo se vuelve fr�
 
 ---
 
-## Fase 9 � Experiencia de usuario `[MEDIA PRIORIDAD]`
-
+## Fase 9 — Experiencia de usuario ✅ \[COMPLETADA]\n
 Mejoras de UX que reducen fricci�n para betas y futuros usuarios.
 
 | # | Mejora | Descripci�n | Esfuerzo |

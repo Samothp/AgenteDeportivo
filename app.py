@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import tempfile
+from datetime import date
 from pathlib import Path
 
 import streamlit as st
@@ -45,26 +46,37 @@ st.set_page_config(
 # Beta access — password gate
 # ---------------------------------------------------------------------------
 
-# Contraseñas válidas: clave → nombre del usuario (para el saludo)
-# Añade o elimina entradas para gestionar el acceso a la beta.
-# Puedes sobreescribir con la variable de entorno BETA_PASSWORDS
-# en formato "pass1:Nombre1,pass2:Nombre2"
-_DEFAULT_BETA_USERS: dict[str, str] = {
-    "betauser1": "Beta User 1",
-    "betauser2": "Beta User 2",
+# Contraseñas válidas: clave → (nombre del usuario, fecha_expiración | None)
+# Formato en BETA_PASSWORDS: "pass1:Nombre1,pass2:Nombre2:2026-06-01"
+# La fecha de expiración es opcional; sin fecha, el acceso no expira.
+_DEFAULT_BETA_USERS: dict[str, tuple[str, date | None]] = {
+    "betauser1": ("Beta User 1", None),
+    "betauser2": ("Beta User 2", None),
 }
 
-def _load_beta_users() -> dict[str, str]:
+
+def _parse_expiry(raw: str) -> date | None:
+    """Parsea una fecha YYYY-MM-DD; devuelve None si es inválida."""
+    try:
+        return date.fromisoformat(raw.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+def _load_beta_users() -> dict[str, tuple[str, date | None]]:
+    """Carga usuarios beta desde BETA_PASSWORDS en formato 'pass:Nombre[:YYYY-MM-DD]'."""
     raw = os.getenv("BETA_PASSWORDS", "")
     if not raw:
         return _DEFAULT_BETA_USERS
-    users: dict[str, str] = {}
+    users: dict[str, tuple[str, date | None]] = {}
     for entry in raw.split(","):
-        entry = entry.strip()
-        if ":" in entry:
-            pwd, name = entry.split(":", 1)
-            users[pwd.strip()] = name.strip()
+        parts = [p.strip() for p in entry.strip().split(":")]
+        if len(parts) >= 2:
+            pwd, name = parts[0], parts[1]
+            expiry = _parse_expiry(parts[2]) if len(parts) >= 3 else None
+            users[pwd] = (name, expiry)
     return users or _DEFAULT_BETA_USERS
+
 
 def _check_beta_access() -> None:
     """Muestra pantalla de login hasta que el usuario introduzca una clave válida."""
@@ -81,10 +93,21 @@ def _check_beta_access() -> None:
     if submitted:
         beta_users = _load_beta_users()
         if pwd in beta_users:
-            st.session_state["beta_authenticated"] = True
-            st.session_state["beta_user_name"] = beta_users[pwd]
-            _logger.info("Beta login exitoso: usuario='%s'", beta_users[pwd])
-            st.rerun()
+            name, expiry = beta_users[pwd]
+            # 9.4 — Verificar expiración
+            if expiry is not None and date.today() > expiry:
+                _logger.warning(
+                    "Beta login rechazado por expiración: usuario='%s' expiró=%s", name, expiry
+                )
+                st.error(
+                    f"Tu acceso beta expiró el **{expiry}**. "
+                    "Contacta al administrador para renovarlo."
+                )
+            else:
+                st.session_state["beta_authenticated"] = True
+                st.session_state["beta_user_name"] = name
+                _logger.info("Beta login exitoso: usuario='%s'", name)
+                st.rerun()
         else:
             _logger.warning("Beta login fallido: contraseña incorrecta (IP desconocida)")
             st.error("Contraseña incorrecta. Contacta al administrador para obtener acceso.")
@@ -219,6 +242,29 @@ top_n = st.sidebar.slider("Top N en rankings", min_value=3, max_value=20, value=
 extra_kwargs["top_n"] = top_n
 
 st.sidebar.markdown("---")
+
+# 9.1 — Indicador de frescura de datos
+def _show_data_freshness(competition: int, season: str) -> None:
+    """Muestra en el sidebar la antigüedad del caché local."""
+    from src.data_loader import get_cache_age_days, get_db_path
+    db = get_db_path(competition, season)
+    if not db.exists():
+        st.sidebar.warning("⚠️ Sin datos locales")
+        return
+    age = get_cache_age_days(competition, season)
+    if age is None:
+        st.sidebar.info("🗂️ DB local disponible (fecha desconocida)")
+    elif age < 1:
+        st.sidebar.success("✅ Datos de hoy")
+    elif age < 7:
+        st.sidebar.success(f"✅ Datos de hace {int(age)} día(s)")
+    elif age < 30:
+        st.sidebar.warning(f"⚠️ Datos de hace {int(age)} días (considera actualizar)")
+    else:
+        st.sidebar.error(f"❌ Datos de hace {int(age)} días (muy desactualizados)")
+
+_show_data_freshness(competition, season)
+st.sidebar.markdown("---")
 run_btn = st.sidebar.button("▶ Generar informe", use_container_width=True)
 
 # ---------------------------------------------------------------------------
@@ -230,12 +276,47 @@ _title_suffix = f" · Bienvenido, {_beta_name}" if _beta_name else ""
 st.title(f"⚽ {COMPETITION_NAMES.get(competition, 'Competición')} — {season}{_title_suffix}")
 
 if not run_btn:
-    st.info(
-        "Configura los parámetros en el panel lateral y pulsa **▶ Generar informe**.\n\n"
-        "**Requisito previo**: la DB local debe existir (`data/db_{competition}_{season}.csv`). "
-        "Si no existe, descárgala con:\n"
-        "```\npython -m src.run_agent --fetch-real --competition <ID> --season <YYYY>\n```"
-    )
+    db_exists = _get_db_path(competition, season).exists()
+    if not db_exists:
+        st.warning(
+            f"⚠️ No hay datos locales para **{COMPETITION_NAMES.get(competition, competition)}** "
+            f"temporada **{season}**."
+        )
+        # 9.2 — Botón para descargar datos directamente desde el dashboard
+        if st.button("⬇️ Descargar datos ahora", type="primary"):
+            import subprocess, sys
+            with st.spinner(
+                f"Descargando datos de {COMPETITION_NAMES.get(competition, competition)} {season}... "
+                "Esto puede tardar 1-3 minutos."
+            ):
+                result = subprocess.run(
+                    [
+                        sys.executable, "-m", "src.run_agent",
+                        "--fetch-real",
+                        "--competition", str(competition),
+                        "--season", season,
+                        "--no-charts",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+            if result.returncode == 0:
+                st.success("✅ Datos descargados correctamente. Pulsa **▶ Generar informe** para continuar.")
+                st.cache_data.clear()
+            else:
+                st.error("❌ Error al descargar los datos.")
+                with st.expander("Ver detalles del error"):
+                    st.code(result.stderr or result.stdout)
+        else:
+            st.info(
+                "También puedes descargarlos manualmente con:\n"
+                f"```\npython -m src.run_agent --fetch-real --competition {competition} --season {season}\n```"
+            )
+    else:
+        st.info(
+            "Configura los parámetros en el panel lateral y pulsa **▶ Generar informe**."
+        )
     st.stop()
 
 # ---------------------------------------------------------------------------

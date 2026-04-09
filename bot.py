@@ -10,6 +10,7 @@ Requisitos:
 
 Comandos disponibles en el chat:
     /start              — Bienvenida y ayuda
+    /ayuda [comando]    — Ayuda general o sintaxis detallada de un comando
     /competiciones      — Lista de IDs de competición disponibles
     /equipos <comp> <temporada>
                         — Equipos disponibles en la DB local
@@ -278,6 +279,110 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(f"```\n{fragment}\n```", parse_mode="Markdown")
 
 
+# 9.3 — /ayuda contextual
+_AYUDA_GENERAL = (
+    "⚽ *Agente Deportivo* — Ayuda\n\n"
+    "Usa `/ayuda <comando>` para ver la sintaxis detallada de cada comando:\n\n"
+    "  `/ayuda liga`\n"
+    "  `/ayuda equipo`\n"
+    "  `/ayuda jornada`\n"
+    "  `/ayuda compare`\n"
+    "  `/ayuda equipos`\n"
+    "  `/ayuda competiciones`"
+)
+
+_AYUDA_CMDS: dict[str, str] = {
+    "liga": (
+        "📋 *Comando:* `/liga`\n\n"
+        "*Sintaxis:*\n"
+        "`/liga <competition\\_id> <temporada>`\n\n"
+        "*Parámetros:*\n"
+        "  • `competition_id` — ID numérico de la competición (usa `/competiciones` para verlos)\n"
+        "  • `temporada` — Año de inicio de la temporada (ej. `2024`)\n\n"
+        "*Ejemplos:*\n"
+        "`/liga 2014 2024` — La Liga 2024/25\n"
+        "`/liga 2021 2024` — Premier League 2024/25\n"
+        "`/liga 2002 2023` — Bundesliga 2023/24"
+    ),
+    "equipo": (
+        "📋 *Comando:* `/equipo`\n\n"
+        "*Sintaxis:*\n"
+        "`/equipo <competition\\_id> <temporada> <nombre\\_equipo>`\n\n"
+        "*Parámetros:*\n"
+        "  • `competition_id` — ID numérico de la competición\n"
+        "  • `temporada` — Año de inicio de la temporada\n"
+        "  • `nombre_equipo` — Nombre o parte del nombre (no distingue mayúsculas)\n\n"
+        "*Ejemplos:*\n"
+        "`/equipo 2014 2024 Mallorca`\n"
+        "`/equipo 2014 2024 Real Madrid`\n"
+        "`/equipo 2021 2024 Arsenal`"
+    ),
+    "jornada": (
+        "📋 *Comando:* `/jornada`\n\n"
+        "*Sintaxis:*\n"
+        "`/jornada <competition\\_id> <temporada> <número>`\n\n"
+        "*Parámetros:*\n"
+        "  • `competition_id` — ID numérico de la competición\n"
+        "  • `temporada` — Año de inicio de la temporada\n"
+        "  • `número` — Número de jornada (entero positivo)\n\n"
+        "*Ejemplos:*\n"
+        "`/jornada 2014 2024 15` — Jornada 15 de La Liga 24/25\n"
+        "`/jornada 2021 2023 1` — Primera jornada Premier 23/24"
+    ),
+    "compare": (
+        "📋 *Comando:* `/compare`\n\n"
+        "*Sintaxis:*\n"
+        "`/compare <competition\\_id> <temporada> <equipo1> | <equipo2>`\n\n"
+        "*Parámetros:*\n"
+        "  • `competition_id` — ID numérico de la competición\n"
+        "  • `temporada` — Año de inicio de la temporada\n"
+        "  • `equipo1` y `equipo2` — Separados por `|`\n\n"
+        "*Ejemplos:*\n"
+        "`/compare 2014 2024 Real Madrid | Barcelona`\n"
+        "`/compare 2021 2024 Arsenal | Chelsea`"
+    ),
+    "equipos": (
+        "📋 *Comando:* `/equipos`\n\n"
+        "*Sintaxis:*\n"
+        "`/equipos <competition\\_id> <temporada>`\n\n"
+        "*Parámetros:*\n"
+        "  • `competition_id` — ID numérico de la competición\n"
+        "  • `temporada` — Año de inicio de la temporada\n\n"
+        "*Ejemplos:*\n"
+        "`/equipos 2014 2024` — Todos los equipos de La Liga 24/25\n"
+        "`/equipos 2001 2024` — Equipos de Champions League 24/25"
+    ),
+    "competiciones": (
+        "📋 *Comando:* `/competiciones`\n\n"
+        "*Sintaxis:*\n"
+        "`/competiciones`\n\n"
+        "Lista todos los IDs de competición disponibles junto con sus nombres.\n"
+        "Sin parámetros adicionales.\n\n"
+        "*Ejemplo:*\n"
+        "`/competiciones`"
+    ),
+}
+
+
+async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/ayuda [comando] — Ayuda general o específica de un comando."""
+    if not context.args:
+        await update.message.reply_text(_AYUDA_GENERAL, parse_mode="Markdown")
+        return
+
+    cmd = context.args[0].lower().lstrip("/")
+    texto = _AYUDA_CMDS.get(cmd)
+    if texto:
+        await update.message.reply_text(texto, parse_mode="Markdown")
+    else:
+        disponibles = ", ".join(f"`{k}`" for k in _AYUDA_CMDS)
+        await update.message.reply_text(
+            f"❓ Comando `{cmd}` no reconocido.\n\n"
+            f"Comandos con ayuda disponible: {disponibles}",
+            parse_mode="Markdown",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Error handler global
 # ---------------------------------------------------------------------------
@@ -311,6 +416,7 @@ def main() -> None:
     application = Application.builder().token(token).build()
 
     application.add_handler(CommandHandler("start", cmd_start))
+    application.add_handler(CommandHandler("ayuda", cmd_ayuda))
     application.add_handler(CommandHandler("competiciones", cmd_competiciones))
     application.add_handler(CommandHandler("equipos", cmd_equipos))
     application.add_handler(CommandHandler("liga", cmd_liga))
