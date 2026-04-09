@@ -1,16 +1,19 @@
-pandas
-matplotlib
-seaborn
+pandas==3.0.2
+matplotlib==3.10.8
+seaborn==0.13.2
 jupyterlab
-python-dotenv
-requests
+python-dotenv==1.2.2
+requests==2.33.1
 
 # 6.1 — API REST
-fastapi
-uvicorn[standard]
+fastapi==0.135.3
+uvicorn[standard]==0.44.0
 
 # 6.2 — Dashboard web
-streamlit
+streamlit==1.56.0
 
 # 6.3 — Bot Telegram
-python-telegram-bot>=20.0
+python-telegram-bot==22.7
+
+# 7.2 — Rate limiting API
+slowapi==0.1.9

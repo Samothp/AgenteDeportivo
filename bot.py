@@ -104,17 +104,24 @@ def _run_agent_text(competition: int, season: str, **kwargs) -> str:
             f"`python -m src.run_agent --fetch-real --competition {competition} --season {season}`"
         )
 
-    agent = SportsAgent(
-        data_path=str(db_path),
-        fetch_real=False,
-        competition_id=competition,
-        season=season,
-        no_charts=True,
-        **kwargs,
-    )
-    agent.load_data()
-    agent.analyze()
-    return agent.generate_report()
+    try:
+        agent = SportsAgent(
+            data_path=str(db_path),
+            fetch_real=False,
+            competition_id=competition,
+            season=season,
+            no_charts=True,
+            **kwargs,
+        )
+        agent.load_data()
+        agent.analyze()
+        return agent.generate_report()
+    except ValueError as exc:
+        logger.warning("Error de datos al ejecutar agente: %s", exc)
+        return f"⚠️ Error en los datos: {exc}"
+    except Exception as exc:
+        logger.error("Error inesperado al ejecutar agente: %s", exc, exc_info=True)
+        return "❌ Error inesperado al generar el informe. Revisa los logs del servidor."
 
 
 def _split_message(text: str, max_len: int = MAX_MSG_LENGTH) -> list[str]:
@@ -281,6 +288,20 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # ---------------------------------------------------------------------------
+# Error handler global
+# ---------------------------------------------------------------------------
+
+
+async def _error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Captura cualquier excepción no tratada en los handlers y avisa al usuario."""
+    logger.error("Excepción no controlada en el bot", exc_info=context.error)
+    if isinstance(update, Update) and update.message:
+        await update.message.reply_text(
+            "❌ Se produjo un error inesperado. Por favor, inténtalo de nuevo más tarde."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Punto de entrada
 # ---------------------------------------------------------------------------
 
@@ -305,6 +326,7 @@ def main() -> None:
     application.add_handler(CommandHandler("equipo", cmd_equipo))
     application.add_handler(CommandHandler("jornada", cmd_jornada))
     application.add_handler(CommandHandler("compare", cmd_compare))
+    application.add_error_handler(_error_handler)
 
     logger.info("Bot iniciado. Esperando mensajes... (Ctrl+C para detener)")
     application.run_polling(allowed_updates=Update.ALL_TYPES)

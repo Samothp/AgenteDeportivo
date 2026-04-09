@@ -9,6 +9,7 @@ Requisitos: streamlit (incluido en requirements.txt)
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -17,6 +18,16 @@ import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
+    level=logging.INFO,
+)
+_logger = logging.getLogger("AgenteDeportivo.dashboard")
 
 # ---------------------------------------------------------------------------
 # Configuración de página
@@ -71,8 +82,10 @@ def _check_beta_access() -> None:
         if pwd in beta_users:
             st.session_state["beta_authenticated"] = True
             st.session_state["beta_user_name"] = beta_users[pwd]
+            _logger.info("Beta login exitoso: usuario='%s'", beta_users[pwd])
             st.rerun()
         else:
+            _logger.warning("Beta login fallido: contraseña incorrecta (IP desconocida)")
             st.error("Contraseña incorrecta. Contacta al administrador para obtener acceso.")
 
     st.stop()

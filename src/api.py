@@ -13,14 +13,34 @@ Documentación alternativa (ReDoc):
 from __future__ import annotations
 
 import json
+import logging
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from .agent import SportsAgent
 from .data_loader import get_db_path, list_available_teams
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger("AgenteDeportivo.api")
+
+# ---------------------------------------------------------------------------
+# Rate limiting
+# ---------------------------------------------------------------------------
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 # ---------------------------------------------------------------------------
 # Aplicación
@@ -36,6 +56,9 @@ app = FastAPI(
     ),
     version="3.0.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 COMPETITION_NAMES = {
     2014: "La Liga (España)",
@@ -142,13 +165,15 @@ def _run(agent: SportsAgent) -> JSONResponse:
 
 
 @app.get("/", summary="Health check", tags=["Info"])
+@limiter.exempt
 def root():
     """Comprueba que la API está activa y devuelve las competiciones disponibles."""
     return {"status": "ok", "version": "3.0.0", "competitions": COMPETITION_NAMES}
 
 
 @app.get("/teams", summary="Listar equipos disponibles en la DB local", tags=["Info"])
-def list_teams(
+@limiter.limit("30/minute")
+def list_teams(request: Request,
     competition: int = Query(2014, description="ID de competición"),
     season: str = Query("2024", description="Temporada en formato YYYY"),
 ):
@@ -164,7 +189,8 @@ def list_teams(
 
 
 @app.post("/report/liga", summary="Informe de Liga completo", tags=["Informes"])
-def report_liga(req: LigaRequest):
+@limiter.limit("10/minute")
+def report_liga(request: Request, req: LigaRequest):
     """
     Genera un informe completo de la temporada:
     clasificación, xPts, récords, estadísticas por equipo y rendimiento local/visitante.
@@ -175,7 +201,8 @@ def report_liga(req: LigaRequest):
 
 
 @app.post("/report/equipo", summary="Informe de Equipo", tags=["Informes"])
-def report_equipo(req: EquipoRequest):
+@limiter.limit("10/minute")
+def report_equipo(request: Request, req: EquipoRequest):
     """
     Genera un informe de un equipo concreto:
     W/D/L, rachas, métricas con percentiles de liga, overperformance xG y conclusiones.
@@ -185,7 +212,8 @@ def report_equipo(req: EquipoRequest):
 
 
 @app.post("/report/jornada", summary="Informe de Jornada", tags=["Informes"])
-def report_jornada(req: JornadaRequest):
+@limiter.limit("10/minute")
+def report_jornada(request: Request, req: JornadaRequest):
     """
     Genera el resumen de una jornada: resultados, estadísticas y clasificación acumulada.
     """
@@ -194,7 +222,8 @@ def report_jornada(req: JornadaRequest):
 
 
 @app.post("/report/partido", summary="Informe de Partido", tags=["Informes"])
-def report_partido(req: PartidoRequest):
+@limiter.limit("10/minute")
+def report_partido(request: Request, req: PartidoRequest):
     """
     Genera la ficha técnica de un partido concreto (estadísticas cara a cara).
     Obtén el `match_id` consultando la DB local.
@@ -204,7 +233,8 @@ def report_partido(req: PartidoRequest):
 
 
 @app.post("/report/jugador", summary="Informe de Jugador", tags=["Informes"])
-def report_jugador(req: JugadorRequest):
+@limiter.limit("10/minute")
+def report_jugador(request: Request, req: JugadorRequest):
     """
     Genera el perfil de temporada de un jugador: stats, ratios y ranking en el equipo.
     """
@@ -213,7 +243,8 @@ def report_jugador(req: JugadorRequest):
 
 
 @app.post("/report/compare", summary="Comparativa entre dos equipos", tags=["Informes"])
-def report_compare(req: CompareRequest):
+@limiter.limit("10/minute")
+def report_compare(request: Request, req: CompareRequest):
     """
     Compara dos equipos de la misma competition+season:
     diferencias en todas las métricas y enfrentamientos H2H en la DB.
