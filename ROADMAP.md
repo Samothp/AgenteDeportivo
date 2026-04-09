@@ -1,101 +1,81 @@
-# ROADMAP â€” Agente Deportivo
+# ROADMAP — Agente Deportivo
 
-Mejoras ordenadas por prioridad. Cada fase debe completarse antes de avanzar a la siguiente.
 Estado actualizado: abril 2026.
+Criterio de priorización: impacto real en producto, seguridad y sostenibilidad relativo al esfuerzo de implementación.
 
 ---
 
-## Fase 1 â€” Fundamentos `[âœ… COMPLETADA]`
+## Fases completadas
 
-Mejoras que no cambian la arquitectura pero aumentan la calidad y utilidad de lo que ya existe.
-Todas son cambios acotados, de bajo riesgo y alto retorno inmediato.
-
-| # | Mejora | DescripciÃ³n | Estado |
-|---|--------|-------------|--------|
-| 1.1 | **`--top-n N`** | NÃºmero configurable de equipos/jugadores en todos los rankings (actualmente hardcoded a 5) | âœ… Completado |
-| 1.2 | **`--no-charts`** | Omitir generaciÃ³n de grÃ¡ficos para informes rÃ¡pidos de solo texto | âœ… Completado |
-| 1.3 | **TTL de cachÃ© + `--refresh-cache`** | AÃ±adir columna `fetched_at` al CSV. Si los datos tienen mÃ¡s de N dÃ­as, re-descargar con `--refresh-cache`. CrÃ­tico para temporada en curso | âœ… Completado |
-| 1.4 | **Rachas mÃ¡ximas histÃ³ricas** | `compute_team_record` calcula Ãºltimos 5 partidos. AÃ±adir: racha sin perder mÃ¡s larga, racha goleadora mÃ¡s larga y racha sin marcar | âœ… Completado |
-| 1.5 | **Ratio xG vs goles reales (eficiencia)** | Calcular `overperformance = goles_reales / xG` en modo Equipo y modo Liga. Si >1.2 el equipo sobrerendimiento; si <0.8 infrarrendimiento. Datos ya disponibles en la DB | âœ… Completado |
+| Fase | Título | Estado |
+|------|--------|--------|
+| 1 | Fundamentos CLI (`--top-n`, `--no-charts`, caché TTL, rachas, xG) | ? Completada |
+| 2 | Nuevos análisis (percentiles, xPts, `--format json`, `--matchday-range`) | ? Completada |
+| 3 | Visualizaciones (funnel, puntos acumulados, `--compare`, heatmap) | ? Completada |
+| 4 | Fuentes de datos (ESPN UCL/Europa, fallback TheSportsDB) | ? Completada |
+| 5 | Narrativa automática (conclusiones por reglas, comparativa intertemporada) | ? Completada |
+| 6 | Arquitectura web (FastAPI + Streamlit + Bot Telegram) | ? Completada |
 
 ---
 
-## Fase 2 â€” Nuevos anÃ¡lisis `[PRÃ“XIMO]`
+## Fase 7 — Seguridad y robustez `[PRÓXIMA]`
 
-AÃ±aden capacidad analÃ­tica real sin cambiar la estructura de informes existente.
+Mejoras críticas antes de exponer el proyecto a usuarios externos.
+Bajo esfuerzo, impacto alto en seguridad y estabilidad.
 
-| # | Mejora | DescripciÃ³n | Estado |
-|---|--------|-------------|--------|
-| 2.1 | **Percentiles de liga (modo Equipo)** | Para cada mÃ©trica mostrar "percentil X de la liga" ademÃ¡s de la comparativa simple. Ej: "Tiros a puerta: 14.2 (percentil 87)". Requiere nueva funciÃ³n `compute_team_percentiles()` | âœ… Completado |
-| 2.2 | **Puntos esperados â€” xPts** | Calcular quÃ© puntos merece cada equipo segÃºn sus xG por partido. Tabla de clasificaciÃ³n alternativa en modo Liga | âœ… Completado |
-| 2.3 | **`--format json`** | Salida en JSON ademÃ¡s de texto/HTML. Permite encadenar el agente con otras herramientas o futuros frontends. Refactorizar `generate_report()` para devolver `dict` | âœ… Completado |
-| 2.4 | **`--matchday-range START END`** | AnÃ¡lisis de una franja de jornadas (ej. jornadas 10-20). Actualmente solo se puede analizar una jornada exacta o toda la temporada | âœ… Completado |
-
----
-
-## Fase 3 â€” Nuevas visualizaciones `[COMPLETADO]`
-
-GrÃ¡ficos que aÃ±aden valor informativo con datos que ya se tienen en la DB.
-
-| # | Mejora | DescripciÃ³n | Estado |
-|---|--------|-------------|--------|
-| 3.1 | **Shot conversion funnel** | Embudo: tiros totales â†’ tiros a puerta â†’ goles, por equipo o local/visitante. Datos disponibles, solo falta el grÃ¡fico | âœ… Completado |
-| 3.2 | **Puntos acumulados por jornada (modo Liga)** | LÃ­nea temporal para el top-N de equipos mostrando cÃ³mo se fue formando la clasificaciÃ³n jornada a jornada | âœ… Completado |
-| 3.3 | **Modo `--compare` (dos equipos)** | Nuevo modo: `--compare "Real Madrid" "FC Barcelona"`. Genera radar comparativo, tabla H2H de partidos directos en la DB y diferencias en todas las mÃ©tricas | âœ… Completado |
-| 3.4 | **Mapa de calor de resultados** | Matriz NÃ—N con colores verde/rojo/amarillo para cada par local-visitante. Visual para detectar patrones de dominio entre equipos en una liga | âœ… Completado |
+| # | Mejora | Descripción | Esfuerzo |
+|---|--------|-------------|---------|
+| 7.1 | **Fijar versiones en `requirements.txt`** | Añadir versión exacta a cada dependencia para garantizar reproducibilidad. Evita roturas silenciosas por breaking changes en upstream. | Muy bajo |
+| 7.2 | **Rate limiting en la API** | Añadir `slowapi` para limitar peticiones por IP (ej. 10/min en endpoints de informe). Evita abuso de la URL pública de ngrok. | Bajo |
+| 7.3 | **Log de accesos beta** | Registrar en consola/fichero cada login del dashboard: usuario y timestamp. Permite detectar accesos no autorizados y revocar claves. | Muy bajo |
+| 7.4 | **Manejo de errores en el bot Telegram** | Capturar excepciones de red (ESPN/TheSportsDB) y responder con mensajes amigables en lugar de tracebacks. Añadir mensaje de "datos no disponibles localmente". | Bajo |
 
 ---
 
-## Fase 4 â€” Soporte de fuentes de datos `[COMPLETADO]`
+## Fase 8 — Calidad de código `[ALTA PRIORIDAD]`
 
-| # | Mejora | DescripciÃ³n | Estado |
-|---|--------|-------------|--------|
-| 4.1 | **ESPN para UCL / Europa League** | AÃ±adir `"uefa.champions"` y `"uefa.europa"` al dict `_ESPN_LEAGUE` en `player_loader.py`. Actualmente falla silenciosamente con competiciones 2001 y 2146 | âœ… Completado |
-| 4.2 | **Fallback TheSportsDB para jugadores** | Si ESPN no tiene el equipo/liga, intentar obtener stats de jugadores desde TheSportsDB como segunda fuente | âœ… Completado |
-| 4.3 | **Verificar Primeira Liga / Ligue 1** | Confirmar que los slugs ESPN para competiciones 2017 y 2015 funcionan correctamente (posibles fallos silenciosos no detectados) | âœ… Completado |
+Inversión en sostenibilidad del proyecto. Sin esto, el código se vuelve frágil a medida que crece.
 
----
-
-## Fase 5 â€” Narrativa automÃ¡tica `[COMPLETADO]`
-
-Enriquecimiento de los informes con insights generados por reglas, sin necesidad de LLM.
-
-| # | Mejora | DescripciÃ³n | Estado |
-|---|--------|-------------|--------|
-| 5.1 | **SecciÃ³n "Conclusiones" con reglas** | Bloque de insights al final de cada informe: racha positiva/negativa, ataque por encima de media, portero rendimiento, eficiencia ofensiva, etc. Solo condicionales sobre `metrics` ya calculados | âœ… Completado |
-| 5.2 | **Narrativa comparativa intertemporada** | Con `--seasons`, generar texto como "En 2024-2025 el equipo mejorÃ³ un 23% en tiros a puerta respecto a 2023-2024". Usa datos multi-temporada que ya se procesan | âœ… Completado |
+| # | Mejora | Descripción | Esfuerzo |
+|---|--------|-------------|---------|
+| 8.1 | **Tests unitarios para `analysis.py`** | Las funciones `compute_standings`, `compute_overall_metrics`, `compute_team_percentiles` son puras y triviales de testear con `pytest` y DataFrames sintéticos. Target: cubrir las 10 funciones principales. | Medio |
+| 8.2 | **Tests de integración para la API** | Usar `TestClient` de FastAPI para verificar que los 6 endpoints responden correctamente con datos de prueba. Detecta regresiones antes de cada push. | Medio |
+| 8.3 | **CI con GitHub Actions** | Workflow automático en cada push: check de sintaxis Python + ejecución de tests. Gratuito para repositorios públicos. Falla el PR antes de mergear código roto. | Bajo |
+| 8.4 | **Centralizar `COMPETITION_NAMES`** | El mismo diccionario existe en `src/api.py`, `app.py` y `bot.py`. Moverlo a `src/constants.py` e importarlo desde allí. Evita desincronización al añadir ligas. | Muy bajo |
 
 ---
 
-## Fase 6 â€” EvoluciÃ³n arquitectural `[COMPLETADO]`
+## Fase 9 — Experiencia de usuario `[MEDIA PRIORIDAD]`
 
-Requieren cambios estructurales significativos. Dependen del crecimiento del proyecto.
+Mejoras de UX que reducen fricción para betas y futuros usuarios.
 
-| # | Mejora | DescripciÃ³n | Estado |
-|---|--------|-------------|--------|
-| 6.1 | **API REST local (FastAPI)** | Exponer los 6 modos como endpoints HTTP en `src/api.py`. Arrancar con `uvicorn src.api:app --reload`. DocumentaciÃ³n Swagger en `/docs`. | âœ… Completado |
-| 6.2 | **Dashboard Streamlit** | UI web interactiva en `app.py`. Selectores de liga/equipo/temporada, tablas con pandas, grÃ¡ficos con Matplotlib vÃ­a `st.pyplot()`. Arrancar con `streamlit run app.py`. | âœ… Completado |
-| 6.3 | **Bot Telegram** | Bot en `bot.py` con comandos `/liga`, `/equipo`, `/jornada`, `/compare`, `/equipos`. Modo polling (sin servidor). Token gratuito vÃ­a @BotFather. Arrancar con `python bot.py`. | âœ… Completado |
+| # | Mejora | Descripción | Esfuerzo |
+|---|--------|-------------|---------|
+| 9.1 | **Indicador de frescura de datos en el dashboard** | Leer la columna `fetched_at` del CSV y mostrar "Datos actualizados hace N días" en el sidebar. El usuario sabe sin esfuerzo si los datos son recientes. | Muy bajo |
+| 9.2 | **Descarga de datos desde el dashboard** | Si la DB local no existe, mostrar un botón "Descargar datos" que ejecute `--fetch-real` en background con un spinner. El dashboard pasa a ser autónomo sin necesidad de terminal. | Medio |
+| 9.3 | **`/ayuda` contextual en el bot Telegram** | Comando `/ayuda <comando>` que muestra la sintaxis exacta y un ejemplo real de cada comando. Reduce abandono en los primeros minutos de uso. | Muy bajo |
+| 9.4 | **Expiración configurable de contraseñas beta** | Añadir fecha de expiración opcional por usuario (`claveJuan:Juan García:2026-05-01`). El dashboard bloquea automáticamente accesos caducados. | Bajo |
 
 ---
 
-## Historial de cambios
+## Fase 10 — Producto avanzado `[BAJA PRIORIDAD]`
 
-| VersiÃ³n | Fecha | DescripciÃ³n |
+Features con alto impacto de producto pero mayor esfuerzo. Para cuando la base esté estabilizada.
+
+| # | Mejora | Descripción | Esfuerzo |
+|---|--------|-------------|---------|
+| 10.1 | **Exportar análisis a PDF** | Convertir el HTML que ya genera el agente a PDF con `weasyprint`. Sin reescribir nada. Botón "Descargar PDF" en el dashboard y comando `/pdf` en el bot. | Bajo |
+| 10.2 | **Alertas proactivas por Telegram** | El bot es reactivo. Con `APScheduler` y un comando `/suscribir 2014 2024 Mallorca`, podría enviar automáticamente avisos de rachas negativas, jornadas disputadas o caída en tabla. | Alto |
+| 10.3 | **Caché de gráficos por hash de datos** | Los PNG se regeneran en cada ejecución aunque los datos no cambien. Calcular un hash del DataFrame de entrada y reutilizar el PNG existente si coincide. | Medio |
+| 10.4 | **Aliases en inglés para el bot** | Añadir `/league`, `/team`, `/matchday` como alias de los comandos en español. Sin lógica nueva, solo registrar handlers adicionales. Abre el bot a usuarios no hispanohablantes. | Muy bajo |
+| 10.5 | **Modo multi-liga en el dashboard** | Permitir comparar el mismo equipo en diferentes ligas/temporadas en una sola vista. Requiere refactorizar el sidebar para soportar selección múltiple. | Alto |
+
+---
+
+## Historial de versiones
+
+| Versión | Fecha | Descripción |
 |---------|-------|-------------|
-| 1.0 | Abril 2026 | CreaciÃ³n del roadmap inicial |
-| 1.1 | Abril 2026 | `--top-n N`: rankings configurables en todos los modos |
-| 1.2 | Abril 2026 | `--no-charts`: omitir grÃ¡ficos, cortocircuitando `save_visual_report` |
-| 1.3 | Abril 2026 | TTL de cachÃ©: sidecar `.meta.json` con `fetched_at`, `--refresh-cache`, `--cache-ttl N` |
-| 1.4 | Abril 2026 | Rachas mÃ¡ximas: sin perder, goleadora y sin marcar en `compute_team_record` |
-| 1.5 | Abril 2026 | Ratio xG/goles: `overperformance` en modo Equipo y columna `Over%` en modo Liga |
-| 2.1 | Abril 2026 | Percentiles de liga: `compute_team_percentiles()` con barra visual en HTML, texto con valoraciÃ³n en informe Equipo |
-| 2.2 | Abril 2026 | xPts: `compute_xpts()` vÃ­a modelo Poisson; tabla de clasificaciÃ³n alternativa con diferencia PTS-xPts en modo Liga |
-| 2.3 | Abril 2026 | `--format json`: `generate_json_report()` con encoder personalizado para DataFrames y tipos numpy; cambio automÃ¡tico de extensiÃ³n `.txt`â†’`.json` |
-| 2.4 | Abril 2026 | `--matchday-range START END`: filtro `jornada.between(start, end)`, reutiliza pipeline Liga con tÃ­tulo "INFORME DE RANGO"; fix `nunique()` en campo `jornadas` |
-| 2.4 | Abril 2026 | `--matchday-range START END`: filtro `jornada.between(start, end)`, reutiliza pipeline Liga con tÃ­tulo "INFORME DE RANGO"; fix `nunique()` en `jornadas` |
-| 5.1 | Abril 2026 | SecciÃ³n "Conclusiones" con reglas en informes Equipo y Liga: racha reciente siempre visible, balance global, GF/GC por partido, eficiencia xG y percentiles extremos |
-| 5.2 | Abril 2026 | Narrativa intertemporada con `--seasons`: evoluciÃ³n % de mÃ©tricas clave entre primera y Ãºltima temporada seleccionada |
-| 6.1 | Abril 2026 | API REST con FastAPI: 6 endpoints (`/report/liga`, `/report/equipo`, `/report/jornada`, `/report/partido`, `/report/jugador`, `/report/compare`), `/teams` y health check. Swagger en `/docs` |
-| 6.2 | Abril 2026 | Dashboard Streamlit (`app.py`): sidebar con selectores, mÃ©tricas, tablas y grÃ¡ficos. CachÃ© con `st.cache_data`. InversiÃ³n cero |
-| 6.3 | Abril 2026 | Bot Telegram (`bot.py`): 7 comandos, polling local, texto partido en fragmentos <4096 chars. Token gratuito @BotFather. InversiÃ³n cero |
+| 1.0 | Abril 2026 | Fases 1-6 completadas: CLI, análisis, visualizaciones, fuentes de datos, narrativa, web |
+| 1.1 | Abril 2026 | Beta access gate en dashboard Streamlit (contraseñas individuales por usuario) |
+| 1.2 | Abril 2026 | ROADMAP v2: reescritura con fases 7-10 priorizadas por impacto/esfuerzo |
