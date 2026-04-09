@@ -4,3 +4,13 @@ seaborn
 jupyterlab
 python-dotenv
 requests
+
+# 6.1 — API REST
+fastapi
+uvicorn[standard]
+
+# 6.2 — Dashboard web
+streamlit
+
+# 6.3 — Bot Telegram
+python-telegram-bot>=20.0

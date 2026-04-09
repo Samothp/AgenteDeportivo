@@ -67,15 +67,15 @@ Enriquecimiento de los informes con insights generados por reglas, sin necesidad
 
 ---
 
-## Fase 6 — Evolución arquitectural `[LARGO PLAZO]`
+## Fase 6 — Evolución arquitectural `[COMPLETADO]`
 
 Requieren cambios estructurales significativos. Dependen del crecimiento del proyecto.
 
 | # | Mejora | Descripción | Estado |
 |---|--------|-------------|--------|
-| 6.1 | **API REST local (FastAPI)** | Exponer los 5 modos como endpoints HTTP. El núcleo analítico ya está desacoplado. Permite integración con cualquier frontend | ⬜ Pendiente |
-| 6.2 | **Dashboard Streamlit** | UI web interactiva sobre el mismo motor. Selectores de liga/equipo/jugador, gráficos interactivos con Plotly en lugar de Matplotlib | ⬜ Pendiente |
-| 6.3 | **Bot Telegram / Discord** | Responde comandos como `/mallorca jornada 28` generando el informe y enviándolo como imagen al chat | ⬜ Pendiente |
+| 6.1 | **API REST local (FastAPI)** | Exponer los 6 modos como endpoints HTTP en `src/api.py`. Arrancar con `uvicorn src.api:app --reload`. Documentación Swagger en `/docs`. | ✅ Completado |
+| 6.2 | **Dashboard Streamlit** | UI web interactiva en `app.py`. Selectores de liga/equipo/temporada, tablas con pandas, gráficos con Matplotlib vía `st.pyplot()`. Arrancar con `streamlit run app.py`. | ✅ Completado |
+| 6.3 | **Bot Telegram** | Bot en `bot.py` con comandos `/liga`, `/equipo`, `/jornada`, `/compare`, `/equipos`. Modo polling (sin servidor). Token gratuito vía @BotFather. Arrancar con `python bot.py`. | ✅ Completado |
 
 ---
 
@@ -96,3 +96,6 @@ Requieren cambios estructurales significativos. Dependen del crecimiento del pro
 | 2.4 | Abril 2026 | `--matchday-range START END`: filtro `jornada.between(start, end)`, reutiliza pipeline Liga con título "INFORME DE RANGO"; fix `nunique()` en `jornadas` |
 | 5.1 | Abril 2026 | Sección "Conclusiones" con reglas en informes Equipo y Liga: racha reciente siempre visible, balance global, GF/GC por partido, eficiencia xG y percentiles extremos |
 | 5.2 | Abril 2026 | Narrativa intertemporada con `--seasons`: evolución % de métricas clave entre primera y última temporada seleccionada |
+| 6.1 | Abril 2026 | API REST con FastAPI: 6 endpoints (`/report/liga`, `/report/equipo`, `/report/jornada`, `/report/partido`, `/report/jugador`, `/report/compare`), `/teams` y health check. Swagger en `/docs` |
+| 6.2 | Abril 2026 | Dashboard Streamlit (`app.py`): sidebar con selectores, métricas, tablas y gráficos. Caché con `st.cache_data`. Inversión cero |
+| 6.3 | Abril 2026 | Bot Telegram (`bot.py`): 7 comandos, polling local, texto partido en fragmentos <4096 chars. Token gratuito @BotFather. Inversión cero |
