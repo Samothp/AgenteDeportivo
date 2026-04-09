@@ -9,10 +9,14 @@ Requisitos: streamlit (incluido en requirements.txt)
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Configuración de página
@@ -24,6 +28,56 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ---------------------------------------------------------------------------
+# Beta access — password gate
+# ---------------------------------------------------------------------------
+
+# Contraseñas válidas: clave → nombre del usuario (para el saludo)
+# Añade o elimina entradas para gestionar el acceso a la beta.
+# Puedes sobreescribir con la variable de entorno BETA_PASSWORDS
+# en formato "pass1:Nombre1,pass2:Nombre2"
+_DEFAULT_BETA_USERS: dict[str, str] = {
+    "betauser1": "Beta User 1",
+    "betauser2": "Beta User 2",
+}
+
+def _load_beta_users() -> dict[str, str]:
+    raw = os.getenv("BETA_PASSWORDS", "")
+    if not raw:
+        return _DEFAULT_BETA_USERS
+    users: dict[str, str] = {}
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if ":" in entry:
+            pwd, name = entry.split(":", 1)
+            users[pwd.strip()] = name.strip()
+    return users or _DEFAULT_BETA_USERS
+
+def _check_beta_access() -> None:
+    """Muestra pantalla de login hasta que el usuario introduzca una clave válida."""
+    if st.session_state.get("beta_authenticated"):
+        return
+
+    st.title("⚽ Agente Deportivo — Acceso Beta")
+    st.info("Introduce tu contraseña de acceso a la beta para continuar.")
+
+    with st.form("beta_login"):
+        pwd = st.text_input("Contraseña", type="password", placeholder="••••••••")
+        submitted = st.form_submit_button("Entrar")
+
+    if submitted:
+        beta_users = _load_beta_users()
+        if pwd in beta_users:
+            st.session_state["beta_authenticated"] = True
+            st.session_state["beta_user_name"] = beta_users[pwd]
+            st.rerun()
+        else:
+            st.error("Contraseña incorrecta. Contacta al administrador para obtener acceso.")
+
+    st.stop()
+
+_check_beta_access()
 
 # ---------------------------------------------------------------------------
 # Constantes
@@ -168,7 +222,9 @@ run_btn = st.sidebar.button("▶ Generar informe", use_container_width=True)
 # Área principal
 # ---------------------------------------------------------------------------
 
-st.title(f"⚽ {COMPETITION_NAMES.get(competition, 'Competición')} — {season}")
+_beta_name = st.session_state.get("beta_user_name", "")
+_title_suffix = f" · Bienvenido, {_beta_name}" if _beta_name else ""
+st.title(f"⚽ {COMPETITION_NAMES.get(competition, 'Competición')} — {season}{_title_suffix}")
 
 if not run_btn:
     st.info(
