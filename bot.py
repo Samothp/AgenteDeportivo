@@ -39,6 +39,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.constants import COMPETITION_NAMES
+
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -72,17 +74,6 @@ logger = logging.getLogger("AgenteDeportivo.bot")
 # ---------------------------------------------------------------------------
 # Constantes
 # ---------------------------------------------------------------------------
-
-COMPETITION_NAMES = {
-    2014: "La Liga (España)",
-    2021: "Premier League (Inglaterra)",
-    2002: "Bundesliga (Alemania)",
-    2019: "Serie A (Italia)",
-    2015: "Ligue 1 (Francia)",
-    2017: "Primeira Liga (Portugal)",
-    2001: "UEFA Champions League",
-    2146: "UEFA Europa League",
-}
 
 MAX_MSG_LENGTH = 4000  # Telegram permite hasta 4096 caracteres por mensaje
 

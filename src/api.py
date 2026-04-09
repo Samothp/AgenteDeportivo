@@ -24,6 +24,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from .agent import SportsAgent
+from .constants import COMPETITION_NAMES
 from .data_loader import get_db_path, list_available_teams
 
 # ---------------------------------------------------------------------------
@@ -59,17 +60,6 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-COMPETITION_NAMES = {
-    2014: "La Liga (España)",
-    2021: "Premier League (Inglaterra)",
-    2002: "Bundesliga (Alemania)",
-    2019: "Serie A (Italia)",
-    2015: "Ligue 1 (Francia)",
-    2017: "Primeira Liga (Portugal)",
-    2001: "UEFA Champions League",
-    2146: "UEFA Europa League",
-}
 
 # ---------------------------------------------------------------------------
 # Schemas de entrada (Pydantic)
