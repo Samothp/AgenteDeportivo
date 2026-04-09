@@ -32,9 +32,11 @@ Ejemplos:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -78,9 +80,43 @@ logger = logging.getLogger("AgenteDeportivo.bot")
 
 MAX_MSG_LENGTH = 4000  # Telegram permite hasta 4096 caracteres por mensaje
 
+# 10.2 — Archivos de persistencia de suscripciones y estado de alertas
+SUBSCRIPTIONS_FILE = Path("data/subscriptions.json")
+ALERT_STATE_FILE = Path("data/alert_state.json")
+
 # ---------------------------------------------------------------------------
 # Helpers del agente
 # ---------------------------------------------------------------------------
+
+
+def _load_subscriptions() -> dict:
+    """Carga suscripciones desde disco. Devuelve {} si no existe o está corrupto."""
+    if not SUBSCRIPTIONS_FILE.exists():
+        return {}
+    try:
+        return json.loads(SUBSCRIPTIONS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_subscriptions(subs: dict) -> None:
+    """Persiste las suscripciones en disco."""
+    SUBSCRIPTIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SUBSCRIPTIONS_FILE.write_text(json.dumps(subs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_alert_state() -> dict:
+    if not ALERT_STATE_FILE.exists():
+        return {}
+    try:
+        return json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_alert_state(state: dict) -> None:
+    ALERT_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ALERT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _run_agent_text(competition: int, season: str, **kwargs) -> str:
@@ -384,6 +420,230 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 10.1 — Exportar informe a PDF
+# ---------------------------------------------------------------------------
+
+
+async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/pdf <competition> <season> — Genera y envía un PDF del informe de liga."""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    await update.message.reply_text("⏳ Generando PDF… puede tardar unos segundos.")
+    try:
+        from weasyprint import HTML as WeasyprintHTML  # type: ignore
+    except ImportError:
+        await update.message.reply_text(
+            "❌ `weasyprint` no está instalado en el servidor.\n"
+            "Instálalo con: `pip install weasyprint`",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        from src.agent import SportsAgent
+        from src.data_loader import get_db_path
+
+        db_path = get_db_path(competition, season)
+        if not db_path.exists():
+            await update.message.reply_text(
+                f"⚠️ No hay DB local para competition={competition} season={season}."
+            )
+            return
+
+        with tempfile.TemporaryDirectory(prefix="agente_pdf_") as tmp:
+            tmp_path = Path(tmp)
+            agent = SportsAgent(
+                data_path=str(db_path),
+                fetch_real=False,
+                competition_id=competition,
+                season=season,
+                no_charts=True,
+            )
+            agent.load_data()
+            agent.analyze()
+            pdf_path = str(tmp_path / "informe.pdf")
+            agent.generate_pdf_report(pdf_path)
+            comp_name = COMPETITION_NAMES.get(competition, str(competition))
+            await update.message.reply_document(
+                document=open(pdf_path, "rb"),
+                filename=f"informe_{competition}_{season}.pdf",
+                caption=f"📄 Informe PDF — {comp_name} {season}",
+            )
+    except Exception as exc:
+        logger.error("Error generando PDF: %s", exc, exc_info=True)
+        await update.message.reply_text(f"❌ Error al generar el PDF: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# 10.2 — Alertas proactivas: suscripciones
+# ---------------------------------------------------------------------------
+
+
+async def cmd_suscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/suscribir <competition> <season> <equipo> — Suscríbete a alertas de un equipo."""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "❌ Falta el nombre del equipo.\n"
+            "Ejemplo: `/suscribir 2014 2024 Mallorca`",
+            parse_mode="Markdown",
+        )
+        return
+    team = " ".join(context.args[2:])
+    chat_id = str(update.effective_chat.id)
+
+    subs = _load_subscriptions()
+    user_subs: list = subs.setdefault(chat_id, [])
+    entry = {"competition": competition, "season": season, "team": team}
+    if entry in user_subs:
+        await update.message.reply_text(f"ℹ️ Ya estás suscrito a alertas de *{team}*.", parse_mode="Markdown")
+        return
+    user_subs.append(entry)
+    _save_subscriptions(subs)
+    comp_name = COMPETITION_NAMES.get(competition, str(competition))
+    await update.message.reply_text(
+        f"✅ Suscrito a alertas de *{team}* en {comp_name} {season}.\n\n"
+        "Recibirás una notificación si el equipo encadena 3 o más derrotas consecutivas.",
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_suscripciones(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/suscripciones — Lista tus suscripciones de alertas activas."""
+    chat_id = str(update.effective_chat.id)
+    subs = _load_subscriptions()
+    user_subs = subs.get(chat_id, [])
+    if not user_subs:
+        await update.message.reply_text("ℹ️ No tienes ninguna suscripción activa.")
+        return
+    lines = ["📋 *Tus suscripciones activas:*\n"]
+    for i, s in enumerate(user_subs, 1):
+        comp_name = COMPETITION_NAMES.get(s["competition"], str(s["competition"]))
+        lines.append(f"  {i}. {s['team']} — {comp_name} {s['season']}")
+    lines.append("\nUsa `/desuscribir <comp> <temp> <equipo>` para eliminar una suscripción.")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def cmd_desuscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/desuscribir <competition> <season> <equipo> — Cancela una suscripción de alertas."""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "❌ Falta el nombre del equipo.\n"
+            "Ejemplo: `/desuscribir 2014 2024 Mallorca`",
+            parse_mode="Markdown",
+        )
+        return
+    team = " ".join(context.args[2:])
+    chat_id = str(update.effective_chat.id)
+
+    subs = _load_subscriptions()
+    user_subs: list = subs.get(chat_id, [])
+    entry = {"competition": competition, "season": season, "team": team}
+    if entry not in user_subs:
+        await update.message.reply_text(
+            f"ℹ️ No tienes ninguna suscripción para *{team}*.", parse_mode="Markdown"
+        )
+        return
+    user_subs.remove(entry)
+    subs[chat_id] = user_subs
+    _save_subscriptions(subs)
+    await update.message.reply_text(
+        f"✅ Suscripción a *{team}* cancelada.", parse_mode="Markdown"
+    )
+
+
+def _check_alerts_sync(bot_token: str) -> None:
+    """Comprueba todas las suscripciones y envía alertas si un equipo lleva ≥3 derrotas seguidas."""
+    import asyncio
+
+    from telegram import Bot
+
+    subs = _load_subscriptions()
+    if not subs:
+        return
+
+    state = _load_alert_state()
+    new_state: dict = {}
+
+    async def _send(chat_id: str, msg: str) -> None:
+        bot = Bot(token=bot_token)
+        await bot.send_message(chat_id=int(chat_id), text=msg, parse_mode="Markdown")
+
+    for chat_id, user_subs in subs.items():
+        for entry in user_subs:
+            comp = entry["competition"]
+            season = entry["season"]
+            team = entry["team"]
+            key = f"{chat_id}:{comp}:{season}:{team}"
+
+            try:
+                from src.agent import SportsAgent
+                from src.data_loader import get_db_path
+
+                db_path = get_db_path(comp, season)
+                if not db_path.exists():
+                    continue
+
+                agent = SportsAgent(
+                    data_path=str(db_path),
+                    fetch_real=False,
+                    competition_id=comp,
+                    season=season,
+                    no_charts=True,
+                    team=team,
+                )
+                agent.load_data()
+                agent.analyze()
+
+                record = agent.get_team_record() if hasattr(agent, "get_team_record") else None
+                if record is None:
+                    import json as _json
+                    payload = _json.loads(agent.generate_json_report())
+                    record = payload.get("team_record", {})
+
+                racha: str = record.get("racha_actual", "")
+                # Cuenta derrotas consecutivas al inicio de la racha (ej. "DDDVV" → 3)
+                consecutive_losses = 0
+                for char in racha:
+                    if char.upper() == "D":
+                        consecutive_losses += 1
+                    else:
+                        break
+
+                new_state[key] = consecutive_losses
+
+                if consecutive_losses >= 3 and state.get(key, 0) < 3:
+                    comp_name = COMPETITION_NAMES.get(comp, str(comp))
+                    msg = (
+                        f"⚠️ *Alerta de racha negativa*\n\n"
+                        f"*{team}* lleva *{consecutive_losses} derrotas consecutivas* "
+                        f"en {comp_name} {season}.\n\n"
+                        f"Racha reciente: `{racha}`"
+                    )
+                    asyncio.run(_send(chat_id, msg))
+                    logger.info("Alerta enviada a %s: %s lleva %d derrotas", chat_id, team, consecutive_losses)
+            except Exception as exc:
+                logger.warning("Error comprobando alertas para %s/%s/%s: %s", comp, season, team, exc)
+
+    _save_alert_state(new_state)
+
+
+# ---------------------------------------------------------------------------
 # Error handler global
 # ---------------------------------------------------------------------------
 
@@ -423,7 +683,39 @@ def main() -> None:
     application.add_handler(CommandHandler("equipo", cmd_equipo))
     application.add_handler(CommandHandler("jornada", cmd_jornada))
     application.add_handler(CommandHandler("compare", cmd_compare))
+
+    # 10.1 — PDF
+    application.add_handler(CommandHandler("pdf", cmd_pdf))
+
+    # 10.2 — Alertas proactivas
+    application.add_handler(CommandHandler("suscribir", cmd_suscribir))
+    application.add_handler(CommandHandler("suscripciones", cmd_suscripciones))
+    application.add_handler(CommandHandler("desuscribir", cmd_desuscribir))
+
+    # 10.4 — Aliases en inglés
+    application.add_handler(CommandHandler("help", cmd_ayuda))
+    application.add_handler(CommandHandler("competitions", cmd_competiciones))
+    application.add_handler(CommandHandler("teams", cmd_equipos))
+    application.add_handler(CommandHandler("league", cmd_liga))
+    application.add_handler(CommandHandler("team", cmd_equipo))
+    application.add_handler(CommandHandler("matchday", cmd_jornada))
+
     application.add_error_handler(_error_handler)
+
+    # 10.2 — APScheduler: alertas proactivas diarias
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore
+
+        alert_hour = int(os.getenv("ALERT_HOUR", "9"))
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(_check_alerts_sync, "cron", args=[token], hour=alert_hour)
+        scheduler.start()
+        logger.info("Scheduler de alertas iniciado (hora=%d)", alert_hour)
+    except ImportError:
+        logger.warning(
+            "APScheduler no instalado — las alertas proactivas están desactivadas. "
+            "Instálalo con: pip install apscheduler"
+        )
 
     logger.info("Bot iniciado. Esperando mensajes... (Ctrl+C para detener)")
     application.run_polling(allowed_updates=Update.ALL_TYPES)

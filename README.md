@@ -62,6 +62,11 @@ print(competitions)
 - ✅ **Narrativa intertemporada**: con `--seasons`, evolución % de métricas entre temporadas
 - ✅ **Listado de equipos**: `--list-teams` muestra los equipos disponibles en la DB local
 - ✅ **6 tipos de informe**: Liga, Equipo, Jornada, Partido, Jugador y Compare
+- ✅ **Exportación a PDF**: botón en el dashboard y comando `/pdf` en el bot (requiere `weasyprint`)
+- ✅ **Modo multi-liga en el dashboard**: compara hasta 3 competiciones simultáneamente en tabs
+- ✅ **Alertas proactivas Telegram**: `/suscribir` para recibir avisos de rachas negativas (≥3 derrotas)
+- ✅ **Caché de gráficos por hash**: los PNG se reutilizan si los datos no cambian (hash MD5)
+- ✅ **Bot bilingüe**: comandos en inglés (`/league`, `/team`, `/matchday`, `/help`, `/competitions`, `/teams`)
 
 ### Último análisis disponible
 
@@ -240,3 +245,49 @@ python -m src.run_agent --fetch-real --competition 2001 --season 2025 --output r
 - Amplía `src/analysis.py` con nuevas métricas
 - Amplía `src/visualizer.py` con nuevos tipos de gráficos
 - Amplía `src/agent.py` añadiendo nuevos modos de análisis
+
+## Dashboard web
+
+Arranca el dashboard con:
+
+```bash
+streamlit run app.py
+```
+
+Funcionalidades destacadas:
+- Selector de competición, temporada y modo de informe en el sidebar
+- **Indicador de frescura** de datos (antigüedad del caché local)
+- **Descarga de datos** directamente desde el dashboard (sin terminal)
+- **Modo multi-liga**: checkbox "Comparar múltiples ligas" → hasta 3 competiciones en tabs paralelos
+- **Exportar a PDF**: botón al final del informe; descarga directa desde el navegador
+
+## Bot de Telegram
+
+Arranca el bot con:
+
+```bash
+python bot.py
+```
+
+Requiere `TELEGRAM_BOT_TOKEN` en el archivo `.env`.
+
+### Comandos principales
+
+| Comando | Descripción |
+|---------|-------------|
+| `/start` | Bienvenida e instrucciones |
+| `/ayuda [cmd]` | Ayuda general o de un comando específico |
+| `/competiciones` | Lista de IDs de competición disponibles |
+| `/equipos <comp> <temp>` | Equipos disponibles en la DB local |
+| `/liga <comp> <temp>` | Informe completo de liga |
+| `/equipo <comp> <temp> <nombre>` | Informe de un equipo |
+| `/jornada <comp> <temp> <N>` | Informe de una jornada |
+| `/compare <comp> <temp> <eq1> \| <eq2>` | Comparativa entre dos equipos |
+| `/pdf <comp> <temp>` | Genera y envía el informe en PDF |
+| `/suscribir <comp> <temp> <equipo>` | Activa alertas de racha negativa para un equipo |
+| `/suscripciones` | Lista tus suscripciones activas |
+| `/desuscribir <comp> <temp> <equipo>` | Cancela una suscripción |
+
+### Aliases en inglés
+
+`/help`, `/competitions`, `/teams`, `/league`, `/team`, `/matchday` son alias directos de sus equivalentes en español.

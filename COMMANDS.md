@@ -356,3 +356,60 @@ Estos archivos actúan como caché: una vez construidos, los informes de equipo 
 
 El filtro `--team` usa búsqueda parcial. Si no encuentras el equipo, usa `--list-teams` primero
 para ver el nombre exacto que usa la DB.
+
+---
+
+## Comandos del bot de Telegram
+
+Arranca el bot con `python bot.py`. Requiere `TELEGRAM_BOT_TOKEN` en `.env`.
+
+### Comandos disponibles
+
+| Comando | Alias en inglés | Descripción |
+|---------|-----------------|-------------|
+| `/start` | — | Bienvenida e instrucciones |
+| `/ayuda [cmd]` | `/help` | Ayuda general o de un comando concreto |
+| `/competiciones` | `/competitions` | Lista de IDs de competición |
+| `/equipos <comp> <temp>` | `/teams` | Equipos disponibles en la DB local |
+| `/liga <comp> <temp>` | `/league` | Informe completo de liga |
+| `/equipo <comp> <temp> <nombre>` | `/team` | Informe de un equipo |
+| `/jornada <comp> <temp> <N>` | `/matchday` | Informe de una jornada |
+| `/compare <comp> <temp> <eq1> \| <eq2>` | — | Comparativa entre dos equipos |
+| `/pdf <comp> <temp>` | — | Genera y envía el informe en PDF |
+| `/suscribir <comp> <temp> <equipo>` | — | Activa alertas de racha negativa |
+| `/suscripciones` | — | Lista tus suscripciones activas |
+| `/desuscribir <comp> <temp> <equipo>` | — | Cancela una suscripción |
+
+### Alertas proactivas
+
+Configura la hora de envío en `.env`:
+
+```
+ALERT_HOUR=9
+```
+
+El bot comprueba diariamente los equipos suscritos y envía un aviso si alguno lleva 3 o más derrotas consecutivas.
+
+### Exportar informe a PDF por bot
+
+```
+/pdf 2014 2024
+```
+
+Requiere `weasyprint` instalado en el servidor (`pip install weasyprint`). En Linux puede necesitar `apt-get install libpango-1.0-0`.
+
+---
+
+## Dashboard web
+
+Arranca con `streamlit run app.py`.
+
+### Modo multi-liga
+
+Activa el checkbox "🔀 Comparar múltiples ligas" en el sidebar para seleccionar hasta 3 competiciones y temporadas y comparar sus clasificaciones + KPIs en tabs paralelos.
+
+### Exportar a PDF desde el dashboard
+
+Al final de cualquier informe generado, pulsa el botón **📄 Generar PDF del informe**. Si la generación es correcta, aparecerá el botón **⬇️ Descargar PDF**.
+
+Requiere `weasyprint` instalado (`pip install weasyprint`).

@@ -57,17 +57,17 @@ Mejoras de UX que reducen fricci�n para betas y futuros usuarios.
 
 ---
 
-## Fase 10 � Producto avanzado `[BAJA PRIORIDAD]`
+## Fase 10 — Producto avanzado `[COMPLETADA]`
 
-Features con alto impacto de producto pero mayor esfuerzo. Para cuando la base est� estabilizada.
+Features con alto impacto de producto pero mayor esfuerzo.
 
-| # | Mejora | Descripci�n | Esfuerzo |
-|---|--------|-------------|---------|
-| 10.1 | **Exportar an�lisis a PDF** | Convertir el HTML que ya genera el agente a PDF con `weasyprint`. Sin reescribir nada. Bot�n "Descargar PDF" en el dashboard y comando `/pdf` en el bot. | Bajo |
-| 10.2 | **Alertas proactivas por Telegram** | El bot es reactivo. Con `APScheduler` y un comando `/suscribir 2014 2024 Mallorca`, podr�a enviar autom�ticamente avisos de rachas negativas, jornadas disputadas o ca�da en tabla. | Alto |
-| 10.3 | **Cach� de gr�ficos por hash de datos** | Los PNG se regeneran en cada ejecuci�n aunque los datos no cambien. Calcular un hash del DataFrame de entrada y reutilizar el PNG existente si coincide. | Medio |
-| 10.4 | **Aliases en ingl�s para el bot** | A�adir `/league`, `/team`, `/matchday` como alias de los comandos en espa�ol. Sin l�gica nueva, solo registrar handlers adicionales. Abre el bot a usuarios no hispanohablantes. | Muy bajo |
-| 10.5 | **Modo multi-liga en el dashboard** | Permitir comparar el mismo equipo en diferentes ligas/temporadas en una sola vista. Requiere refactorizar el sidebar para soportar selecci�n m�ltiple. | Alto |
+| # | Mejora | Descripción | Esfuerzo | Estado |
+|---|--------|-------------|----------|--------|
+| 10.1 | **Exportar análisis a PDF** | `generate_pdf_report()` en `src/agent.py` + botón dashboard + `/pdf` en bot. | Bajo | ✅ |
+| 10.2 | **Alertas proactivas por Telegram** | APScheduler diario; `/suscribir`, `/suscripciones`, `/desuscribir`; alerta si ≥3 derrotas. | Alto | ✅ |
+| 10.3 | **Caché de gráficos por hash de datos** | Hash MD5 del DataFrame en `save_visual_report()`; marcador `.chart_cache`. | Medio | ✅ |
+| 10.4 | **Aliases en inglés para el bot** | `/league`, `/team`, `/matchday`, `/help`, `/competitions`, `/teams` en `main()`. | Muy bajo | ✅ |
+| 10.5 | **Modo multi-liga en el dashboard** | Checkbox sidebar; hasta 3 competiciones en tabs con clasificación + KPIs. | Alto | ✅ |
 
 ---
 

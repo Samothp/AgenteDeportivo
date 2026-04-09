@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import shutil
 from pathlib import Path
@@ -25,6 +26,18 @@ from .analysis import (
 )
 from .data_loader import load_match_data
 from .player_loader import load_player_stats
+
+
+# ---------------------------------------------------------------------------
+# 10.3 — Helper de caché de gráficos por hash de datos
+# ---------------------------------------------------------------------------
+
+def _df_hash(df: pd.DataFrame) -> str:
+    """Calcula un hash MD5 estable del contenido del DataFrame."""
+    raw = pd.util.hash_pandas_object(df, index=True).values.tobytes()
+    return hashlib.md5(raw).hexdigest()
+
+
 from .visualizer import (
     plot_attendance,
     plot_card_statistics,
@@ -2035,6 +2048,36 @@ class SportsAgent:
         if self.liga_summary:
             return self._generate_liga_html_report(output_path, image_folder=image_folder)
 
+    # 10.1 — Exportar análisis a PDF con weasyprint
+    def generate_pdf_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
+        """Convierte el informe HTML a PDF usando weasyprint.
+
+        Genera primero el HTML en la misma carpeta y luego lo convierte.
+        Requiere `pip install weasyprint`. En Linux: apt-get install libpango-1.0-0.
+
+        Args:
+            output_path: Ruta de salida del PDF (extensión .pdf).
+            image_folder: Carpeta donde guardar los gráficos (opcional).
+
+        Returns:
+            Ruta del PDF generado.
+
+        Raises:
+            ImportError: Si weasyprint no está instalado.
+        """
+        try:
+            from weasyprint import HTML as WeasyprintHTML
+        except ImportError:
+            raise ImportError(
+                "weasyprint no está instalado.\n"
+                "Instálalo con:  pip install weasyprint\n"
+                "En Linux puede requerir:  apt-get install libpango-1.0-0 libpangoft2-1.0-0"
+            )
+        html_path = str(Path(output_path).with_suffix(".html"))
+        self.generate_html_report(html_path, image_folder)
+        WeasyprintHTML(filename=html_path).write_pdf(output_path)
+        return output_path
+
         report_file = Path(output_path)
         report_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -2392,13 +2435,33 @@ class SportsAgent:
         report_folder = Path(output_folder)
         report_folder.mkdir(parents=True, exist_ok=True)
 
+        # 10.3 — Caché de gráficos por hash de datos
+        _h = _df_hash(self.data)
+        _cache_marker = report_folder / ".chart_cache"
+        if _cache_marker.exists():
+            try:
+                if _cache_marker.read_text(encoding="utf-8").strip() == _h:
+                    cached_pngs = sorted(p for p in report_folder.iterdir() if p.suffix == ".png")
+                    if cached_pngs:
+                        return [str(p) for p in cached_pngs]
+            except OSError:
+                pass
+
+        def _save(paths: List[str]) -> List[str]:
+            """Escribe el marcador de caché y devuelve las rutas."""
+            try:
+                _cache_marker.write_text(_h, encoding="utf-8")
+            except OSError:
+                pass
+            return paths
+
         # Modo Compare: radar comparativo entre dos equipos
         if self.compare is not None and self.compare_data:
             paths = []
             radar_path = plot_compare_radar(self.compare_data, str(report_folder / 'compare_radar.png'))
             if radar_path:
                 paths.append(radar_path)
-            return paths
+            return _save(paths)
 
         # Modo Partido: gráficos de estadísticas cara a cara
         if self.match_id is not None:
@@ -2419,7 +2482,7 @@ class SportsAgent:
             )
             if radar_path:
                 paths.append(radar_path)
-            return paths
+            return _save(paths)
 
         # Modo Jornada: solo gráficos de la jornada
         if self.matchday is not None:
@@ -2430,7 +2493,7 @@ class SportsAgent:
             xg_path = plot_matchday_xg(self.data, str(report_folder / 'matchday_xg.png'))
             if xg_path:
                 paths.append(xg_path)
-            return paths
+            return _save(paths)
 
         # Modo Jugador: barras + radar del jugador
         if self.player_profile and self.player_profile.get('found'):
@@ -2441,7 +2504,7 @@ class SportsAgent:
             radar_path = plot_player_radar(self.player_profile, str(report_folder / 'player_radar.png'))
             if radar_path:
                 paths.append(radar_path)
-            return paths
+            return _save(paths)
 
         # Modo Liga: gráficos de clasificación, goles y rendimiento
         if self.liga_summary:
@@ -2460,7 +2523,7 @@ class SportsAgent:
             # 3.4 Mapa de calor de resultados
             hmap = plot_results_heatmap(self.data, str(report_folder / 'results_heatmap.png'))
             if hmap: paths.append(hmap)
-            return paths
+            return _save(paths)
 
         paths = []
 
@@ -2497,4 +2560,4 @@ class SportsAgent:
         if funnel_path:
             paths.append(funnel_path)
 
-        return paths
+        return _save(paths)

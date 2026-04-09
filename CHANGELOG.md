@@ -4,6 +4,25 @@ Todos los cambios importantes de este proyecto se documentarán en este archivo.
 
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [4.0.0] — 2026-04-09
+
+### Añadido
+
+**Fase 10 — Producto avanzado**
+
+- **10.1 — Exportar a PDF**: método `generate_pdf_report()` en `src/agent.py` usando `weasyprint`. Genera primero el HTML y lo convierte a PDF. Botón "Generar PDF" en el dashboard con descarga directa (`st.download_button`). Comando `/pdf <comp> <season>` en el bot que envía el archivo como documento Telegram.
+- **10.2 — Alertas proactivas Telegram**: nuevos comandos `/suscribir`, `/suscripciones` y `/desuscribir`. Las suscripciones se persisten en `data/subscriptions.json`. `APScheduler BackgroundScheduler` con job diario (hora configurable con `ALERT_HOUR` en `.env`) que detecta equipos con ≥3 derrotas consecutivas y notifica automáticamente. Estado previo en `data/alert_state.json` para no reenviar la misma alerta.
+- **10.3 — Caché de gráficos por hash**: función `_df_hash()` en `src/agent.py` calcula un MD5 estable del DataFrame con `pd.util.hash_pandas_object`. En `save_visual_report()`, si existe `.chart_cache` con el mismo hash, se devuelven los PNG existentes sin regenerarlos.
+- **10.4 — Aliases en inglés para el bot**: `/help`, `/competitions`, `/teams`, `/league`, `/team`, `/matchday` registrados como `CommandHandler` adicionales en `main()`.
+- **10.5 — Modo multi-liga en el dashboard**: checkbox "🔀 Comparar múltiples ligas" en el sidebar. Al activarse, muestra 3 filas (competición + temporada) y un botón "▶ Comparar ligas". El área principal muestra un `st.tabs` con clasificación y KPIs por competición.
+
+### Dependencias añadidas
+
+- `weasyprint==63.1` — conversión HTML → PDF
+- `apscheduler==3.11.0` — scheduler de alertas proactivas
+
+---
+
 ## [3.0.0] — 2026-04-08
 
 ### Añadido

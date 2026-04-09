@@ -181,65 +181,32 @@ def _run_agent(competition: int, season: str, mode: str, **kwargs) -> tuple[dict
 st.sidebar.title("⚽ Agente Deportivo")
 st.sidebar.markdown("---")
 
-competition = st.sidebar.selectbox(
-    "Competición",
-    options=list(COMPETITION_NAMES.keys()),
-    format_func=lambda x: COMPETITION_NAMES[x],
-)
-season = st.sidebar.text_input("Temporada (YYYY)", value="2024")
-mode = st.sidebar.radio("Modo de informe", MODES)
+# 10.5 — Modo multi-liga
+use_multi = st.sidebar.checkbox("🔀 Comparar múltiples ligas", value=False)
 
-st.sidebar.markdown("---")
-
-# Inputs adicionales según el modo
-extra_kwargs: dict = {}
-
-if mode == "Equipo":
-    teams = _list_teams(competition, season)
-    if teams:
-        team = st.sidebar.selectbox("Equipo", teams)
-    else:
-        team = st.sidebar.text_input("Equipo (nombre parcial)")
-    extra_kwargs["team"] = team
-
-elif mode == "Jornada":
-    jornada = st.sidebar.number_input("Número de jornada", min_value=1, max_value=38, value=1, step=1)
-    extra_kwargs["matchday"] = int(jornada)
-
-elif mode == "Partido":
-    match_id = st.sidebar.number_input("ID del partido (id_event)", min_value=1, value=1, step=1)
-    extra_kwargs["match_id"] = int(match_id)
-
-elif mode == "Jugador":
-    teams = _list_teams(competition, season)
-    if teams:
-        team = st.sidebar.selectbox("Equipo", teams)
-    else:
-        team = st.sidebar.text_input("Equipo (nombre parcial)")
-    player = st.sidebar.text_input("Jugador (nombre parcial)")
-    extra_kwargs["team"] = team
-    extra_kwargs["player"] = player
-
-elif mode == "Compare":
-    teams = _list_teams(competition, season)
-    if teams:
-        team1 = st.sidebar.selectbox("Equipo 1", teams, index=0)
-        team2 = st.sidebar.selectbox("Equipo 2", teams, index=min(1, len(teams) - 1))
-    else:
-        team1 = st.sidebar.text_input("Equipo 1")
-        team2 = st.sidebar.text_input("Equipo 2")
-    extra_kwargs["compare"] = (team1, team2)
-
-elif mode == "Liga":
-    use_range = st.sidebar.checkbox("Filtrar rango de jornadas")
-    if use_range:
-        col1, col2 = st.sidebar.columns(2)
-        start = col1.number_input("Desde", min_value=1, max_value=38, value=1, step=1)
-        end = col2.number_input("Hasta", min_value=1, max_value=38, value=19, step=1)
-        extra_kwargs["matchday_range"] = (int(start), int(end))
-
-top_n = st.sidebar.slider("Top N en rankings", min_value=3, max_value=20, value=5)
-extra_kwargs["top_n"] = top_n
+if use_multi:
+    st.sidebar.markdown("**Selecciona hasta 3 competiciones:**")
+    _multi_combos: list[tuple[int, str]] = []
+    for _i in range(3):
+        _c1, _c2 = st.sidebar.columns([3, 2])
+        _mc = _c1.selectbox(
+            f"Liga {_i + 1}",
+            options=list(COMPETITION_NAMES.keys()),
+            format_func=lambda x: COMPETITION_NAMES[x],
+            key=f"multi_comp_{_i}",
+        )
+        _ms = _c2.text_input(f"Temp.", value="2024", key=f"multi_season_{_i}")
+        _multi_combos.append((_mc, _ms))
+    st.sidebar.markdown("---")
+    multi_btn = st.sidebar.button("▶ Comparar ligas", use_container_width=True, type="primary")
+else:
+    competition = st.sidebar.selectbox(
+        "Competición",
+        options=list(COMPETITION_NAMES.keys()),
+        format_func=lambda x: COMPETITION_NAMES[x],
+    )
+    season = st.sidebar.text_input("Temporada (YYYY)", value="2024")
+    mode = st.sidebar.radio("Modo de informe", MODES)
 
 st.sidebar.markdown("---")
 
@@ -263,9 +230,62 @@ def _show_data_freshness(competition: int, season: str) -> None:
     else:
         st.sidebar.error(f"❌ Datos de hace {int(age)} días (muy desactualizados)")
 
-_show_data_freshness(competition, season)
-st.sidebar.markdown("---")
-run_btn = st.sidebar.button("▶ Generar informe", use_container_width=True)
+# Inputs adicionales según el modo (solo en modo normal)
+extra_kwargs: dict = {}
+run_btn = False
+
+if not use_multi:
+    if mode == "Equipo":
+        teams = _list_teams(competition, season)
+        if teams:
+            team = st.sidebar.selectbox("Equipo", teams)
+        else:
+            team = st.sidebar.text_input("Equipo (nombre parcial)")
+        extra_kwargs["team"] = team
+
+    elif mode == "Jornada":
+        jornada = st.sidebar.number_input("Número de jornada", min_value=1, max_value=38, value=1, step=1)
+        extra_kwargs["matchday"] = int(jornada)
+
+    elif mode == "Partido":
+        match_id = st.sidebar.number_input("ID del partido (id_event)", min_value=1, value=1, step=1)
+        extra_kwargs["match_id"] = int(match_id)
+
+    elif mode == "Jugador":
+        teams = _list_teams(competition, season)
+        if teams:
+            team = st.sidebar.selectbox("Equipo", teams)
+        else:
+            team = st.sidebar.text_input("Equipo (nombre parcial)")
+        player = st.sidebar.text_input("Jugador (nombre parcial)")
+        extra_kwargs["team"] = team
+        extra_kwargs["player"] = player
+
+    elif mode == "Compare":
+        teams = _list_teams(competition, season)
+        if teams:
+            team1 = st.sidebar.selectbox("Equipo 1", teams, index=0)
+            team2 = st.sidebar.selectbox("Equipo 2", teams, index=min(1, len(teams) - 1))
+        else:
+            team1 = st.sidebar.text_input("Equipo 1")
+            team2 = st.sidebar.text_input("Equipo 2")
+        extra_kwargs["compare"] = (team1, team2)
+
+    elif mode == "Liga":
+        use_range = st.sidebar.checkbox("Filtrar rango de jornadas")
+        if use_range:
+            col1, col2 = st.sidebar.columns(2)
+            start = col1.number_input("Desde", min_value=1, max_value=38, value=1, step=1)
+            end = col2.number_input("Hasta", min_value=1, max_value=38, value=19, step=1)
+            extra_kwargs["matchday_range"] = (int(start), int(end))
+
+    top_n = st.sidebar.slider("Top N en rankings", min_value=3, max_value=20, value=5)
+    extra_kwargs["top_n"] = top_n
+
+    st.sidebar.markdown("---")
+    _show_data_freshness(competition, season)
+    st.sidebar.markdown("---")
+    run_btn = st.sidebar.button("▶ Generar informe", use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Área principal
@@ -273,6 +293,47 @@ run_btn = st.sidebar.button("▶ Generar informe", use_container_width=True)
 
 _beta_name = st.session_state.get("beta_user_name", "")
 _title_suffix = f" · Bienvenido, {_beta_name}" if _beta_name else ""
+
+# ---------------------------------------------------------------------------
+# 10.5 — Modo multi-liga
+# ---------------------------------------------------------------------------
+if use_multi:
+    st.title(f"⚽ Comparativa de Ligas{_title_suffix}")
+    if not multi_btn:
+        st.info("Selecciona hasta 3 competiciones en el panel lateral y pulsa **▶ Comparar ligas**.")
+        st.stop()
+
+    tabs = st.tabs(
+        [f"{COMPETITION_NAMES.get(_mc, _mc)} {_ms}" for _mc, _ms in _multi_combos]
+    )
+    for _tab, (_mc, _ms) in zip(tabs, _multi_combos):
+        with _tab:
+            try:
+                with st.spinner(f"Analizando {COMPETITION_NAMES.get(_mc, _mc)} {_ms}…"):
+                    _ml_payload, _ml_imgs = _run_agent(_mc, _ms, "Liga", top_n=5)
+                _ml_liga = _ml_payload.get("liga_summary", {})
+                if _ml_liga:
+                    _show_table(_ml_liga.get("clasificacion", []), "🏆 Clasificación")
+                    _ml_metrics = _ml_payload.get("metrics", {})
+                    if _ml_metrics:
+                        _col1, _col2, _col3 = st.columns(3)
+                        _col1.metric("Goles/partido", _ml_metrics.get("goles_a_favor_promedio"))
+                        _col2.metric("xG/partido", _ml_metrics.get("xg_equipo_promedio"))
+                        _col3.metric("Posesión %", _ml_metrics.get("posesion_equipo_promedio"))
+                else:
+                    st.warning("No hay datos de liga disponibles.")
+            except FileNotFoundError:
+                st.warning(
+                    f"Sin datos locales para **{COMPETITION_NAMES.get(_mc, _mc)} {_ms}**. "
+                    "Descárgalos primero desde la CLI."
+                )
+            except Exception as _e:
+                st.error(f"Error al cargar {COMPETITION_NAMES.get(_mc, _mc)} {_ms}: {_e}")
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# Modo normal
+# ---------------------------------------------------------------------------
 st.title(f"⚽ {COMPETITION_NAMES.get(competition, 'Competición')} — {season}{_title_suffix}")
 
 if not run_btn:
@@ -453,6 +514,41 @@ if image_paths:
         for col, img_path in zip(cols, row_paths):
             if Path(img_path).exists():
                 col.image(img_path, use_container_width=True)
+
+# ── 10.1 — Exportar a PDF ───────────────────────────────────────────────────
+st.markdown("---")
+if st.button("📄 Generar PDF del informe"):
+    with st.spinner("Generando PDF… (puede tardar unos segundos)"):
+        try:
+            _pdf_dir = Path(tempfile.mkdtemp(prefix="agente_pdf_"))
+            _pdf_path = _pdf_dir / "informe.pdf"
+            from src.agent import SportsAgent
+            from src.data_loader import get_db_path as _get_db
+            _pdf_agent = SportsAgent(
+                data_path=str(_get_db(competition, season)),
+                fetch_real=False,
+                competition_id=competition,
+                season=season,
+                no_charts=True,
+                **extra_kwargs,
+            )
+            _pdf_agent.load_data()
+            _pdf_agent.analyze()
+            _pdf_agent.generate_pdf_report(str(_pdf_path))
+            st.download_button(
+                label="⬇️ Descargar PDF",
+                data=_pdf_path.read_bytes(),
+                file_name=f"informe_{competition}_{season}.pdf",
+                mime="application/pdf",
+            )
+        except ImportError:
+            st.warning(
+                "**weasyprint** no está instalado.\n\n"
+                "Instálalo con: `pip install weasyprint`\n\n"
+                "En Linux puede requerir además: `apt-get install libpango-1.0-0`"
+            )
+        except Exception as _e:
+            st.error(f"Error al generar el PDF: {_e}")
 
 # ── Datos en bruto (expandible) ─────────────────────────────────────────────
 with st.expander("🗂️ Datos en bruto (JSON)"):
