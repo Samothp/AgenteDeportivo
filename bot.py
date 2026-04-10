@@ -60,6 +60,7 @@ load_dotenv()
 
 try:
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+    from telegram.constants import ChatAction
     from telegram.ext import (
         Application,
         CallbackQueryHandler,
@@ -291,6 +292,43 @@ def _run_agent_with_charts(competition: int, season: str, tmp_dir: str, **kwargs
 def _split_message(text: str, max_len: int = MAX_MSG_LENGTH) -> list[str]:
     """Divide un texto largo en fragmentos que Telegram puede enviar."""
     return textwrap.wrap(text, width=max_len, break_long_words=False, replace_whitespace=False)
+
+
+class _TypingAction:
+    """Context manager asíncrono que mantiene el indicador 'escribiendo…' de Telegram
+    mientras se ejecuta un bloque costoso en un hilo separado.
+
+    Uso:
+        async with _TypingAction(update, context):
+            resultado = await asyncio.to_thread(tarea_lenta)
+    """
+
+    def __init__(self, update: "Update", context: "ContextTypes.DEFAULT_TYPE", interval: float = 4.0):
+        self._update = update
+        self._context = context
+        self._interval = interval
+        self._task: asyncio.Task | None = None
+
+    async def _loop(self) -> None:
+        chat_id = self._update.effective_chat.id
+        while True:
+            try:
+                await self._context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+            except Exception:
+                pass
+            await asyncio.sleep(self._interval)
+
+    async def __aenter__(self):
+        self._task = asyncio.get_running_loop().create_task(self._loop())
+        return self
+
+    async def __aexit__(self, *_):
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
 
 
 async def _send_report_with_charts(update: Update, text: str, image_paths: list[str]) -> None:
@@ -542,14 +580,16 @@ async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("💾 (informe cacheado)")
         await _send_paged(update, cached)
     elif solo_texto:
-        text = _run_agent_text(competition, season)
+        async with _TypingAction(update, context):
+            text = await asyncio.to_thread(_run_agent_text, competition, season)
         _report_cache_set(_ck, text)
         await _send_paged(update, text)
     else:
-        with tempfile.TemporaryDirectory(prefix="agente_liga_") as tmp:
-            text, images = _run_agent_with_charts(competition, season, tmp)
-            _report_cache_set(_ck, text)
-            await _send_report_with_charts(update, text, images)
+        async with _TypingAction(update, context):
+            with tempfile.TemporaryDirectory(prefix="agente_liga_") as tmp:
+                text, images = await asyncio.to_thread(_run_agent_with_charts, competition, season, tmp)
+        _report_cache_set(_ck, text)
+        await _send_report_with_charts(update, text, images)
 
 
 @_require_group_member
@@ -579,14 +619,16 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.message.reply_text("💾 (informe cacheado)")
         await _send_paged(update, cached)
     elif solo_texto:
-        text = _run_agent_text(competition, season, team=team)
+        async with _TypingAction(update, context):
+            text = await asyncio.to_thread(_run_agent_text, competition, season, team=team)
         _report_cache_set(_ck, text)
         await _send_paged(update, text)
     else:
-        with tempfile.TemporaryDirectory(prefix="agente_equipo_") as tmp:
-            text, images = _run_agent_with_charts(competition, season, tmp, team=team)
-            _report_cache_set(_ck, text)
-            await _send_report_with_charts(update, text, images)
+        async with _TypingAction(update, context):
+            with tempfile.TemporaryDirectory(prefix="agente_equipo_") as tmp:
+                text, images = await asyncio.to_thread(_run_agent_with_charts, competition, season, tmp, team=team)
+        _report_cache_set(_ck, text)
+        await _send_report_with_charts(update, text, images)
 
 
 @_require_group_member
@@ -612,7 +654,8 @@ async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     await update.message.reply_text(f"⏳ Generando informe de la jornada {jornada}...")
-    text = _run_agent_text(competition, season, matchday=jornada)
+    async with _TypingAction(update, context):
+        text = await asyncio.to_thread(_run_agent_text, competition, season, matchday=jornada)
     await _send_paged(update, text)
 
 
@@ -650,14 +693,16 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("💾 (informe cacheado)")
         await _send_paged(update, cached)
     elif solo_texto:
-        text = _run_agent_text(competition, season, compare=(team1, team2))
+        async with _TypingAction(update, context):
+            text = await asyncio.to_thread(_run_agent_text, competition, season, compare=(team1, team2))
         _report_cache_set(_ck, text)
         await _send_paged(update, text)
     else:
-        with tempfile.TemporaryDirectory(prefix="agente_compare_") as tmp:
-            text, images = _run_agent_with_charts(competition, season, tmp, compare=(team1, team2))
-            _report_cache_set(_ck, text)
-            await _send_report_with_charts(update, text, images)
+        async with _TypingAction(update, context):
+            with tempfile.TemporaryDirectory(prefix="agente_compare_") as tmp:
+                text, images = await asyncio.to_thread(_run_agent_with_charts, competition, season, tmp, compare=(team1, team2))
+        _report_cache_set(_ck, text)
+        await _send_report_with_charts(update, text, images)
 
 
 # ---------------------------------------------------------------------------
@@ -688,7 +733,8 @@ async def cmd_jugador(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     player = " ".join(context.args[3:])
 
     await update.message.reply_text(f"⏳ Buscando informe de {player} ({team})...")
-    text = _run_agent_text(competition, season, team=team, player=player)
+    async with _TypingAction(update, context):
+        text = await asyncio.to_thread(_run_agent_text, competition, season, team=team, player=player)
     await _send_paged(update, text)
 
 

@@ -52,9 +52,8 @@
 
 ## 🟡 Baja prioridad — Pulido y UX
 
-- [ ] **13. Indicador de typing mientras se genera el informe**
-  Actualmente el bot envía "⏳ Generando informe..." y luego nada hasta que termina.
-  Usar `await context.bot.send_chat_action(chat_id, ChatAction.TYPING)` en bucle mientras el agente trabaja para que Telegram muestre "escribiendo…" de forma continua.
+- [x] **13. Indicador de typing mientras se genera el informe** ✅
+  Nuevo context manager `_TypingAction(update, context)` que envía `ChatAction.TYPING` cada 4 segundos en un `asyncio.Task` paralelo. Todos los handlers pesados (`/liga`, `/equipo`, `/jornada`, `/compare`, `/jugador`) envuelven la llamada al agente con `async with _TypingAction(...)` y la ejecutan en un hilo con `asyncio.to_thread()` para no bloquear el event loop.
 
 - [ ] **14. Mensaje de bienvenida personalizado al primer uso**
   Al recibir `/start`, si el usuario nunca ha interactuado, mostrar además una pequeña guía de primeros pasos y confirmar si tiene acceso (cuando `ALLOWED_GROUP_ID` está activo).
