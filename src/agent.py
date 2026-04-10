@@ -1834,7 +1834,8 @@ class SportsAgent:
             report_lines.append('----------------------')
             n_eq = self.league_percentiles[0]['n_equipos']
             report_lines.append(f'  (Posici\u00f3n relativa del equipo respecto a los {n_eq} equipos de la liga)')
-            report_lines.append(f'  {"M\u00e9trica":<32} {"Valor":>7}  {"Percentil":>9}  Valoraci\u00f3n')
+            _col_metrica = "M\u00e9trica"  # é = é
+            report_lines.append(f'  {_col_metrica:<32} {"Valor":>7}  {"Percentil":>9}  Valoraci\u00f3n')
             report_lines.append(f'  {"-"*32} {"-"*7}  {"-"*9}  ----------')
             for p in self.league_percentiles:
                 pct = p["percentil"]
