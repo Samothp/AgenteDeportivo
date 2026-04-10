@@ -367,21 +367,33 @@ def _parse_base(args: tuple[str, ...]) -> tuple[int, str] | str:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Bienvenida e instrucciones."""
+    user = update.effective_user
+    name = user.first_name if user else "usuario"
     text = (
-        "⚽ *Agente Deportivo* — Bot de análisis de fútbol\n\n"
-        "*Comandos disponibles:*\n"
-        "/competiciones — Lista de competiciones\n"
-        "/equipos `<comp> <temp>` — Equipos en la DB\n"
-        "/liga `<comp> <temp>` — Informe de liga\n"
+        f"⚽ ¡Hola, {name}\\! Bienvenido a *Agente Deportivo*\n"
+        "Bot de análisis avanzado de fútbol\\.\n\n"
+        "📊 *Análisis e informes*\n"
+        "/competiciones — Lista de IDs de competición\n"
+        "/equipos `<comp> <temp>` — Equipos disponibles\n"
+        "/liga `<comp> <temp>` — Informe completo de liga\n"
         "/equipo `<comp> <temp> <nombre>` — Informe de equipo\n"
         "/jornada `<comp> <temp> <N>` — Informe de jornada\n"
-        "/compare `<comp> <temp> <eq1> | <eq2>` — Comparativa\n\n"
-        "*Ejemplo:*\n"
+        "/compare `<comp> <temp> <eq1> | <eq2>` — Comparativa\n"
+        "/pdf `<comp> <temp>` — Descargar informe en PDF\n\n"
+        "🔔 *Alertas proactivas*\n"
+        "/suscribir `<comp> <temp> <equipo>` — Activar alerta de rachas\n"
+        "/suscripciones — Ver tus alertas activas\n"
+        "/desuscribir `<comp> <temp> <equipo>` — Cancelar alerta\n\n"
+        "📖 *Ayuda*\n"
+        "/ayuda — Ayuda general\n"
+        "/ayuda `<comando>` — Sintaxis detallada \\(ej\\. `/ayuda liga`\\)\n\n"
+        "💡 *Ejemplos rápidos*\n"
         "`/liga 2014 2024`\n"
         "`/equipo 2014 2024 Mallorca`\n"
+        "`/jornada 2014 2024 15`\n"
         "`/compare 2014 2024 Real Madrid | Barcelona`"
     )
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text, parse_mode="MarkdownV2")
 
 
 @_require_group_member

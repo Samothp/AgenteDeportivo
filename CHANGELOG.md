@@ -12,6 +12,7 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
 - **`asyncio.run()` en hilo de APScheduler (RoadmapBotTelegram #2)**: `_check_alerts_sync` usaba `asyncio.run()` desde un hilo secundario mientras el event loop principal ya estaba activo, lo que puede causar `RuntimeError`. Se introduce `_main_loop` (capturado en `post_init`) y se sustituye por `asyncio.run_coroutine_threadsafe(..., _main_loop).result(timeout=30)`.
 - **Caché de paginación persistido en disco (RoadmapBotTelegram #3)**: `_page_cache` era un dict en memoria que se perdía en cada reinicio, inutilizando los botones ◀/▶ de mensajes anteriores. Se reemplaza por una carga inicial desde `data/page_cache.json` (`_pc_load`) con TTL de 1 hora y guardado tras cada nueva entrada (`_pc_save`). Las páginas válidas siguen disponibles tras reinicios del bot.
 - **Rate limiting por usuario en comandos pesados (RoadmapBotTelegram #4)**: nuevo decorador `_cooldown(seconds)` que usa `context.user_data` para registrar el último uso de cada comando por usuario. Si el periodo de cooldown no ha pasado, el usuario recibe un mensaje con los segundos restantes. Se aplica `@_cooldown(30)` a `/liga`, `/equipo`, `/jornada`, `/compare` y `/pdf`.
+- **`/start` completo con todos los comandos (RoadmapBotTelegram #5)**: reescrito con saludo personalizado y tres secciones agrupadas: *Análisis e informes*, *Alertas proactivas* y *Ayuda*. Incluye ahora `/pdf`, `/suscribir`, `/suscripciones`, `/desuscribir` y `/ayuda`. Migrado a `MarkdownV2`.
 
 ### Añadido
 

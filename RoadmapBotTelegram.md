@@ -20,10 +20,8 @@
 - [x] **4. Rate limiting por usuario** ✅
   Nuevo decorador `_cooldown(seconds)` que usa `context.user_data` para registrar el último uso por comando. Si el mismo usuario reejuta el comando antes de que pasen `seconds` segundos, recibe un mensaje con el tiempo restante. Aplicado con `@_cooldown(30)` a los comandos costosos: `/liga`, `/equipo`, `/jornada`, `/compare` y `/pdf`.
 
-- [ ] **5. Completar `/start` — incluir todos los comandos**
-  El mensaje de bienvenida no menciona `/suscribir`, `/desuscribir`, `/suscripciones`, `/pdf` ni `/ayuda`.
-  Los usuarios nuevos no descubren las funcionalidades de alertas.
-  Reescribir `/start` con el listado completo de comandos agrupados por categoría.
+- [x] **5. Completar `/start` \u2014 incluir todos los comandos** ✅
+  Reescrito con saludo personalizado por nombre de usuario y tres secciones agrupadas: *Análisis e informes* (`/liga`, `/equipo`, `/jornada`, `/compare`, `/pdf`), *Alertas proactivas* (`/suscribir`, `/suscripciones`, `/desuscribir`) y *Ayuda*. Migrado a `MarkdownV2` para compatibilidad con el API de Telegram.
 
 - [ ] **6. Inferir temporada actual automáticamente**
   Todos los mensajes de error y ayuda hardcodean `2024` como temporada de ejemplo.
