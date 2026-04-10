@@ -1084,6 +1084,34 @@ def compute_xpts(df: pd.DataFrame) -> pd.DataFrame:
     return df_xpts
 
 
+def compute_team_form(df: pd.DataFrame, team: str, last_n: int = 5) -> str:
+    """Devuelve la forma reciente de un equipo como cadena de emojis.
+
+    🟢 victoria · ⚪ empate · 🔴 derrota (ordenados del más antiguo al más reciente).
+
+    Args:
+        df: DataFrame de partidos de la liga/temporada.
+        team: Nombre del equipo.
+        last_n: Número de partidos recientes a considerar (por defecto 5).
+
+    Returns:
+        Cadena de emojis, p. ej. "🔴⚪🟢🟢🟢".
+    """
+    df_team = df[(df['local_team'] == team) | (df['visitante_team'] == team)].copy()
+    if 'jornada' in df_team.columns:
+        df_team = df_team.sort_values('jornada', ascending=True)
+    df_team = df_team.tail(last_n)
+    emojis = []
+    for _, row in df_team.iterrows():
+        gl = row['goles_local']
+        gv = row['goles_visitante']
+        if row['local_team'] == team:
+            emojis.append('🟢' if gl > gv else ('⚪' if gl == gv else '🔴'))
+        else:
+            emojis.append('🟢' if gv > gl else ('⚪' if gv == gl else '🔴'))
+    return ' '.join(emojis)
+
+
 def compute_liga_summary(df: pd.DataFrame) -> Dict:
     """Resumen completo de una temporada de liga.
 
@@ -1122,6 +1150,12 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
 
     # Clasificación
     clasificacion = compute_standings(df)
+
+    # Forma reciente de cada equipo (últimas 5 jornadas)
+    if not clasificacion.empty and 'jornada' in df.columns:
+        clasificacion['Forma'] = clasificacion['Equipo'].apply(
+            lambda t: compute_team_form(df, t, last_n=5)
+        )
 
     # Estadísticas técnicas por equipo (promedio de columnas disponibles)
     num_cols = {

@@ -34,9 +34,10 @@
 
 ## 🟠 Media prioridad — Riqueza de producto
 
-- [ ] **5. Tabla de forma en modo Liga (últimas 5 jornadas)**  
+- [x] **5. Tabla de forma en modo Liga (últimas 5 jornadas)**  
   Mostrar junto a la clasificación una columna o sección con la forma reciente de cada equipo representada con emojis (🟢 victoria · ⚪ empate · 🔴 derrota).  
-  Los datos ya están en el CSV; solo requiere un cálculo adicional en `analysis.py` y renderizado en `app.py`.
+  Los datos ya están en el CSV; solo requiere un cálculo adicional en `analysis.py` y renderizado en `app.py`.  
+  ✅ _Completado — commit pendiente_
 
 - [ ] **6. Gráfico de evolución de puntos en modo Equipo**  
   El visualizador ya genera este gráfico. Mostrarlo de forma prominente en la parte superior de la vista de equipo, antes de las tablas, para dar contexto temporal que las métricas estáticas no ofrecen.
