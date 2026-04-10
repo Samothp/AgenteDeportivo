@@ -55,16 +55,14 @@
 - [x] **13. Indicador de typing mientras se genera el informe** ✅
   Nuevo context manager `_TypingAction(update, context)` que envía `ChatAction.TYPING` cada 4 segundos en un `asyncio.Task` paralelo. Todos los handlers pesados (`/liga`, `/equipo`, `/jornada`, `/compare`, `/jugador`) envuelven la llamada al agente con `async with _TypingAction(...)` y la ejecutan en un hilo con `asyncio.to_thread()` para no bloquear el event loop.
 
-- [ ] **14. Mensaje de bienvenida personalizado al primer uso**
-  Al recibir `/start`, si el usuario nunca ha interactuado, mostrar además una pequeña guía de primeros pasos y confirmar si tiene acceso (cuando `ALLOWED_GROUP_ID` está activo).
+- [x] **14. Mensaje de bienvenida personalizado al primer uso** ✅
+  Al recibir `/start`, si el usuario nunca ha interactuado, muestra además una pequeña guía de primeros pasos y confirma si tiene acceso (cuando `ALLOWED_GROUP_ID` está activo). `_is_first_use(user_id)` / `_mark_first_use(user_id)` persisten en `data/first_use.json`.
 
-- [ ] **15. Aliases adicionales en español natural**
-  Añadir `/clasificacion` como alias de `/tabla`, `/partido` para consultar un partido por ID, y `/goleadores` para el top de goleadores de una liga rápidamente.
+- [x] **15. Aliases adicionales en español natural** ✅
+  `/clasificacion` → alias de `/tabla`. `/goleadores <comp> <temp> [N]` → top goleadores desde `player_loader`. `/partido <comp> <temp> <id>` → detalle de partido por ID de match.
 
-- [ ] **16. Logging de uso por comando**
-  Registrar en un fichero CSV/JSON qué comandos se usan más, por qué usuarios y con qué competiciones.
-  Sin datos personales (solo user_id hasheado). Permite tomar decisiones de producto basadas en uso real.
+- [x] **16. Logging de uso por comando** ✅
+  `_log_usage(user_id, command, **kwargs)` escribe entradas JSONL en `data/usage_log.jsonl` con timestamp UTC, comando, `user_id` hasheado (SHA-256 12 chars) y parámetros de competición. Añadido a todos los handlers pesados.
 
-- [ ] **17. Mensaje de mantenimiento configurable**
-  Variable de entorno `BOT_MAINTENANCE_MSG`: si está definida, todos los handlers (excepto `/start`) responden con ese mensaje.
-  Permite anunciar cierres planificados sin apagar el bot.
+- [x] **17. Mensaje de mantenimiento configurable** ✅
+  Decorador `@_require_not_maintenance` aplicado a todos los handlers excepto `/start`. Si `BOT_MAINTENANCE_MSG` (variable de entorno) está definida, el handler responde con ese mensaje y no ejecuta la lógica.

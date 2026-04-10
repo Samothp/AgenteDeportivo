@@ -97,6 +97,11 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 # 10.2 — Archivos de persistencia de suscripciones y estado de alertas
 SUBSCRIPTIONS_FILE = Path("data/subscriptions.json")
 ALERT_STATE_FILE = Path("data/alert_state.json")
+FIRST_USE_FILE = Path("data/first_use.json")  # RoadmapBotTelegram #14
+USAGE_LOG_FILE = Path("data/usage_log.jsonl")  # RoadmapBotTelegram #16
+
+# Punto 17 — Si está definida, todos los handlers (excepto /start) responden con este mensaje
+BOT_MAINTENANCE_MSG: str = os.getenv("BOT_MAINTENANCE_MSG", "").strip()
 
 # Temporada actual calculada una sola vez al arrancar el bot.
 # Julio–diciembre → año actual; enero–junio → año anterior.
@@ -190,8 +195,78 @@ def _cooldown(seconds: int):
 
 
 # ---------------------------------------------------------------------------
+# RoadmapBotTelegram #17 — Modo mantenimiento
+# ---------------------------------------------------------------------------
+
+def _require_not_maintenance(handler):
+    """Decorador que bloquea el handler si BOT_MAINTENANCE_MSG está definido."""
+    import functools
+
+    @functools.wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if BOT_MAINTENANCE_MSG:
+            await update.message.reply_text(f"🔧 {BOT_MAINTENANCE_MSG}")
+            return
+        return await handler(update, context)
+
+    return wrapper
+
+
+# ---------------------------------------------------------------------------
+# RoadmapBotTelegram #16 — Logging de uso
+# ---------------------------------------------------------------------------
+
+def _log_usage(user_id: int | None, command: str, **kwargs) -> None:
+    """Registra el uso de un comando en JSONL (user_id hasheado, sin PII)."""
+    import datetime
+
+    uid_hash = (
+        hashlib.sha256(str(user_id).encode()).hexdigest()[:12]
+        if user_id is not None
+        else "anon"
+    )
+    entry = {
+        "ts": datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "cmd": command,
+        "uid": uid_hash,
+    }
+    entry.update({k: v for k, v in kwargs.items() if v is not None})
+    try:
+        USAGE_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with USAGE_LOG_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        logger.debug("_log_usage error: %s", exc)
+
+
+# ---------------------------------------------------------------------------
 # Helpers del agente
 # ---------------------------------------------------------------------------
+
+
+def _is_first_use(user_id: int) -> bool:
+    """Devuelve True si el usuario nunca ha ejecutado /start antes."""
+    try:
+        if not FIRST_USE_FILE.exists():
+            return True
+        seen: list = json.loads(FIRST_USE_FILE.read_text(encoding="utf-8"))
+        return user_id not in seen
+    except Exception:
+        return True
+
+
+def _mark_first_use(user_id: int) -> None:
+    """Registra que el usuario ya ha visto la bienvenida."""
+    try:
+        seen: list = []
+        if FIRST_USE_FILE.exists():
+            seen = json.loads(FIRST_USE_FILE.read_text(encoding="utf-8"))
+        if user_id not in seen:
+            seen.append(user_id)
+            FIRST_USE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            FIRST_USE_FILE.write_text(json.dumps(seen), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _load_subscriptions() -> dict:
@@ -495,9 +570,13 @@ def _parse_base(args: tuple[str, ...]) -> tuple[int, str] | str:
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Bienvenida e instrucciones."""
+    """Bienvenida e instrucciones. Primer uso muestra guía extendida."""
     user = update.effective_user
     name = user.first_name if user else "usuario"
+    first = _is_first_use(user.id) if user else False
+    if user:
+        _mark_first_use(user.id)
+
     text = (
         f"⚽ ¡Hola, {name}\\! Bienvenido a *Agente Deportivo*\n"
         "Bot de análisis avanzado de fútbol\\.\n\n"
@@ -528,7 +607,32 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
     await update.message.reply_text(text, parse_mode="MarkdownV2")
 
+    if first:
+        # Guía de primeros pasos solo en el primer /start
+        guia = (
+            "🚀 *Primeros pasos*\n\n"
+            "1️⃣ Consulta las competiciones disponibles:\n"
+            "   `/competiciones`\n\n"
+            "2️⃣ Mira qué temporadas tienes descargadas:\n"
+            f"   `/temporadas 2014`\n\n"
+            "3️⃣ Obtén la clasificación rápida:\n"
+            f"   `/tabla 2014 {_SEASON_EXAMPLE}`\n\n"
+            "4️⃣ Genera un informe completo de equipo:\n"
+            f"   `/equipo 2014 {_SEASON_EXAMPLE} Mallorca`\n\n"
+            "5️⃣ Activa alertas de racha negativa:\n"
+            f"   `/suscribir 2014 {_SEASON_EXAMPLE} Mallorca`\n\n"
+            "Usa `/ayuda <comando>` para ver la sintaxis completa de cualquier comando\\."
+        )
+        access_note = ""
+        if ALLOWED_GROUP_ID:
+            access_note = (
+                f"\n\n🔒 *Control de acceso activo*\n"
+                f"Solo miembros del grupo autorizado pueden usar este bot\\."
+            )
+        await update.message.reply_text(guia + access_note, parse_mode="MarkdownV2")
 
+
+@_require_not_maintenance
 @_require_group_member
 async def cmd_competiciones(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Lista las competiciones disponibles."""
@@ -538,6 +642,7 @@ async def cmd_competiciones(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@_require_not_maintenance
 @_require_group_member
 async def cmd_equipos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/equipos <competition> <season>"""
@@ -562,6 +667,7 @@ async def cmd_equipos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@_require_not_maintenance
 @_require_group_member
 @_cooldown(30)
 async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -572,6 +678,7 @@ async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     competition, season = result
 
+    _log_usage(update.effective_user.id if update.effective_user else None, "liga", comp=competition, season=season)
     await update.message.reply_text("⏳ Generando informe de liga...")
     solo_texto = "--texto" in (context.args or [])
     _ck = _report_cache_key(competition, season)
@@ -592,6 +699,7 @@ async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _send_report_with_charts(update, text, images)
 
 
+@_require_not_maintenance
 @_require_group_member
 @_cooldown(30)
 async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -612,6 +720,7 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     team = " ".join(team_args)
 
     await update.message.reply_text(f"⏳ Generando informe de {team}...")
+    _log_usage(update.effective_user.id if update.effective_user else None, "equipo", comp=competition, season=season, team=team)
     solo_texto = "--texto" in (context.args or [])
     _ck = _report_cache_key(competition, season, team=team)
     cached = _report_cache_get(_ck)
@@ -631,6 +740,7 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await _send_report_with_charts(update, text, images)
 
 
+@_require_not_maintenance
 @_require_group_member
 @_cooldown(30)
 async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -654,11 +764,13 @@ async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     await update.message.reply_text(f"⏳ Generando informe de la jornada {jornada}...")
+    _log_usage(update.effective_user.id if update.effective_user else None, "jornada", comp=competition, season=season, matchday=jornada)
     async with _TypingAction(update, context):
         text = await asyncio.to_thread(_run_agent_text, competition, season, matchday=jornada)
     await _send_paged(update, text)
 
 
+@_require_not_maintenance
 @_require_group_member
 @_cooldown(30)
 async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -686,6 +798,7 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     await update.message.reply_text(f"⏳ Comparando {team1} vs {team2}...")
+    _log_usage(update.effective_user.id if update.effective_user else None, "compare", comp=competition, season=season)
     solo_texto = "--texto" in (context.args or [])
     _ck = _report_cache_key(competition, season, compare=f"{team1}|{team2}")
     cached = _report_cache_get(_ck)
@@ -709,6 +822,7 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # RoadmapBotTelegram #7 — /jugador
 # ---------------------------------------------------------------------------
 
+@_require_not_maintenance
 @_require_group_member
 @_cooldown(30)
 async def cmd_jugador(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -732,6 +846,7 @@ async def cmd_jugador(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     team = context.args[2]
     player = " ".join(context.args[3:])
 
+    _log_usage(update.effective_user.id if update.effective_user else None, "jugador", comp=competition, season=season, team=team)
     await update.message.reply_text(f"⏳ Buscando informe de {player} ({team})...")
     async with _TypingAction(update, context):
         text = await asyncio.to_thread(_run_agent_text, competition, season, team=team, player=player)
@@ -742,6 +857,7 @@ async def cmd_jugador(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # RoadmapBotTelegram #8 — /tabla
 # ---------------------------------------------------------------------------
 
+@_require_not_maintenance
 @_require_group_member
 @_cooldown(15)
 async def cmd_tabla(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -751,6 +867,8 @@ async def cmd_tabla(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(result, parse_mode="Markdown")
         return
     competition, season = result
+
+    _log_usage(update.effective_user.id if update.effective_user else None, "tabla", comp=competition, season=season)
 
     from src.data_loader import get_db_path, load_match_data
     from src.analysis import compute_liga_summary
@@ -791,6 +909,7 @@ async def cmd_tabla(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # RoadmapBotTelegram #9 — /ultima
 # ---------------------------------------------------------------------------
 
+@_require_not_maintenance
 @_require_group_member
 async def cmd_ultima(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/ultima <comp> <temp> <equipo> — Últimos 5 resultados del equipo."""
@@ -842,6 +961,7 @@ async def cmd_ultima(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # RoadmapBotTelegram #10 — /temporadas
 # ---------------------------------------------------------------------------
 
+@_require_not_maintenance
 @_require_group_member
 async def cmd_temporadas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/temporadas <comp> — Lista las temporadas disponibles localmente."""
@@ -879,6 +999,157 @@ async def cmd_temporadas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         nxt = str(int(s) + 1)
         lines.append(f"  `{s}` ({s[2:]}/{nxt[2:]})")
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+# ---------------------------------------------------------------------------
+# RoadmapBotTelegram #15 — /goleadores y /partido
+# ---------------------------------------------------------------------------
+
+@_require_not_maintenance
+@_require_group_member
+@_cooldown(15)
+async def cmd_goleadores(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/goleadores <comp> <temp> [N] — Top goleadores de la temporada."""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    top_n = 10
+    if len(context.args) >= 3:
+        try:
+            top_n = max(1, min(int(context.args[2]), 25))
+        except ValueError:
+            pass
+
+    _log_usage(
+        update.effective_user.id if update.effective_user else None,
+        "goleadores",
+        comp=competition,
+        season=season,
+    )
+
+    from src.player_loader import load_players
+
+    try:
+        df = load_players(competition_id=competition, season=season)
+        if df is None or df.empty:
+            await update.message.reply_text(
+                f"⚠️ No hay datos de jugadores para competition={competition} season={season}."
+            )
+            return
+
+        if "goals" not in df.columns:
+            await update.message.reply_text("⚠️ Los datos de jugadores no contienen información de goles.")
+            return
+
+        top = (
+            df[df["goals"] > 0]
+            .sort_values("goals", ascending=False)
+            .head(top_n)
+            .reset_index(drop=True)
+        )
+
+        if top.empty:
+            await update.message.reply_text("⚠️ No se encontraron goleadores en esta temporada.")
+            return
+
+        comp_name = COMPETITION_NAMES.get(competition, str(competition))
+        lines = [f"⚽ *{comp_name} {season}* — Top {len(top)} Goleadores\n"]
+
+        medals = ["🥇", "🥈", "🥉"]
+        for i, row in top.iterrows():
+            prefix = medals[i] if i < 3 else f"`{i + 1:>2}.`"
+            name = row.get("player_name", row.get("name", "?"))
+            team = row.get("team", row.get("squad", ""))
+            team_str = f" *{team}*" if team else ""
+            goals = int(row["goals"])
+            assists = int(row.get("assists", 0))
+            goals_str = f"{goals} ⚽"
+            if assists:
+                goals_str += f"  {assists} 🎯"
+            lines.append(f"{prefix} {name}{team_str} — {goals_str}")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        logger.error("Error en /goleadores: %s", exc, exc_info=True)
+        await update.message.reply_text("❌ Error al obtener los goleadores.")
+
+
+@_require_not_maintenance
+@_require_group_member
+async def cmd_partido(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/partido <comp> <temp> <match_id> — Detalle de un partido por su ID."""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "❌ Indica el ID del partido. Ejemplo:\n"
+            f"`/partido 2014 {_SEASON_EXAMPLE} 1234`",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        match_id = int(context.args[2])
+    except ValueError:
+        await update.message.reply_text("❌ El ID de partido debe ser un número entero.")
+        return
+
+    _log_usage(
+        update.effective_user.id if update.effective_user else None,
+        "partido",
+        comp=competition,
+        season=season,
+        match_id=match_id,
+    )
+
+    from src.data_loader import get_db_path, load_match_data
+
+    db_path = get_db_path(competition, season)
+    if not db_path.exists():
+        await update.message.reply_text(
+            f"⚠️ No hay DB local para competition={competition} season={season}."
+        )
+        return
+
+    try:
+        df = load_match_data(str(db_path), fetch_real=False, competition_id=competition, season=season)
+        id_col = "match_id" if "match_id" in df.columns else ("id" if "id" in df.columns else None)
+        if id_col is None:
+            await update.message.reply_text("⚠️ Los datos no contienen columna de ID de partido.")
+            return
+
+        row_df = df[df[id_col] == match_id]
+        if row_df.empty:
+            await update.message.reply_text(f"⚠️ No se encontró el partido con ID `{match_id}`.", parse_mode="Markdown")
+            return
+
+        row = row_df.iloc[0]
+        home = row.get("equipo_local", row.get("home_team", "Local"))
+        away = row.get("equipo_visitante", row.get("away_team", "Visitante"))
+        gh = row.get("goles_local", row.get("home_goals", "?"))
+        ga = row.get("goles_visitante", row.get("away_goals", "?"))
+        date = row.get("fecha", row.get("date", ""))
+        jornada = row.get("jornada", row.get("matchday", ""))
+        date_str = f"📅 {date}" if date else ""
+        jornada_str = f"  · Jornada {jornada}" if jornada else ""
+
+        comp_name = COMPETITION_NAMES.get(competition, str(competition))
+        text = (
+            f"⚽ *{home}* {gh} – {ga} *{away}*\n"
+            f"{comp_name} {season}{jornada_str}\n"
+            f"{date_str}"
+        )
+        await update.message.reply_text(text.strip(), parse_mode="Markdown")
+    except Exception as exc:
+        logger.error("Error en /partido: %s", exc, exc_info=True)
+        await update.message.reply_text("❌ Error al consultar el partido.")
 
 
 # 9.3 — /ayuda contextual
@@ -1010,6 +1281,7 @@ _AYUDA_CMDS: dict[str, str] = {
 }
 
 
+@_require_not_maintenance
 @_require_group_member
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/ayuda [comando] — Ayuda general o específica de un comando."""
@@ -1035,6 +1307,7 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ---------------------------------------------------------------------------
 
 
+@_require_not_maintenance
 @_require_group_member
 @_cooldown(30)
 async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1097,6 +1370,7 @@ async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ---------------------------------------------------------------------------
 
 
+@_require_not_maintenance
 @_require_group_member
 async def cmd_suscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/suscribir <competition> <season> <equipo> — Suscríbete a alertas de un equipo."""
@@ -1132,6 +1406,7 @@ async def cmd_suscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+@_require_not_maintenance
 @_require_group_member
 async def cmd_suscripciones(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/suscripciones — Lista tus suscripciones de alertas activas."""
@@ -1149,6 +1424,7 @@ async def cmd_suscripciones(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@_require_not_maintenance
 @_require_group_member
 async def cmd_desuscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/desuscribir <competition> <season> <equipo> — Cancela una suscripción de alertas."""
@@ -1330,6 +1606,11 @@ def main() -> None:
     application.add_handler(CommandHandler("tabla", cmd_tabla))
     application.add_handler(CommandHandler("ultima", cmd_ultima))
     application.add_handler(CommandHandler("temporadas", cmd_temporadas))
+
+    # RoadmapBotTelegram #15 — Aliases adicionales + /goleadores + /partido
+    application.add_handler(CommandHandler("clasificacion", cmd_tabla))
+    application.add_handler(CommandHandler("goleadores", cmd_goleadores))
+    application.add_handler(CommandHandler("partido", cmd_partido))
 
     # 12.2 — Paginación inline
     application.add_handler(CallbackQueryHandler(callback_page, pattern=r"^(page:|noop)"))
