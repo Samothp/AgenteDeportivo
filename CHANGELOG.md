@@ -6,6 +6,10 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
 
 ## [Unreleased]
 
+### Añadido
+
+- **Restricción de acceso al bot por membresía a grupo de Telegram**: nuevo mecanismo de control de acceso opcional. Si se define la variable de entorno `ALLOWED_GROUP_ID`, todos los comandos del bot (excepto `/start`) verifican que el usuario es miembro activo del grupo indicado usando `get_chat_member`. Los usuarios no autorizados reciben un mensaje `⛔ No tienes acceso…` y el intento queda registrado en el log. Cuando `ALLOWED_GROUP_ID` está vacío, el bot funciona sin restricciones como antes. Se añade `ALLOWED_GROUP_ID` al fichero `.env.example`.
+
 ### Cambiado
 
 - **`_display_metrics` adaptada al modo activo (RoadmapDashboard #3)**: la función ya no muestra siempre las mismas 8 métricas. Ahora despacha un conjunto diferente según `payload["modo"]`:

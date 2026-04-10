@@ -4,8 +4,13 @@ Requisitos:
 1. Crea un bot con @BotFather en Telegram y obtén el token.
 2. Añade el token al archivo .env:
        TELEGRAM_BOT_TOKEN=tu_token_aqui
-3. Asegúrate de tener la DB local descargada para las competiciones que quieras usar.
-4. Arranca el bot con:
+3. (Opcional) Restringe el acceso a miembros de un grupo específico:
+       ALLOWED_GROUP_ID=-1001234567890
+   El bot debe ser miembro (o admin) de ese grupo para verificar la membresía.
+   Obtén el ID reenviando un mensaje al bot @userinfobot o enviando /getid.
+   Si ALLOWED_GROUP_ID no está definido, el bot es público.
+4. Asegúrate de tener la DB local descargada para las competiciones que quieras usar.
+5. Arranca el bot con:
        python bot.py
 
 Comandos disponibles en el chat:
@@ -86,6 +91,106 @@ MAX_MSG_LENGTH = 4000  # Telegram permite hasta 4096 caracteres por mensaje
 # 10.2 — Archivos de persistencia de suscripciones y estado de alertas
 SUBSCRIPTIONS_FILE = Path("data/subscriptions.json")
 ALERT_STATE_FILE = Path("data/alert_state.json")
+
+# ---------------------------------------------------------------------------
+# Control de acceso por membresía a grupo
+# ---------------------------------------------------------------------------
+
+# ID numérico del grupo (negativo, ej. -1001234567890). None → bot público.
+_RAW_GROUP_ID = os.getenv("ALLOWED_GROUP_ID", "").strip()
+ALLOWED_GROUP_ID: int | None = int(_RAW_GROUP_ID) if _RAW_GROUP_ID else None
+
+# Estados de Telegram que se consideran "miembro activo"
+_MEMBER_STATUSES = {"creator", "administrator", "member", "restricted"}
+
+
+async def _is_group_member(user_id: int, bot) -> bool:
+    """Devuelve True si el usuario pertenece al grupo ALLOWED_GROUP_ID."""
+    if ALLOWED_GROUP_ID is None:
+        return True  # Sin restricción configurada → acceso abierto
+    try:
+        member = await bot.get_chat_member(chat_id=ALLOWED_GROUP_ID, user_id=user_id)
+        return member.status in _MEMBER_STATUSES
+    except Exception:
+        # Si el bot no está en el grupo o la API falla, denegamos por seguridad
+        return False
+
+
+def _require_group_member(handler):
+    """Decorador: deniega el handler si el usuario no es miembro del grupo."""
+    import functools
+
+    @functools.wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if ALLOWED_GROUP_ID is None:
+            return await handler(update, context)
+        user = update.effective_user
+        if user is None:
+            return
+        allowed = await _is_group_member(user.id, context.bot)
+        if not allowed:
+            await update.message.reply_text(
+                "⛔ No tienes acceso a este bot.\n"
+                "Debes ser miembro del grupo autorizado para usarlo."
+            )
+            logger.warning(
+                "Acceso denegado a user_id=%s username=%s",
+                user.id, user.username,
+            )
+            return
+        return await handler(update, context)
+
+    return wrapper
+
+# ---------------------------------------------------------------------------
+# Control de acceso por membresía a grupo
+# ---------------------------------------------------------------------------
+
+# ID numérico del grupo (negativo: ej. -1001234567890). None = bot público.
+_RAW_GROUP_ID = os.getenv("ALLOWED_GROUP_ID", "").strip()
+ALLOWED_GROUP_ID: int | None = int(_RAW_GROUP_ID) if _RAW_GROUP_ID else None
+
+# Estados de Telegram que se consideran "miembro activo"
+_MEMBER_STATUSES = {"creator", "administrator", "member", "restricted"}
+
+
+async def _is_group_member(user_id: int, bot) -> bool:
+    """Devuelve True si el usuario pertenece al grupo ALLOWED_GROUP_ID."""
+    if ALLOWED_GROUP_ID is None:
+        return True  # Sin restricción configurada
+    try:
+        member = await bot.get_chat_member(chat_id=ALLOWED_GROUP_ID, user_id=user_id)
+        return member.status in _MEMBER_STATUSES
+    except Exception:
+        # Si el bot no está en el grupo o la API falla, denegamos por seguridad
+        return False
+
+
+def _require_group_member(handler):
+    """Decorador que deniega el handler si el usuario no es miembro del grupo."""
+    import functools
+
+    @functools.wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if ALLOWED_GROUP_ID is None:
+            return await handler(update, context)
+        user = update.effective_user
+        if user is None:
+            return
+        allowed = await _is_group_member(user.id, context.bot)
+        if not allowed:
+            await update.message.reply_text(
+                "⛔ No tienes acceso a este bot.\n"
+                "Debes ser miembro del grupo autorizado para usarlo."
+            )
+            logger.warning(
+                "Acceso denegado a user_id=%s username=%s",
+                user.id, user.username
+            )
+            return
+        return await handler(update, context)
+
+    return wrapper
 
 # ---------------------------------------------------------------------------
 # Helpers del agente
@@ -201,6 +306,7 @@ async def _send_paged(update: Update, text: str) -> None:
     )
 
 
+@_require_group_member
 async def callback_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler del callback de botones de paginación."""
     query = update.callback_query
@@ -263,6 +369,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
+@_require_group_member
 async def cmd_competiciones(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Lista las competiciones disponibles."""
     lines = ["📋 *Competiciones disponibles:*\n"]
@@ -271,6 +378,7 @@ async def cmd_competiciones(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@_require_group_member
 async def cmd_equipos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/equipos <competition> <season>"""
     result = _parse_base(context.args)
@@ -294,6 +402,7 @@ async def cmd_equipos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@_require_group_member
 async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/liga <competition> <season>"""
     result = _parse_base(context.args)
@@ -307,6 +416,7 @@ async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _send_paged(update, text)
 
 
+@_require_group_member
 async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/equipo <competition> <season> <nombre_equipo>"""
     result = _parse_base(context.args)
@@ -328,6 +438,7 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _send_paged(update, text)
 
 
+@_require_group_member
 async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/jornada <competition> <season> <N>"""
     result = _parse_base(context.args)
@@ -353,6 +464,7 @@ async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await _send_paged(update, text)
 
 
+@_require_group_member
 async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/compare <competition> <season> <equipo1> | <equipo2>"""
     result = _parse_base(context.args)
@@ -467,6 +579,7 @@ _AYUDA_CMDS: dict[str, str] = {
 }
 
 
+@_require_group_member
 async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/ayuda [comando] — Ayuda general o específica de un comando."""
     if not context.args:
@@ -491,6 +604,7 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ---------------------------------------------------------------------------
 
 
+@_require_group_member
 async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/pdf <competition> <season> — Genera y envía un PDF del informe de liga."""
     result = _parse_base(context.args)
@@ -551,6 +665,7 @@ async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ---------------------------------------------------------------------------
 
 
+@_require_group_member
 async def cmd_suscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/suscribir <competition> <season> <equipo> — Suscríbete a alertas de un equipo."""
     result = _parse_base(context.args)
@@ -585,6 +700,7 @@ async def cmd_suscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+@_require_group_member
 async def cmd_suscripciones(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/suscripciones — Lista tus suscripciones de alertas activas."""
     chat_id = str(update.effective_chat.id)
@@ -601,6 +717,7 @@ async def cmd_suscripciones(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+@_require_group_member
 async def cmd_desuscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/desuscribir <competition> <season> <equipo> — Cancela una suscripción de alertas."""
     result = _parse_base(context.args)
