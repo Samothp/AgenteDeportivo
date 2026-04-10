@@ -13,6 +13,10 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
   - **equipo**: victorias/empates/derrotas, puntos, goles a favor y encajados por partido, xG, posesión y overperformance.
   - **jugador**: partidos jugados, minutos, goles, asistencias, goles/90 y asistencias/90 (calculados si hay minutos disponibles).
   - **jornada / partido / compare**: métricas genéricas del equipo de contexto (goles, xG, posesión, overperformance).
+- **Tablas con `column_config` y barras de progreso (RoadmapDashboard #4)**: `_show_table()` ahora aplica `st.column_config` automáticamente sobre tablas de listas de diccionarios.
+  - Barras de progreso para columnas de puntos, goles y posesión (detección por nombre de columna).
+  - Formato de porcentajes consistente (`%.1f%%`) y normalización automática cuando los datos vienen en escala 0–1.
+  - Unificación de renderizado en percentiles de liga usando `_show_table()` para mantener formato y UX homogénea.
 
 ---
 

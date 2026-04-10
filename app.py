@@ -208,7 +208,44 @@ def _show_table(data: list, title: str = ""):
     if title:
         st.subheader(title)
     import pandas as pd
-    st.dataframe(pd.DataFrame(data), use_container_width=True)
+    df = pd.DataFrame(data)
+    display_df = df.copy()
+
+    # Normaliza porcentajes (0-1 -> 0-100) y aplica formatos/barra según columnas.
+    for col in display_df.columns:
+        col_norm = str(col).strip().lower()
+        if any(tok in col_norm for tok in ("posesion", "posesión", "%", "porcentaje", "pct")):
+            num = pd.to_numeric(display_df[col], errors="coerce")
+            if num.notna().any() and float(num.max()) <= 1.0:
+                display_df[col] = num * 100
+
+    column_cfg = {}
+    for col in display_df.columns:
+        col_norm = str(col).strip().lower()
+        num = pd.to_numeric(display_df[col], errors="coerce")
+        if not num.notna().any():
+            continue
+
+        is_percentage = any(tok in col_norm for tok in ("posesion", "posesión", "%", "porcentaje", "pct"))
+        use_progress = any(tok in col_norm for tok in ("puntos", "pts", "goles", "gol", "posesion", "posesión"))
+
+        if use_progress:
+            min_v = float(num.min())
+            max_v = float(num.max())
+            if max_v > min_v:
+                fmt = "%.1f%%" if is_percentage else "%.1f"
+                column_cfg[col] = st.column_config.ProgressColumn(
+                    label=str(col),
+                    min_value=min(0.0, min_v),
+                    max_value=max_v,
+                    format=fmt,
+                )
+                continue
+
+        if is_percentage:
+            column_cfg[col] = st.column_config.NumberColumn(label=str(col), format="%.1f%%")
+
+    st.dataframe(display_df, use_container_width=True, column_config=column_cfg)
 
 
 st.sidebar.title("⚽ Agente Deportivo")
@@ -539,8 +576,7 @@ def _display_mode_results(payload: dict) -> None:
         pct = payload.get("league_percentiles", [])
         if pct:
             st.subheader("📊 Percentiles de liga")
-            import pandas as pd
-            st.dataframe(pd.DataFrame(pct), use_container_width=True)
+            _show_table(pct)
         _show_table(payload.get("top_scorers", []), "⚽ Top goleadores")
         _show_table(payload.get("highlights", []), "🔥 Partidos destacados")
     elif modo == "jornada":

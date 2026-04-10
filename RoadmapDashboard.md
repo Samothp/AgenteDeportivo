@@ -21,13 +21,14 @@
   - **Liga**: goles totales, goles/jornada, equipos más goleadores, promedio de tarjetas.  
   - **Equipo**: victorias/empates/derrotas, puntos, xG propio vs rival, overperformance.  
   - **Jugador**: G+A, minutos jugados, goles/90, asistencias/90.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `9a1f146`_
 
-- [ ] **4. Tablas con `column_config` y barras de progreso**  
+- [x] **4. Tablas con `column_config` y barras de progreso**  
   Sustituir los `st.dataframe` genéricos por versiones con `column_config` de Streamlit:  
   - Barras de progreso en columnas de puntos, goles y posesión.  
   - Porcentajes formateados (p. ej. posesión: `52.3%`).  
-  - Búsqueda y filtrado nativos habilitados en tablas largas.
+  - Búsqueda y filtrado nativos habilitados en tablas largas.  
+  ✅ _Completado — commit pendiente_
 
 ---
 
