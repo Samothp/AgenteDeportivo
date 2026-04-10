@@ -7,3 +7,11 @@ data/*.csv
 data/images/players/
 reports/
 .ipynb_checkpoints/
+
+# Ficheros de runtime generados por el bot (datos volátiles/personales)
+data/first_use.json
+data/page_cache.json
+data/subscriptions.json
+data/alert_state.json
+data/usage_log.jsonl
+data/teams_meta.json
