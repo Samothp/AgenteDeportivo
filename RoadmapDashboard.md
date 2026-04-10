@@ -60,9 +60,10 @@
   Mostrar el radar al inicio de la vista para dar lectura inmediata de fortalezas y debilidades relativas.  
   ✅ _Completado — commit `2076792`_
 
-- [ ] **10. Prefetch de escudos al seleccionar equipo**  
+- [x] **10. Prefetch de escudos al seleccionar equipo**  
   Llamar a `get_team_assets()` en segundo plano en cuanto el usuario cambia el selector de equipo, en lugar de esperar a que se genere el informe.  
-  Mejora la percepción de velocidad y evita que el sidebar aparezca sin escudo la primera vez.
+  Mejora la percepción de velocidad y evita que el sidebar aparezca sin escudo la primera vez.  
+  ✅ _Completado — commit pendiente_
 
 ---
 

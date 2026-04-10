@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from datetime import date
 from pathlib import Path
 
@@ -135,6 +136,31 @@ def _get_db_path(competition: int, season: str) -> Path:
 def _list_teams(competition: int, season: str) -> list[str]:
     from src.data_loader import list_available_teams
     return list_available_teams(competition, season)
+
+
+def _prefetch_team_assets(team_name: str, competition_id: int) -> None:
+    """Lanza en segundo plano la descarga del escudo y metadata del equipo.
+
+    Se ejecuta en un hilo daemon para no bloquear el render del dashboard.
+    Si el escudo ya está en caché local, no hace ninguna llamada a la API.
+    La clave de sesión evita lanzar múltiples hilos para el mismo equipo.
+    """
+    if not team_name:
+        return
+    state_key = f"_prefetch_done_{competition_id}_{team_name}"
+    if st.session_state.get(state_key):
+        return
+    st.session_state[state_key] = True
+
+    def _worker():
+        try:
+            from src.image_fetcher import get_team_assets
+            get_team_assets(team_name, competition_id)
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
 
 
 def _run_agent(competition: int, season: str, mode: str, **kwargs) -> tuple[dict, list[str]]:
@@ -859,6 +885,7 @@ with tab_equipo:
         _eq_team = st.selectbox("Equipo", _teams, key="equipo_team")
     else:
         _eq_team = st.text_input("Equipo (nombre parcial)", key="equipo_team_text")
+    _prefetch_team_assets(_eq_team, competition)
     try:
         from src.image_fetcher import get_cached_team_meta as _get_meta
         _tm = _get_meta(_eq_team, competition)
@@ -882,6 +909,7 @@ with tab_jugador:
         _jug_team = st.selectbox("Equipo", _teams, key="jugador_team")
     else:
         _jug_team = st.text_input("Equipo (nombre parcial)", key="jugador_team_text")
+    _prefetch_team_assets(_jug_team, competition)
     _jug_player = st.text_input("Jugador (nombre parcial)", key="jugador_nombre")
     try:
         from src.image_fetcher import get_cached_team_meta as _get_meta2
@@ -900,6 +928,8 @@ with tab_compare:
     else:
         _cmp_t1 = st.text_input("Equipo 1", key="compare_t1_text")
         _cmp_t2 = st.text_input("Equipo 2", key="compare_t2_text")
+    _prefetch_team_assets(_cmp_t1, competition)
+    _prefetch_team_assets(_cmp_t2, competition)
     try:
         from src.image_fetcher import get_cached_team_meta as _get_meta3
         _bcol1, _bcol2 = st.columns(2)

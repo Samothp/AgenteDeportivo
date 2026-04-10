@@ -9,6 +9,7 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
 ### Añadido
 
 - **Restricción de acceso al bot por membresía a grupo de Telegram**: nuevo mecanismo de control de acceso opcional. Si se define la variable de entorno `ALLOWED_GROUP_ID`, todos los comandos del bot (excepto `/start`) verifican que el usuario es miembro activo del grupo indicado usando `get_chat_member`. Los usuarios no autorizados reciben un mensaje `⛔ No tienes acceso…` y el intento queda registrado en el log. Cuando `ALLOWED_GROUP_ID` está vacío, el bot funciona sin restricciones como antes. Se añade `ALLOWED_GROUP_ID` al fichero `.env.example`.
+- **Prefetch de escudos al seleccionar equipo (RoadmapDashboard #10)**: nueva función `_prefetch_team_assets(team_name, competition_id)` en `app.py`. Cuando el usuario cambia el selector de equipo en los tabs Equipo, Jugador y Compare, se lanza un hilo daemon que llama a `get_team_assets()` en segundo plano. El escudo queda en caché local antes de que el usuario pulse el botón de generar informe. Se evitan hilos duplicados con una clave en `st.session_state`.
 
 ### Cambiado
 
