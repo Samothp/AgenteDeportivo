@@ -53,7 +53,7 @@
   Campo de valor de mercado (Transfermarkt / FIFAIndex) integrado en el perfil del jugador.  
   Opciones: scraping ligero bajo demanda, input manual por el operador, o caché propia con actualización periódica.  
   Dato de altísimo valor para el uso de scouting del producto.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `80c68cd`_
 
 - [ ] **9. Radar visual en modo Compare**  
   El visualizador ya genera el radar comparativo entre equipos. Actualmente el modo Compare solo muestra la tabla H2H.  
