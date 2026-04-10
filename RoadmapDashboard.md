@@ -11,15 +11,17 @@
   Libera espacio lateral, da contexto visual inmediato y elimina el scroll innecesario para llegar al botón de acción.  
   ✅ _Completado — commit `561b566`_
 
-- [ ] **2. Auto-invalidación del caché con badge "Informe desactualizado"**  
+- [x] **2. Auto-invalidación del caché con badge "Informe desactualizado"**  
   Cuando el usuario cambia cualquier parámetro sin pulsar el botón de generar, mostrar un aviso visual indicando que el informe visible puede no corresponderse con la selección actual.  
-  Implementación: comparar los parámetros actuales con los del último `_cache_key` activo en `st.session_state`.
+  Implementación: comparar los parámetros actuales con los del último `_cache_key` activo en `st.session_state`.  
+  ✅ _Completado — commit `8c5ccd6`_
 
-- [ ] **3. Métricas adaptadas al modo activo**  
+- [x] **3. Métricas adaptadas al modo activo**  
   Las 4 columnas superiores son siempre las mismas independientemente del modo seleccionado.  
   - **Liga**: goles totales, goles/jornada, equipos más goleadores, promedio de tarjetas.  
   - **Equipo**: victorias/empates/derrotas, puntos, xG propio vs rival, overperformance.  
-  - **Jugador**: G+A, minutos jugados, goles/90, asistencias/90.
+  - **Jugador**: G+A, minutos jugados, goles/90, asistencias/90.  
+  ✅ _Completado — commit pendiente_
 
 - [ ] **4. Tablas con `column_config` y barras de progreso**  
   Sustituir los `st.dataframe` genéricos por versiones con `column_config` de Streamlit:  

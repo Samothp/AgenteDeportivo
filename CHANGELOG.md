@@ -4,6 +4,18 @@ Todos los cambios importantes de este proyecto se documentarán en este archivo.
 
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Cambiado
+
+- **`_display_metrics` adaptada al modo activo (RoadmapDashboard #3)**: la función ya no muestra siempre las mismas 8 métricas. Ahora despacha un conjunto diferente según `payload["modo"]`:
+  - **liga**: goles/partido en liga, total goles, xG/tiros/posesión promedio y corners/partido.
+  - **equipo**: victorias/empates/derrotas, puntos, goles a favor y encajados por partido, xG, posesión y overperformance.
+  - **jugador**: partidos jugados, minutos, goles, asistencias, goles/90 y asistencias/90 (calculados si hay minutos disponibles).
+  - **jornada / partido / compare**: métricas genéricas del equipo de contexto (goles, xG, posesión, overperformance).
+
+---
+
 ## [5.0.0] — 2026-04-10
 
 ### Añadido

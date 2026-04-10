@@ -418,22 +418,100 @@ def _payload_to_excel(p: dict) -> bytes:
 
 def _display_metrics(payload: dict) -> None:
     metrics = payload.get("metrics", {})
+    modo = payload.get("modo", "")
     if not metrics:
         return
+
     st.subheader("📊 Métricas principales")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        _metric_row("Goles a favor / partido", metrics.get("goles_a_favor_promedio"))
-        _metric_row("Total goles a favor", metrics.get("total_goles_a_favor"))
-    with col2:
-        _metric_row("Goles encajados / partido", metrics.get("goles_concedidos_promedio"))
-        _metric_row("Total goles encajados", metrics.get("total_goles_concedidos"))
-    with col3:
-        _metric_row("xG propio / partido", metrics.get("xg_equipo_promedio"))
-        _metric_row("Tiros / partido", metrics.get("tiros_equipo_promedio"))
-    with col4:
-        _metric_row("Posesión % media", metrics.get("posesion_equipo_promedio"))
-        _metric_row("Overperformance xG", metrics.get("overperformance"))
+
+    if modo == "liga":
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _metric_row("Goles/partido (liga)", metrics.get("goles_promedio_por_partido"))
+            _metric_row("Total goles", metrics.get("goles_totales"))
+        with col2:
+            _metric_row("Partidos analizados", metrics.get("partidos_analizados"))
+            _metric_row("Tarjetas amarillas", metrics.get("total_tarjetas_amarillas"))
+        with col3:
+            _metric_row("xG promedio/partido", metrics.get("xg_equipo_promedio"))
+            _metric_row("Tiros promedio/partido", metrics.get("tiros_equipo_promedio"))
+        with col4:
+            _metric_row("Posesión % media", metrics.get("posesion_equipo_promedio"))
+            _metric_row("Corners promedio/partido", metrics.get("corners_equipo_promedio"))
+
+    elif modo == "equipo":
+        rec = payload.get("team_record", {})
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _metric_row("Victorias", rec.get("victorias"))
+            _metric_row("Empates", rec.get("empates"))
+            _metric_row("Derrotas", rec.get("derrotas"))
+        with col2:
+            _metric_row("Puntos", rec.get("puntos"))
+            _metric_row("Goles a favor / partido", metrics.get("goles_a_favor_promedio"))
+            _metric_row("Goles encajados / partido", metrics.get("goles_concedidos_promedio"))
+        with col3:
+            _metric_row("xG propio / partido", metrics.get("xg_equipo_promedio"))
+            _metric_row("Tiros / partido", metrics.get("tiros_equipo_promedio"))
+        with col4:
+            _metric_row("Posesión % media", metrics.get("posesion_equipo_promedio"))
+            _metric_row("Overperformance xG", metrics.get("overperformance"))
+
+    elif modo == "jugador":
+        pp = payload.get("player_profile", {})
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _metric_row("Partidos jugados", pp.get("pj"))
+            _metric_row("Minutos jugados", pp.get("minutos"))
+        with col2:
+            _metric_row("Goles", pp.get("goles"))
+            _metric_row("Asistencias", pp.get("asistencias"))
+        with col3:
+            # Calcular stats per-90 si hay minutos disponibles
+            _min = pp.get("minutos") or 0
+            if _min > 0:
+                _g90 = round((pp.get("goles") or 0) / _min * 90, 2)
+                _a90 = round((pp.get("asistencias") or 0) / _min * 90, 2)
+                _metric_row("Goles / 90 min", _g90)
+                _metric_row("Asistencias / 90 min", _a90)
+            else:
+                _metric_row("Goles", pp.get("goles"))
+                _metric_row("Asistencias", pp.get("asistencias"))
+        with col4:
+            _metric_row("Tiros / partido", metrics.get("tiros_equipo_promedio"))
+            _metric_row("xG equipo / partido", metrics.get("xg_equipo_promedio"))
+
+    elif modo in ("jornada", "partido", "compare"):
+        # Para estos modos mostramos métricas generales del contexto cargado
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _metric_row("Goles a favor / partido", metrics.get("goles_a_favor_promedio"))
+            _metric_row("Total goles a favor", metrics.get("total_goles_a_favor"))
+        with col2:
+            _metric_row("Goles encajados / partido", metrics.get("goles_concedidos_promedio"))
+            _metric_row("Total goles encajados", metrics.get("total_goles_concedidos"))
+        with col3:
+            _metric_row("xG propio / partido", metrics.get("xg_equipo_promedio"))
+            _metric_row("Tiros / partido", metrics.get("tiros_equipo_promedio"))
+        with col4:
+            _metric_row("Posesión % media", metrics.get("posesion_equipo_promedio"))
+            _metric_row("Overperformance xG", metrics.get("overperformance"))
+
+    else:
+        # Fallback genérico
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            _metric_row("Goles a favor / partido", metrics.get("goles_a_favor_promedio"))
+            _metric_row("Total goles a favor", metrics.get("total_goles_a_favor"))
+        with col2:
+            _metric_row("Goles encajados / partido", metrics.get("goles_concedidos_promedio"))
+            _metric_row("Total goles encajados", metrics.get("total_goles_concedidos"))
+        with col3:
+            _metric_row("xG propio / partido", metrics.get("xg_equipo_promedio"))
+            _metric_row("Tiros / partido", metrics.get("tiros_equipo_promedio"))
+        with col4:
+            _metric_row("Posesión % media", metrics.get("posesion_equipo_promedio"))
+            _metric_row("Overperformance xG", metrics.get("overperformance"))
 
 
 def _display_mode_results(payload: dict) -> None:
