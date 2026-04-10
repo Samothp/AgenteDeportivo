@@ -22,6 +22,9 @@ from src.constants import COMPETITION_NAMES
 
 load_dotenv()
 
+# Punto 13 — modo debug para usuarios técnicos
+_BETA_DEBUG: bool = os.getenv("BETA_DEBUG", "").strip().lower() in ("1", "true", "yes")
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -854,8 +857,9 @@ def _display_export(payload: dict, kw: dict, mode: str) -> None:
             )
         except Exception as _e:
             st.error(f"Error al generar el Excel: {_e}")
-    with st.expander("🗂️ Datos en bruto (JSON)"):
-        st.json(payload)
+    if _BETA_DEBUG:
+        with st.expander("🗂️ Datos en bruto (JSON)"):
+            st.json(payload)
 
 
 def _tab_run_and_display(mode: str, extra_kw: dict) -> None:

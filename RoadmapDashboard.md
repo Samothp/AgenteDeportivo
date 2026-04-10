@@ -79,9 +79,10 @@
   Coste mínimo, elimina la duda del usuario sobre la frescura del informe mostrado.  
   ✅ _Completado — commit `18a7cb1`_
 
-- [ ] **13. Ocultar JSON bruto para usuarios no técnicos**  
+- [x] **13. Ocultar JSON bruto para usuarios no técnicos**  
   El expander `🗂️ Datos en bruto (JSON)` es ruido para usuarios finales.  
-  Mostrarlo solo si `BETA_DEBUG=true` está definido en `.env`, o restringirlo a un rol admin futuro.
+  Mostrarlo solo si `BETA_DEBUG=true` está definido en `.env`, o restringirlo a un rol admin futuro.  
+  ✅ _Completado — commit pendiente_
 
 - [ ] **14. Compatibilidad mobile**  
   Añadir `use_container_width=True` a todas las imágenes y limitar el número de columnas a 2 en resoluciones pequeñas.  
