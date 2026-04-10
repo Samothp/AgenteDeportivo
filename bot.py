@@ -97,6 +97,17 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 SUBSCRIPTIONS_FILE = Path("data/subscriptions.json")
 ALERT_STATE_FILE = Path("data/alert_state.json")
 
+# Temporada actual calculada una sola vez al arrancar el bot.
+# Julio–diciembre → año actual; enero–junio → año anterior.
+def _current_season() -> str:
+    from datetime import date
+    today = date.today()
+    return str(today.year if today.month >= 7 else today.year - 1)
+
+_SEASON_EXAMPLE: str = _current_season()
+_SEASON_NEXT: str = str(int(_SEASON_EXAMPLE) + 1)
+_SEASON_LABEL: str = f"{_SEASON_EXAMPLE[-2:]}/{_SEASON_NEXT[-2:]}"  # ej. "24/25"
+
 # ---------------------------------------------------------------------------
 # Control de acceso por membresía a grupo
 # ---------------------------------------------------------------------------
@@ -352,7 +363,7 @@ async def callback_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 def _parse_base(args: tuple[str, ...]) -> tuple[int, str] | str:
     """Parsea competition y season de los argumentos del comando."""
     if len(args) < 2:
-        return "❌ Faltan parámetros. Ejemplo: `/liga 2014 2024`"
+        return f"\u274c Faltan parámetros. Ejemplo: `/liga 2014 {_SEASON_EXAMPLE}`"
     try:
         competition = int(args[0])
     except ValueError:
@@ -388,10 +399,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/ayuda — Ayuda general\n"
         "/ayuda `<comando>` — Sintaxis detallada \\(ej\\. `/ayuda liga`\\)\n\n"
         "💡 *Ejemplos rápidos*\n"
-        "`/liga 2014 2024`\n"
-        "`/equipo 2014 2024 Mallorca`\n"
-        "`/jornada 2014 2024 15`\n"
-        "`/compare 2014 2024 Real Madrid | Barcelona`"
+        f"`/liga 2014 {_SEASON_EXAMPLE}`\n"
+        f"`/equipo 2014 {_SEASON_EXAMPLE} Mallorca`\n"
+        f"`/jornada 2014 {_SEASON_EXAMPLE} 15`\n"
+        f"`/compare 2014 {_SEASON_EXAMPLE} Real Madrid | Barcelona`"
     )
     await update.message.reply_text(text, parse_mode="MarkdownV2")
 
@@ -456,7 +467,7 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     if len(context.args) < 3:
         await update.message.reply_text(
-            "❌ Falta el nombre del equipo. Ejemplo: `/equipo 2014 2024 Mallorca`",
+            f"\u274c Falta el nombre del equipo. Ejemplo: `/equipo 2014 {_SEASON_EXAMPLE} Mallorca`",
             parse_mode="Markdown",
         )
         return
@@ -479,7 +490,7 @@ async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if len(context.args) < 3:
         await update.message.reply_text(
-            "❌ Falta el número de jornada. Ejemplo: `/jornada 2014 2024 15`",
+            f"\u274c Falta el número de jornada. Ejemplo: `/jornada 2014 {_SEASON_EXAMPLE} 15`",
             parse_mode="Markdown",
         )
         return
@@ -508,8 +519,8 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     rest = " ".join(context.args[2:])
     if "|" not in rest:
         await update.message.reply_text(
-            "❌ Separa los dos equipos con `|`. Ejemplo:\n"
-            "`/compare 2014 2024 Real Madrid | Barcelona`",
+            f"\u274c Separa los dos equipos con `|`. Ejemplo:\n"
+            f"`/compare 2014 {_SEASON_EXAMPLE} Real Madrid | Barcelona`",
             parse_mode="Markdown",
         )
         return
@@ -544,11 +555,11 @@ _AYUDA_CMDS: dict[str, str] = {
         "`/liga <competition\\_id> <temporada>`\n\n"
         "*Parámetros:*\n"
         "  • `competition_id` — ID numérico de la competición (usa `/competiciones` para verlos)\n"
-        "  • `temporada` — Año de inicio de la temporada (ej. `2024`)\n\n"
+        f"  • `temporada` — Año de inicio de la temporada (ej. `{_SEASON_EXAMPLE}`)\n\n"
         "*Ejemplos:*\n"
-        "`/liga 2014 2024` — La Liga 2024/25\n"
-        "`/liga 2021 2024` — Premier League 2024/25\n"
-        "`/liga 2002 2023` — Bundesliga 2023/24"
+        f"`/liga 2014 {_SEASON_EXAMPLE}` — La Liga {_SEASON_LABEL}\n"
+        f"`/liga 2021 {_SEASON_EXAMPLE}` — Premier League {_SEASON_LABEL}\n"
+        f"`/liga 2002 {str(int(_SEASON_EXAMPLE)-1)}` — Bundesliga {str(int(_SEASON_EXAMPLE)-1)[-2:]}/{_SEASON_EXAMPLE[-2:]}"
     ),
     "equipo": (
         "📋 *Comando:* `/equipo`\n\n"
@@ -559,9 +570,9 @@ _AYUDA_CMDS: dict[str, str] = {
         "  • `temporada` — Año de inicio de la temporada\n"
         "  • `nombre_equipo` — Nombre o parte del nombre (no distingue mayúsculas)\n\n"
         "*Ejemplos:*\n"
-        "`/equipo 2014 2024 Mallorca`\n"
-        "`/equipo 2014 2024 Real Madrid`\n"
-        "`/equipo 2021 2024 Arsenal`"
+        f"`/equipo 2014 {_SEASON_EXAMPLE} Mallorca`\n"
+        f"`/equipo 2014 {_SEASON_EXAMPLE} Real Madrid`\n"
+        f"`/equipo 2021 {_SEASON_EXAMPLE} Arsenal`"
     ),
     "jornada": (
         "📋 *Comando:* `/jornada`\n\n"
@@ -572,8 +583,8 @@ _AYUDA_CMDS: dict[str, str] = {
         "  • `temporada` — Año de inicio de la temporada\n"
         "  • `número` — Número de jornada (entero positivo)\n\n"
         "*Ejemplos:*\n"
-        "`/jornada 2014 2024 15` — Jornada 15 de La Liga 24/25\n"
-        "`/jornada 2021 2023 1` — Primera jornada Premier 23/24"
+        f"`/jornada 2014 {_SEASON_EXAMPLE} 15` — Jornada 15 de La Liga {_SEASON_LABEL}\n"
+        f"`/jornada 2021 {str(int(_SEASON_EXAMPLE)-1)} 1` — Primera jornada Premier {str(int(_SEASON_EXAMPLE)-1)[-2:]}/{_SEASON_EXAMPLE[-2:]}"
     ),
     "compare": (
         "📋 *Comando:* `/compare`\n\n"
@@ -584,8 +595,8 @@ _AYUDA_CMDS: dict[str, str] = {
         "  • `temporada` — Año de inicio de la temporada\n"
         "  • `equipo1` y `equipo2` — Separados por `|`\n\n"
         "*Ejemplos:*\n"
-        "`/compare 2014 2024 Real Madrid | Barcelona`\n"
-        "`/compare 2021 2024 Arsenal | Chelsea`"
+        f"`/compare 2014 {_SEASON_EXAMPLE} Real Madrid | Barcelona`\n"
+        f"`/compare 2021 {_SEASON_EXAMPLE} Arsenal | Chelsea`"
     ),
     "equipos": (
         "📋 *Comando:* `/equipos`\n\n"
@@ -595,8 +606,8 @@ _AYUDA_CMDS: dict[str, str] = {
         "  • `competition_id` — ID numérico de la competición\n"
         "  • `temporada` — Año de inicio de la temporada\n\n"
         "*Ejemplos:*\n"
-        "`/equipos 2014 2024` — Todos los equipos de La Liga 24/25\n"
-        "`/equipos 2001 2024` — Equipos de Champions League 24/25"
+        f"`/equipos 2014 {_SEASON_EXAMPLE}` — Todos los equipos de La Liga {_SEASON_LABEL}\n"
+        f"`/equipos 2001 {_SEASON_EXAMPLE}` — Equipos de Champions League {_SEASON_LABEL}"
     ),
     "competiciones": (
         "📋 *Comando:* `/competiciones`\n\n"

@@ -23,9 +23,8 @@
 - [x] **5. Completar `/start` \u2014 incluir todos los comandos** ✅
   Reescrito con saludo personalizado por nombre de usuario y tres secciones agrupadas: *Análisis e informes* (`/liga`, `/equipo`, `/jornada`, `/compare`, `/pdf`), *Alertas proactivas* (`/suscribir`, `/suscripciones`, `/desuscribir`) y *Ayuda*. Migrado a `MarkdownV2` para compatibilidad con el API de Telegram.
 
-- [ ] **6. Inferir temporada actual automáticamente**
-  Todos los mensajes de error y ayuda hardcodean `2024` como temporada de ejemplo.
-  Calcular la temporada actual en función del mes: si estamos en julio-diciembre → año actual; si enero-junio → año anterior. Usarla en todos los ejemplos de mensajes de error.
+- [x] **6. Inferir temporada actual automáticamente** ✅
+  Nueva función `_current_season()` que calcula el año de inicio de la temporada en función del mes: julio\u2013diciembre → año en curso; enero\u2013junio → año anterior. Se calculan `_SEASON_EXAMPLE` (ej. `"2025"`), `_SEASON_NEXT` (`"2026"`) y `_SEASON_LABEL` (`"25/26"`) una sola vez al arrancar el bot. Todos los mensajes de error y los ejemplos de `/start`, `/ayuda` y `_parse_base` usan ahora estas constantes dinámicas.
 
 ---
 
