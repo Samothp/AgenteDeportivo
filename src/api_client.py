@@ -6,9 +6,27 @@ from typing import Optional
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 # Cargar variables de entorno desde .env
 load_dotenv()
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Reintenta en errores de red transitorios y 429 (rate limit)."""
+    if isinstance(exc, requests.ConnectionError):
+        return True
+    if isinstance(exc, requests.Timeout):
+        return True
+    if isinstance(exc, requests.HTTPError):
+        code = exc.response.status_code if exc.response is not None else None
+        return code in (429, 500, 502, 503, 504)
+    return False
 
 
 class SportsDBAPI:
@@ -55,6 +73,12 @@ class SportsDBAPI:
             or '078593'
         )
 
+    @retry(
+        retry=retry_if_exception(_is_retryable),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        reraise=True,
+    )
     def _get_json(self, endpoint: str, params: dict) -> dict:
         url = f"{self.BASE_URL}/{self.api_key}/{endpoint}"
         response = requests.get(url, params=params, timeout=30)
@@ -202,18 +226,9 @@ class SportsDBAPI:
 
     def _fetch_event_stats(self, event_id: str) -> dict:
         """Obtiene estadísticas detalladas de un evento. Retorna {} si no hay datos."""
-        for _attempt in range(2):
-            try:
-                data = self._get_json('lookupeventstats.php', {'id': event_id})
-                break
-            except requests.HTTPError as exc:
-                code = exc.response.status_code if exc.response is not None else None
-                if code == 429:
-                    print("\n  Límite alcanzado, esperando 60s...")
-                    time.sleep(60)
-                    continue
-                return {}
-        else:
+        try:
+            data = self._get_json('lookupeventstats.php', {'id': event_id})
+        except (requests.HTTPError, requests.ConnectionError, requests.Timeout):
             return {}
 
         result = {}

@@ -43,6 +43,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.constants import COMPETITION_NAMES
+from src.thresholds import CONSECUTIVE_LOSSES_ALERT
 
 load_dotenv()
 
@@ -133,14 +134,14 @@ def _run_agent_text(competition: int, season: str, **kwargs) -> str:
         )
 
     try:
-        agent = SportsAgent(
+        agent = SportsAgent(AgentConfig(
             data_path=str(db_path),
             fetch_real=False,
             competition_id=competition,
             season=season,
             no_charts=True,
             **kwargs,
-        )
+        ))
         agent.load_data()
         agent.analyze()
         return agent.generate_report()
@@ -445,6 +446,7 @@ async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     try:
         from src.agent import SportsAgent
+        from src.config import AgentConfig
         from src.data_loader import get_db_path
 
         db_path = get_db_path(competition, season)
@@ -456,13 +458,13 @@ async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         with tempfile.TemporaryDirectory(prefix="agente_pdf_") as tmp:
             tmp_path = Path(tmp)
-            agent = SportsAgent(
+            agent = SportsAgent(AgentConfig(
                 data_path=str(db_path),
                 fetch_real=False,
                 competition_id=competition,
                 season=season,
                 no_charts=True,
-            )
+            ))
             agent.load_data()
             agent.analyze()
             pdf_path = str(tmp_path / "informe.pdf")
@@ -593,20 +595,21 @@ def _check_alerts_sync(bot_token: str) -> None:
 
             try:
                 from src.agent import SportsAgent
+                from src.config import AgentConfig
                 from src.data_loader import get_db_path
 
                 db_path = get_db_path(comp, season)
                 if not db_path.exists():
                     continue
 
-                agent = SportsAgent(
+                agent = SportsAgent(AgentConfig(
                     data_path=str(db_path),
                     fetch_real=False,
                     competition_id=comp,
                     season=season,
                     no_charts=True,
                     team=team,
-                )
+                ))
                 agent.load_data()
                 agent.analyze()
 
@@ -627,7 +630,7 @@ def _check_alerts_sync(bot_token: str) -> None:
 
                 new_state[key] = consecutive_losses
 
-                if consecutive_losses >= 3 and state.get(key, 0) < 3:
+                if consecutive_losses >= CONSECUTIVE_LOSSES_ALERT and state.get(key, 0) < CONSECUTIVE_LOSSES_ALERT:
                     comp_name = COMPETITION_NAMES.get(comp, str(comp))
                     msg = (
                         f"⚠️ *Alerta de racha negativa*\n\n"

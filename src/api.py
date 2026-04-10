@@ -24,6 +24,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from .agent import SportsAgent
+from .config import AgentConfig
 from .constants import COMPETITION_NAMES
 from .data_loader import get_db_path, list_available_teams
 
@@ -130,7 +131,7 @@ def _build_agent(req: BaseRequest, **kwargs) -> SportsAgent:
     """Construye un SportsAgent válido a partir del request base."""
     _check_db(req.competition, req.season)
     db_path = get_db_path(req.competition, req.season)
-    return SportsAgent(
+    return SportsAgent(AgentConfig(
         data_path=str(db_path),
         fetch_real=False,
         competition_id=req.competition,
@@ -138,7 +139,7 @@ def _build_agent(req: BaseRequest, **kwargs) -> SportsAgent:
         top_n=req.top_n,
         no_charts=True,
         **kwargs,
-    )
+    ))
 
 
 def _run(agent: SportsAgent) -> JSONResponse:

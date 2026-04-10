@@ -24,8 +24,17 @@ from .analysis import (
     top_defensive_teams,
     top_scoring_teams,
 )
+from .config import AgentConfig
 from .data_loader import load_match_data
 from .player_loader import load_player_stats
+from .thresholds import (
+    CACHE_TTL_DAYS_DEFAULT,
+    FORM_STREAK_THRESHOLD,
+    HIGH_SCORING_THRESHOLD,
+    MIN_MATCHES_PERCENTILE,
+    OVERPERFORMANCE_EXCELLENT,
+    TOP_N_DEFAULT,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -64,21 +73,21 @@ from .visualizer import (
 
 
 class SportsAgent:
-    def __init__(self, data_path: str, fetch_real: bool = False, competition_id: Optional[int] = None, season: Optional[str] = None, team: Optional[str] = None, seasons: Optional[List[str]] = None, matchday: Optional[int] = None, match_id: Optional[int] = None, player: Optional[str] = None, top_n: int = 5, no_charts: bool = False, refresh_cache: bool = False, cache_ttl_days: int = 7, matchday_range: Optional[tuple] = None, compare: Optional[tuple] = None):
-        self.data_path = data_path
-        self.fetch_real = fetch_real
-        self.competition_id = competition_id
-        self.season = season
-        self.seasons = seasons
-        self.team = team
-        self.matchday = matchday
-        self.matchday_range = matchday_range  # tuple (start, end) o None
-        self.match_id = match_id
-        self.player = player
-        self.top_n = top_n
-        self.no_charts = no_charts
-        self.refresh_cache = refresh_cache
-        self.cache_ttl_days = cache_ttl_days
+    def __init__(self, config: AgentConfig):
+        self.data_path = config.data_path
+        self.fetch_real = config.fetch_real
+        self.competition_id = config.competition_id
+        self.season = config.season
+        self.seasons = config.seasons
+        self.team = config.team
+        self.matchday = config.matchday
+        self.matchday_range = config.matchday_range
+        self.match_id = config.match_id
+        self.player = config.player
+        self.top_n = config.top_n
+        self.no_charts = config.no_charts
+        self.refresh_cache = config.refresh_cache
+        self.cache_ttl_days = config.cache_ttl_days
         self.data: Optional[pd.DataFrame] = None
         self.full_data: Optional[pd.DataFrame] = None
         self.available_optional_columns: set[str] = set()
@@ -96,7 +105,7 @@ class SportsAgent:
         self.liga_summary: dict = {}  # resumen completo de liga (solo modo Liga)
         self.player_profile: dict = {}  # perfil del jugador (solo modo Jugador)
         self.player_rankings_raw: Optional[pd.DataFrame] = None  # CSV jugadores cargado
-        self.compare: Optional[tuple] = compare  # (team1, team2) para modo --compare
+        self.compare: Optional[tuple] = config.compare  # (team1, team2) para modo --compare
         self.compare_data: dict = {}  # resultado de compute_compare()
 
     def load_data(self):
@@ -294,11 +303,11 @@ class SportsAgent:
                 forma_str = ' '.join(ultimos)
                 if victorias_recientes >= 4:
                     lines.append(f'  ✅ Gran momento de forma: {victorias_recientes}V en los últimos {len(ultimos)} partidos ({forma_str}).')
-                elif victorias_recientes >= 3:
+                elif victorias_recientes >= FORM_STREAK_THRESHOLD:
                     lines.append(f'  ✅ Buen estado de forma: {victorias_recientes}V en los últimos {len(ultimos)} partidos ({forma_str}).')
                 elif derrotas_recientes >= 4:
                     lines.append(f'  ⚠️  Racha negativa: {derrotas_recientes}D en los últimos {len(ultimos)} partidos ({forma_str}).')
-                elif derrotas_recientes >= 3:
+                elif derrotas_recientes >= FORM_STREAK_THRESHOLD:
                     lines.append(f'  ⚠️  Momento difícil: {derrotas_recientes}D en los últimos {len(ultimos)} partidos ({forma_str}).')
                 elif victorias_recientes >= 2:
                     lines.append(f'  🔄 Forma reciente aceptable: {victorias_recientes}V-{empates_recientes}E-{derrotas_recientes}D en los últimos {len(ultimos)} ({forma_str}).')
@@ -354,7 +363,7 @@ class SportsAgent:
             # Eficiencia ofensiva (overperformance xG)
             over = m.get('overperformance')
             if over is not None:
-                if over >= 1.2:
+                if over >= OVERPERFORMANCE_EXCELLENT:
                     lines.append(f'  🎯 Muy eficiente en ataque: ratio goles/xG = {over:.2f} (convierte más de lo esperado).')
                 elif over <= 0.75:
                     lines.append(f'  📉 Baja eficiencia ofensiva: ratio goles/xG = {over:.2f} (convierte menos de lo esperado).')
@@ -381,7 +390,7 @@ class SportsAgent:
 
                 # Equipos en zona de riesgo de descenso
                 n = len(clf)
-                if n >= 3:
+                if n >= MIN_MATCHES_PERCENTILE:
                     descenso = clf.tail(3)['Equipo'].tolist()
                     lines.append(f'  ⚠️  Zona de descenso: {", ".join(descenso)}.')
 
@@ -400,7 +409,7 @@ class SportsAgent:
             if gpp is not None:
                 try:
                     gpp_f = float(gpp)
-                    if gpp_f >= 3.0:
+                    if gpp_f >= HIGH_SCORING_THRESHOLD:
                         lines.append(f'  📊 Temporada muy goleadora: {gpp_f:.2f} goles/partido de media.')
                     elif gpp_f < 2.0:
                         lines.append(f'  📊 Temporada defensiva: solo {gpp_f:.2f} goles/partido de media.')

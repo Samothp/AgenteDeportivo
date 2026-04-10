@@ -145,6 +145,7 @@ def _run_agent(competition: int, season: str, mode: str, **kwargs) -> tuple[dict
     La caché se invalida automáticamente al cambiar cualquier parámetro.
     """
     from src.agent import SportsAgent
+    from src.config import AgentConfig
     from src.data_loader import get_db_path
 
     db_path = get_db_path(competition, season)
@@ -157,14 +158,14 @@ def _run_agent(competition: int, season: str, mode: str, **kwargs) -> tuple[dict
     # Directorio temporal para los gráficos (se reutiliza entre recargas dentro de la sesión)
     tmp_dir = Path(tempfile.mkdtemp(prefix="agente_deportivo_"))
 
-    agent = SportsAgent(
+    agent = SportsAgent(AgentConfig(
         data_path=str(db_path),
         fetch_real=False,
         competition_id=competition,
         season=season,
         no_charts=False,
         **kwargs,
-    )
+    ))
     agent.load_data()
     agent.analyze()
 
@@ -523,15 +524,16 @@ if st.button("📄 Generar PDF del informe"):
             _pdf_dir = Path(tempfile.mkdtemp(prefix="agente_pdf_"))
             _pdf_path = _pdf_dir / "informe.pdf"
             from src.agent import SportsAgent
+            from src.config import AgentConfig
             from src.data_loader import get_db_path as _get_db
-            _pdf_agent = SportsAgent(
+            _pdf_agent = SportsAgent(AgentConfig(
                 data_path=str(_get_db(competition, season)),
                 fetch_real=False,
                 competition_id=competition,
                 season=season,
                 no_charts=True,
                 **extra_kwargs,
-            )
+            ))
             _pdf_agent.load_data()
             _pdf_agent.analyze()
             _pdf_agent.generate_pdf_report(str(_pdf_path))

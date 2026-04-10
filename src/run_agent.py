@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from .agent import SportsAgent
+from .config import AgentConfig
 
 
 def parse_args():
@@ -82,7 +83,23 @@ def main():
             sys.exit(1)
         matchday_range = (start, end)
 
-    agent = SportsAgent(args.data, args.fetch_real, args.competition, args.season, args.team, seasons=args.seasons, matchday=args.jornada, match_id=args.match_id, player=args.player, top_n=args.top_n, no_charts=args.no_charts, refresh_cache=args.refresh_cache, cache_ttl_days=args.cache_ttl_days, matchday_range=matchday_range, compare=tuple(args.compare) if args.compare else None)
+    agent = SportsAgent(AgentConfig(
+        data_path=args.data,
+        fetch_real=args.fetch_real,
+        competition_id=args.competition,
+        season=args.season,
+        team=args.team,
+        seasons=args.seasons,
+        matchday=args.jornada,
+        match_id=args.match_id,
+        player=args.player,
+        top_n=args.top_n,
+        no_charts=args.no_charts,
+        refresh_cache=args.refresh_cache,
+        cache_ttl_days=args.cache_ttl_days,
+        matchday_range=matchday_range,
+        compare=tuple(args.compare) if args.compare else None,
+    ))
 
     if args.clean_reports:
         agent.clean_reports(args.visual)

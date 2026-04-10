@@ -2,6 +2,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from .thresholds import OVERPERFORMANCE_EXCELLENT, OVERPERFORMANCE_POOR
+
 
 def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dict[str, object]:
     total_matches = len(df)
@@ -141,9 +143,9 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
         if xg_prom is not None and xg_prom > 0 and total_matches > 0:
             total_xg = xg_prom * total_matches
             overperformance = round(goles_a_favor / total_xg, 2)
-            if overperformance > 1.2:
+            if overperformance > OVERPERFORMANCE_EXCELLENT:
                 overperformance_desc = 'sobrerendimiento (convierte más de lo esperado)'
-            elif overperformance < 0.8:
+            elif overperformance < OVERPERFORMANCE_POOR:
                 overperformance_desc = 'infrarendimiento (convierte menos de lo esperado)'
             else:
                 overperformance_desc = 'rendimiento esperado'

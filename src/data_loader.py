@@ -1,8 +1,11 @@
 import json
+import logging
 import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
+
+_logger = logging.getLogger(__name__)
 
 # Columnas obligatorias (deben estar presentes)
 REQUIRED_COLUMNS = [
@@ -226,6 +229,25 @@ def add_missing_optional_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+_CRITICAL_OPTIONAL_COLUMNS = [
+    'xg_local',
+    'xg_visitante',
+    'posesion_local',
+    'shots_local',
+]
+
+
+def _warn_missing_optional(df: pd.DataFrame) -> None:
+    """Emite warnings para columnas opcionales críticas completamente vacías tras la carga."""
+    for col in _CRITICAL_OPTIONAL_COLUMNS:
+        if col in df.columns and df[col].isna().all():
+            _logger.warning(
+                "Columna '%s' sin datos reales (toda NaN). "
+                "Las métricas que dependen de ella serán menos precisas.",
+                col,
+            )
+
+
 def normalize_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
     for column in INTEGER_COLUMNS:
         if column in df.columns:
@@ -383,6 +405,7 @@ def load_match_data(csv_path: str, fetch_real: bool = False, competition_id: Opt
     df.attrs['available_optional_columns'] = present_optional_columns
 
     df = add_missing_optional_columns(df)  # Agregar columnas opcionales faltantes
+    _warn_missing_optional(df)
     df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df = normalize_numeric_columns(df)
     df = add_derived_metrics(df)
