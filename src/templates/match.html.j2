@@ -1,0 +1,106 @@
+{% extends "base.html.j2" %}
+
+{% block title %}{{ local }} vs {{ visitante }}{% endblock %}
+
+{% block extra_style %}
+    .scoreboard { text-align: center; background: white; border-radius: 12px;
+      padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); margin-bottom: 24px; }
+    .score { font-size: 3em; font-weight: bold; color: #1f4e79; }
+    .teams { font-size: 1.3em; margin-bottom: 8px; }
+    .result-badge { display: inline-block; padding: 4px 16px; border-radius: 20px;
+      background: {{ color_res }}; color: white; font-weight: bold; margin-top: 8px; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .metric { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    td.stat-name { text-align: center; font-weight: bold; }
+    .adv-local { background: #d4edfa; }
+    .adv-visit { background: #fde8e8; }
+    .narrativa { background: white; padding: 16px; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08); font-style: italic; line-height: 1.6; }
+{% endblock %}
+
+{% block content %}
+  <div class="scoreboard">
+    <div class="teams"><strong>{{ local }}</strong> vs <strong>{{ visitante }}</strong></div>
+    <div class="score">{{ goles_local }} — {{ goles_visitante }}</div>
+    <div class="result-badge">{{ resultado_str }}</div>
+  </div>
+
+  <div class="section">
+    <h2>Datos del partido</h2>
+    <div class="metrics-grid">
+      <div class="metric"><strong>Fecha</strong><p>{{ fecha }}</p></div>
+      {% if jornada %}<div class="metric"><strong>Jornada</strong><p>{{ jornada }}</p></div>{% endif %}
+      <div class="metric"><strong>Competición</strong><p>{{ competition }}</p></div>
+      <div class="metric"><strong>Temporada</strong><p>{{ season }}</p></div>
+      {% if estadio != '-' %}<div class="metric"><strong>Estadio</strong><p>{{ estadio }}</p></div>{% endif %}
+      {% if arbitro != '-' %}<div class="metric"><strong>Árbitro</strong><p>{{ arbitro }}</p></div>{% endif %}
+      {% if espectadores %}<div class="metric"><strong>Espectadores</strong><p>{{ "{:,}".format(espectadores) }}</p></div>{% endif %}
+    </div>
+  </div>
+
+  {% if contexto_local or contexto_visitante %}
+  <div class="section">
+    <h2>Clasificación previa</h2>
+    <table>
+      <thead><tr><th>Equipo</th><th>Pos</th><th>PJ</th><th>PTS</th><th>GF</th><th>GC</th></tr></thead>
+      <tbody>
+        {% if contexto_local %}
+        <tr>
+          <td class="adv-local"><strong>{{ local }}</strong></td>
+          <td>{{ contexto_local.pos }}</td><td>{{ contexto_local.pj }}</td>
+          <td><strong>{{ contexto_local.pts }}</strong></td>
+          <td>{{ contexto_local.gf }}</td><td>{{ contexto_local.gc }}</td>
+        </tr>
+        {% endif %}
+        {% if contexto_visitante %}
+        <tr>
+          <td class="adv-visit"><strong>{{ visitante }}</strong></td>
+          <td>{{ contexto_visitante.pos }}</td><td>{{ contexto_visitante.pj }}</td>
+          <td><strong>{{ contexto_visitante.pts }}</strong></td>
+          <td>{{ contexto_visitante.gf }}</td><td>{{ contexto_visitante.gc }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if stats %}
+  <div class="section">
+    <h2>Estadísticas cara a cara</h2>
+    <table>
+      <thead><tr><th>{{ local }}</th><th class="stat-name">Estadística</th><th>{{ visitante }}</th></tr></thead>
+      <tbody>
+      {% for s in stats %}
+        <tr>
+          <td{% if s.ventaja == 'local' %} class="adv-local"{% endif %}><strong>{{ s.local }}</strong></td>
+          <td class="stat-name">{{ s.stat }}</td>
+          <td{% if s.ventaja == 'visitante' %} class="adv-visit"{% endif %}><strong>{{ s.visitante }}</strong></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <h2>Análisis del partido</h2>
+    <p class="narrativa">{{ narrativa }}</p>
+  </div>
+
+  {% if video_highlights %}
+  <div class="section">
+    <h2>Highlights</h2>
+    <p><a href="{{ video_highlights }}" target="_blank">Ver highlights del partido</a></p>
+  </div>
+  {% endif %}
+
+  {% if images %}
+  <div class="section">
+    <h2>Gráficos</h2>
+    {% for img in images %}
+    <img src="{{ img }}" alt="Gráfico del partido">
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endblock %}

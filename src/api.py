@@ -14,19 +14,41 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+load_dotenv()
+
 from .agent import SportsAgent
 from .config import AgentConfig
 from .constants import COMPETITION_NAMES
 from .data_loader import get_db_path, list_available_teams
+
+# ---------------------------------------------------------------------------
+# 12.3 — Autenticación X-API-Key
+# ---------------------------------------------------------------------------
+
+_API_REST_KEY: str | None = os.getenv("API_REST_KEY") or None
+
+
+def _require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Dependencia FastAPI: valida el header X-API-Key cuando API_REST_KEY está definido.
+
+    Si la variable de entorno API_REST_KEY no está configurada, la dependencia
+    no hace nada (modo desarrollo sin autenticación).
+    """
+    if _API_REST_KEY is None:
+        return  # Sin clave configurada → acceso libre (modo dev)
+    if x_api_key != _API_REST_KEY:
+        raise HTTPException(status_code=401, detail="X-API-Key inválida o ausente.")
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -181,7 +203,7 @@ def list_teams(request: Request,
 
 @app.post("/report/liga", summary="Informe de Liga completo", tags=["Informes"])
 @limiter.limit("10/minute")
-def report_liga(request: Request, req: LigaRequest):
+def report_liga(request: Request, req: LigaRequest, _auth: None = Depends(_require_api_key)):
     """
     Genera un informe completo de la temporada:
     clasificación, xPts, récords, estadísticas por equipo y rendimiento local/visitante.
@@ -193,7 +215,7 @@ def report_liga(request: Request, req: LigaRequest):
 
 @app.post("/report/equipo", summary="Informe de Equipo", tags=["Informes"])
 @limiter.limit("10/minute")
-def report_equipo(request: Request, req: EquipoRequest):
+def report_equipo(request: Request, req: EquipoRequest, _auth: None = Depends(_require_api_key)):
     """
     Genera un informe de un equipo concreto:
     W/D/L, rachas, métricas con percentiles de liga, overperformance xG y conclusiones.
@@ -204,7 +226,7 @@ def report_equipo(request: Request, req: EquipoRequest):
 
 @app.post("/report/jornada", summary="Informe de Jornada", tags=["Informes"])
 @limiter.limit("10/minute")
-def report_jornada(request: Request, req: JornadaRequest):
+def report_jornada(request: Request, req: JornadaRequest, _auth: None = Depends(_require_api_key)):
     """
     Genera el resumen de una jornada: resultados, estadísticas y clasificación acumulada.
     """
@@ -214,7 +236,7 @@ def report_jornada(request: Request, req: JornadaRequest):
 
 @app.post("/report/partido", summary="Informe de Partido", tags=["Informes"])
 @limiter.limit("10/minute")
-def report_partido(request: Request, req: PartidoRequest):
+def report_partido(request: Request, req: PartidoRequest, _auth: None = Depends(_require_api_key)):
     """
     Genera la ficha técnica de un partido concreto (estadísticas cara a cara).
     Obtén el `match_id` consultando la DB local.
@@ -225,7 +247,7 @@ def report_partido(request: Request, req: PartidoRequest):
 
 @app.post("/report/jugador", summary="Informe de Jugador", tags=["Informes"])
 @limiter.limit("10/minute")
-def report_jugador(request: Request, req: JugadorRequest):
+def report_jugador(request: Request, req: JugadorRequest, _auth: None = Depends(_require_api_key)):
     """
     Genera el perfil de temporada de un jugador: stats, ratios y ranking en el equipo.
     """
@@ -235,7 +257,7 @@ def report_jugador(request: Request, req: JugadorRequest):
 
 @app.post("/report/compare", summary="Comparativa entre dos equipos", tags=["Informes"])
 @limiter.limit("10/minute")
-def report_compare(request: Request, req: CompareRequest):
+def report_compare(request: Request, req: CompareRequest, _auth: None = Depends(_require_api_key)):
     """
     Compara dos equipos de la misma competition+season:
     diferencias en todas las métricas y enfrentamientos H2H en la DB.

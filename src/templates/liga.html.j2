@@ -1,0 +1,185 @@
+{% extends "base.html.j2" %}
+
+{% block title %}{{ competition }} {{ season }}{% endblock %}
+
+{% block extra_style %}
+    .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    tr.ucl td { background: #cce5ff; }
+    tr.uel td { background: #d4edda; }
+    tr.uecl td { background: #e8f5e9; }
+    tr.descenso td { background: #fde8e8; }
+    .zona-badge { font-size: 0.7em; vertical-align: middle; margin-left: 4px; opacity: 0.7; }
+{% endblock %}
+
+{% block content %}
+  <div class="header-box">
+    <h1>{{ competition }} — {{ season }}
+      {% if matchday_range %}
+        &nbsp;<small style="font-size:0.6em;opacity:0.85">
+          Jornadas {{ matchday_range[0] }}–{{ matchday_range[1] }}
+        </small>
+      {% endif %}
+    </h1>
+    <p>Jornadas: {{ jornadas }} &nbsp;|&nbsp; Partidos: {{ partidos_totales }}</p>
+  </div>
+
+  {# KPIs #}
+  <div class="kpi-grid">
+    <div class="kpi"><div class="val">{{ goles_totales }}</div><div class="lbl">Goles totales</div></div>
+    <div class="kpi"><div class="val">{{ goles_promedio }}</div><div class="lbl">Goles por partido</div></div>
+    <div class="kpi">
+      <div class="val" style="font-size:1em">{{ pmg_local }} {{ pmg_gl }}-{{ pmg_gv }} {{ pmg_visitante }}</div>
+      <div class="lbl">Partido más goleador</div>
+    </div>
+    <div class="kpi"><div class="val" style="font-size:1em">{{ equipo_mas_goleador }}</div><div class="lbl">Equipo más goleador</div></div>
+    <div class="kpi"><div class="val" style="font-size:1em">{{ equipo_menos_goleado }}</div><div class="lbl">Menos goleado</div></div>
+  </div>
+
+  {# Récords #}
+  <h2>Récords de la temporada</h2>
+  <div class="records"><ul>
+    <li><strong>Mejor racha:</strong> {{ equipo_mejor_racha }} — {{ mejor_racha_victorias }} victorias consecutivas</li>
+    {% if arbitro_top %}
+      <li><strong>Árbitro más activo:</strong> {{ arbitro_top.nombre }} ({{ arbitro_top.partidos }} partidos)</li>
+    {% endif %}
+    {% if partido_max_asistencia %}
+      <li><strong>Mayor asistencia:</strong> {{ partido_max_asistencia.local }} vs {{ partido_max_asistencia.visitante }}
+        — {{ "{:,}".format(partido_max_asistencia.espectadores) }} espectadores ({{ partido_max_asistencia.estadio }})</li>
+    {% endif %}
+  </ul></div>
+
+  {# Clasificación #}
+  <h2>Clasificación</h2>
+  <table>
+    <thead>
+      <tr><th>Pos</th><th class="left">Equipo</th><th>PJ</th><th>G</th><th>E</th>
+         <th>P</th><th>GF</th><th>GC</th><th>DIF</th><th>PTS</th></tr>
+    </thead>
+    <tbody>
+    {% for row in clasificacion %}
+      {% set pos = row.Pos | int %}
+      {% if pos <= 4 %}
+        {% set tr_class = "ucl" %}{% set badge = ' <span class="zona-badge" title="Champions League">🏦</span>' %}
+      {% elif pos <= 6 %}
+        {% set tr_class = "uel" %}{% set badge = ' <span class="zona-badge" title="Europa League">🌟</span>' %}
+      {% elif pos == 7 %}
+        {% set tr_class = "uecl" %}{% set badge = ' <span class="zona-badge" title="Conference League">🌿</span>' %}
+      {% elif pos >= total_teams - 2 %}
+        {% set tr_class = "descenso" %}{% set badge = ' <span class="zona-badge" title="Descenso">⬇️</span>' %}
+      {% else %}
+        {% set tr_class = "" %}{% set badge = "" %}
+      {% endif %}
+      {% set dif = row.DIF | int %}
+      <tr{% if tr_class %} class="{{ tr_class }}"{% endif %}>
+        <td>{{ pos }}</td>
+        <td class="left"><strong>{{ row.Equipo }}</strong>{{ badge | safe }}</td>
+        <td>{{ row.PJ | int }}</td><td>{{ row.G | int }}</td><td>{{ row.E | int }}</td>
+        <td>{{ row.P | int }}</td><td>{{ row.GF | int }}</td><td>{{ row.GC | int }}</td>
+        <td>{% if dif > 0 %}+{{ dif }}{% else %}{{ dif }}{% endif %}</td>
+        <td><strong>{{ row.PTS | int }}</strong></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {# Estadísticas técnicas #}
+  <h2>Estadísticas técnicas por equipo</h2>
+  <table>
+    <thead>
+      <tr><th class="left">Equipo</th><th>GF</th><th>GC</th>
+          <th>xG medio</th><th>Over%</th><th>Posesión %</th><th>Tiros/partido</th></tr>
+    </thead>
+    <tbody>
+    {% for row in stats_por_equipo %}
+      <tr>
+        <td class="left">{{ row.Equipo }}</td>
+        <td>{{ row.GF | int }}</td>
+        <td>{{ row.GC | int }}</td>
+        <td>{{ row.xG }}</td>
+        <td{% if row.over_color %} style="{{ row.over_color }}"{% endif %}>{{ row.Over }}</td>
+        <td>{{ row.Pos }}</td>
+        <td>{{ row.Tiros }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {# xPts #}
+  {% if xpts %}
+  <h2>Clasificación por puntos esperados
+    <small style="color:#666;font-size:0.6em">(modelo Poisson sobre xG)</small>
+  </h2>
+  <p style="color:#666;font-size:0.85em;margin-top:-8px">
+    Diferencia positiva = equipo puntúa más de lo que sus xG sugieren (suerte/eficiencia).
+    Diferencia negativa = infrarendimiento.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Pos</th><th class="left">Equipo</th><th>PJ</th><th>xPts</th><th>PTS reales</th><th>Diferencia</th></tr>
+    </thead>
+    <tbody>
+    {% for row in xpts %}
+      {% set diff = row.Diff %}
+      {% if diff > 2 %}
+        {% set diff_color = "color:#27ae60;font-weight:bold" %}
+        {% set diff_str = "+" ~ "%.1f"|format(diff) %}
+      {% elif diff < -2 %}
+        {% set diff_color = "color:#e74c3c;font-weight:bold" %}
+        {% set diff_str = "%.1f"|format(diff) %}
+      {% else %}
+        {% set diff_color = "color:#666" %}
+        {% set diff_str = ("+" if diff >= 0 else "") ~ "%.1f"|format(diff) %}
+      {% endif %}
+      <tr>
+        <td>{{ row.Pos | int }}</td>
+        <td class="left">{{ row.Equipo }}</td>
+        <td>{{ row.PJ | int }}</td>
+        <td><strong>{{ "%.1f"|format(row.xPts) }}</strong></td>
+        <td>{{ row.PTS | int }}</td>
+        <td style="{{ diff_color }}">{{ diff_str }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {# Rendimiento local/visitante #}
+  <h2>Rendimiento local vs visitante</h2>
+  <table>
+    <thead>
+      <tr><th class="left">Equipo</th><th>PJ Local</th><th>Pts Local</th>
+          <th>PJ Visit.</th><th>Pts Visit.</th></tr>
+    </thead>
+    <tbody>
+    {% for row in home_away %}
+      <tr>
+        <td class="left">{{ row.Equipo }}</td>
+        <td>{{ row.PJ_L | int }}</td><td><strong>{{ row.Pts_L | int }}</strong></td>
+        <td>{{ row.PJ_V | int }}</td><td><strong>{{ row.Pts_V | int }}</strong></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {# Gráficos #}
+  {% if images %}
+  <h2>Gráficos</h2>
+  <div class="charts">
+    {% for img in images %}
+    <img src="{{ img }}" alt="Gráfico de liga">
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# Conclusiones #}
+  {% if conclusions_html %}{{ conclusions_html | safe }}{% endif %}
+
+  {# Narrativa intertemporada #}
+  {% if interseason %}
+  <h2>Evolución intertemporada</h2>
+  <div style="background:white;border-radius:8px;padding:16px 20px;
+              box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:24px;">
+    <pre style="font-family:monospace;font-size:0.88em;margin:0;">{{ interseason }}</pre>
+  </div>
+  {% endif %}
+{% endblock %}

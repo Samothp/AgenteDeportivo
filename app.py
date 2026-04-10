@@ -350,6 +350,37 @@ if use_multi:
                 )
             except Exception as _e:
                 st.error(f"Error al cargar {COMPETITION_NAMES.get(_mc, _mc)} {_ms}: {_e}")
+
+    # 12.4 — Radar comparativo con medias de todas las ligas seleccionadas
+    st.markdown("---")
+    st.subheader("🕸️ Radar comparativo de ligas")
+    _radar_data: list[dict] = []
+    for _mc, _ms in _multi_combos:
+        try:
+            _ml_payload2, _ = _run_agent(_mc, _ms, "Liga", top_n=5)
+            _ml_metrics2 = _ml_payload2.get("metrics", {})
+            if _ml_metrics2:
+                _radar_data.append({
+                    "label": f"{COMPETITION_NAMES.get(_mc, _mc)} {_ms}",
+                    "Goles/partido": _ml_metrics2.get("goles_a_favor_promedio") or 0,
+                    "xG/partido": _ml_metrics2.get("xg_equipo_promedio") or 0,
+                    "Posesión %": (_ml_metrics2.get("posesion_equipo_promedio") or 0) / 100,
+                    "Tiros/partido": _ml_metrics2.get("tiros_equipo_promedio") or 0,
+                    "Corners/partido": _ml_metrics2.get("corners_equipo_promedio") or 0,
+                })
+        except Exception:
+            pass
+    if len(_radar_data) >= 2:
+        import tempfile as _tmp
+        from src.visualizer import plot_multi_league_radar as _plot_mlr
+        _radar_path = str(Path(_tmp.mkdtemp()) / "multi_radar.png")
+        _radar_img = _plot_mlr(_radar_data, _radar_path)
+        if _radar_img:
+            _rc1, _rc2, _rc3 = st.columns([1, 2, 1])
+            _rc2.image(_radar_img, use_container_width=True)
+    else:
+        st.info("Se necesitan al menos 2 ligas con datos para mostrar el radar comparativo.")
+
     st.stop()
 
 # ---------------------------------------------------------------------------
@@ -517,9 +548,34 @@ if image_paths:
             if Path(img_path).exists():
                 col.image(img_path, use_container_width=True)
 
+# ── 12.5 — Exportar a Excel ────────────────────────────────────────────────
+def _payload_to_excel(p: dict) -> bytes:
+    """Convierte el payload JSON en un Excel con una hoja por sección tabular."""
+    import io
+    import pandas as pd
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        written = 0
+        for key, val in p.items():
+            if isinstance(val, list) and val and isinstance(val[0], dict):
+                pd.DataFrame(val).to_excel(writer, sheet_name=key[:31], index=False)
+                written += 1
+            elif isinstance(val, dict):
+                for subkey, subval in val.items():
+                    if isinstance(subval, list) and subval and isinstance(subval[0], dict):
+                        sheet = f"{key[:15]}_{subkey[:15]}"[:31]
+                        pd.DataFrame(subval).to_excel(writer, sheet_name=sheet, index=False)
+                        written += 1
+        if written == 0:
+            pd.DataFrame([p]).to_excel(writer, sheet_name="datos", index=False)
+    return output.getvalue()
+
+_btn_pdf, _btn_excel = st.columns(2)
+
 # ── 10.1 — Exportar a PDF ───────────────────────────────────────────────────
 st.markdown("---")
-if st.button("📄 Generar PDF del informe"):
+if _btn_pdf.button("📄 Generar PDF del informe", use_container_width=True):
     with st.spinner("Generando PDF… (puede tardar unos segundos)"):
         try:
             _pdf_dir = Path(tempfile.mkdtemp(prefix="agente_pdf_"))
@@ -552,6 +608,20 @@ if st.button("📄 Generar PDF del informe"):
             )
         except Exception as _e:
             st.error(f"Error al generar el PDF: {_e}")
+
+# ── 12.5 — Botón de descarga Excel ─────────────────────────────────────────
+with _btn_excel:
+    try:
+        _xl_bytes = _payload_to_excel(payload)
+        st.download_button(
+            label="📊 Descargar Excel",
+            data=_xl_bytes,
+            file_name=f"informe_{competition}_{season}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    except Exception as _e:
+        st.error(f"Error al generar el Excel: {_e}")
 
 # ── Datos en bruto (expandible) ─────────────────────────────────────────────
 with st.expander("🗂️ Datos en bruto (JSON)"):

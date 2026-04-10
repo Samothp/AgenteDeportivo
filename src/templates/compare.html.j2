@@ -1,0 +1,87 @@
+{% extends "base.html.j2" %}
+
+{% block title %}{{ team1 }} vs {{ team2 }}{% endblock %}
+
+{% block extra_style %}
+    .header-box { background: linear-gradient(135deg, #2e86de 0%, #e74c3c 100%); }
+    th.t1 { background: #dbeafe; color: #1e40af; }
+    th.t2 { background: #fee2e2; color: #991b1b; }
+{% endblock %}
+
+{% block content %}
+  <div class="header-box">
+    <h1>{{ team1 }}  vs  {{ team2 }}</h1>
+    <p>Comparativa de rendimiento en la temporada</p>
+  </div>
+
+  {# Métricas de rendimiento #}
+  <h2>Métricas de rendimiento</h2>
+  <table>
+    <thead>
+      <tr><th class="left">Métrica</th><th class="t1">{{ team1 }}</th><th class="t2">{{ team2 }}</th></tr>
+    </thead>
+    <tbody>
+    {% for row in metric_rows %}
+      <tr>
+        <td class="left">{{ row.label }}</td>
+        <td{% if row.style1 %} style="{{ row.style1 }}"{% endif %}>{{ row.v1 }}</td>
+        <td{% if row.style2 %} style="{{ row.style2 }}"{% endif %}>{{ row.v2 }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {# Historial #}
+  <h2>Historial de la temporada</h2>
+  <table>
+    <thead>
+      <tr><th class="left">Historial</th><th class="t1">{{ team1 }}</th><th class="t2">{{ team2 }}</th></tr>
+    </thead>
+    <tbody>
+    {% for row in record_rows %}
+      <tr>
+        <td class="left">{{ row.label }}</td>
+        <td{% if row.style1 %} style="{{ row.style1 }}"{% endif %}>{{ row.v1 }}</td>
+        <td{% if row.style2 %} style="{{ row.style2 }}"{% endif %}>{{ row.v2 }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {# Cara a cara #}
+  <h2>Cara a cara ({{ hs_pj }} partidos)</h2>
+  <table>
+    <tbody>
+      <tr><td class="left">Victorias {{ team1 }}</td><td colspan="2" class="t1">{{ hs_wins1 }}</td></tr>
+      <tr><td class="left">Empates</td><td colspan="2">{{ hs_draws }}</td></tr>
+      <tr><td class="left">Victorias {{ team2 }}</td><td colspan="2" class="t2">{{ hs_wins2 }}</td></tr>
+      <tr><td class="left">Goles {{ team1 }} / {{ team2 }}</td><td>{{ hs_gf1 }}</td><td>{{ hs_gf2 }}</td></tr>
+    </tbody>
+  </table>
+
+  {% if h2h %}
+  <table>
+    <thead><tr><th>Jornada</th><th>Local</th><th>Resultado</th><th>Visitante</th></tr></thead>
+    <tbody>
+    {% for m in h2h %}
+      <tr>
+        <td>{{ m.jornada }}</td>
+        <td>{{ m.local }}</td>
+        <td>{{ m.goles_local }} - {{ m.goles_visitante }}</td>
+        <td>{{ m.visitante }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {# Gráficos #}
+  {% if images %}
+  <h2>Radar comparativo</h2>
+  <div>
+    {% for img in images %}
+    <img src="{{ img }}" alt="Radar comparativo">
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endblock %}

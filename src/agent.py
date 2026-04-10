@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import numpy as np
 import pandas as pd
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .analysis import (
     compute_compare,
@@ -70,6 +71,24 @@ from .visualizer import (
 
 
 class SportsAgent:
+    # 12.1 — Entorno Jinja2 compartido por todas las instancias
+    _jinja_env: Optional[Environment] = None
+
+    @classmethod
+    def _get_jinja_env(cls) -> Environment:
+        if cls._jinja_env is None:
+            templates_dir = Path(__file__).parent / "templates"
+            cls._jinja_env = Environment(
+                loader=FileSystemLoader(str(templates_dir)),
+                autoescape=select_autoescape(["html"]),
+                keep_trailing_newline=True,
+            )
+        return cls._jinja_env
+
+    def _render_template(self, template_name: str, context: dict) -> str:
+        """Renderiza un template Jinja2 y devuelve el HTML generado."""
+        return self._get_jinja_env().get_template(template_name).render(**context)
+
     def __init__(self, config: AgentConfig):
         self.data_path = config.data_path
         self.fetch_real = config.fetch_real
@@ -601,7 +620,7 @@ class SportsAgent:
         return report_text
 
     def _generate_compare_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
-        """Informe HTML para el modo Compare (dos equipos)."""
+        """Informe HTML para el modo Compare (dos equipos) — renderizado con Jinja2."""
         c = self.compare_data
         team1 = c.get('team1', '?')
         team2 = c.get('team2', '?')
@@ -622,28 +641,17 @@ class SportsAgent:
             for img in images if img
         ]
 
-        def fmt(v):
+        def _fmt(v: object) -> str:
             if v is None:
                 return '-'
             try:
-                return f'{float(v):.2f}'
+                return f'{float(v):.2f}'  # type: ignore[arg-type]
             except (ValueError, TypeError):
                 return str(v)
 
-        metric_rows = [
-            ('goles_a_favor_promedio', 'Goles / partido'),
-            ('goles_concedidos_promedio', 'Goles encajados / p'),
-            ('xg_equipo_promedio', 'xG / partido'),
-            ('tiros_equipo_promedio', 'Tiros / partido'),
-            ('posesion_equipo_promedio', 'Posesión (%)'),
-            ('tiros_a_puerta_equipo_promedio', 'Tiros a ptas / p'),
-        ]
-        record_rows = [('victorias', 'Victorias'), ('empates', 'Empates'), ('derrotas', 'Derrotas'), ('puntos', 'Puntos')]
-
-        def better(v1, v2, higher_is_better=True):
-            """Retorna (bold1, bold2) css class."""
+        def _better(v1: object, v2: object, higher_is_better: bool = True) -> tuple[str, str]:
             try:
-                f1, f2 = float(v1), float(v2)
+                f1, f2 = float(v1), float(v2)  # type: ignore[arg-type]
                 if f1 == f2:
                     return '', ''
                 if higher_is_better:
@@ -653,67 +661,32 @@ class SportsAgent:
             except (ValueError, TypeError):
                 return '', ''
 
-        html = [
-            '<!DOCTYPE html>',
-            '<html lang="es">',
-            '<head>',
-            '  <meta charset="UTF-8">',
-            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
-            f'  <title>Comparativa: {team1} vs {team2}</title>',
-            '  <style>',
-            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
-            '    h2 { color: #2c7bb6; border-bottom: 2px solid #d0e4f7; padding-bottom: 4px; }',
-            '    .header-box { background: linear-gradient(135deg, #2e86de 0%, #e74c3c 100%);',
-            '      color: white; border-radius: 12px; padding: 20px 28px; margin-bottom: 24px; }',
-            '    .header-box h1 { color: white; margin: 0; }',
-            '    table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.92em; }',
-            '    th, td { padding: 8px 12px; border: 1px solid #d7dbe3; text-align: center; }',
-            '    th { background: #e4efff; }',
-            '    th.t1 { background: #dbeafe; color: #1e40af; }',
-            '    th.t2 { background: #fee2e2; color: #991b1b; }',
-            '    td.left { text-align: left; }',
-            '    img { max-width: 100%; border-radius: 8px; margin: 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '  </style>',
-            '</head>',
-            '<body>',
-            '  <div class="header-box">',
-            f'    <h1>{team1}  vs  {team2}</h1>',
-            f'    <p>Comparativa de rendimiento en la temporada</p>',
-            '  </div>',
-
-            # Métricas
-            '  <h2>Métricas de rendimiento</h2>',
-            '  <table>',
-            f'    <thead><tr><th class="left">Métrica</th><th class="t1">{team1}</th><th class="t2">{team2}</th></tr></thead>',
-            '    <tbody>',
+        # Métricas comparadas
+        metric_keys = [
+            ('goles_a_favor_promedio',         'Goles / partido',         True),
+            ('goles_concedidos_promedio',       'Goles encajados / p',     False),
+            ('xg_equipo_promedio',              'xG / partido',            True),
+            ('tiros_equipo_promedio',           'Tiros / partido',         True),
+            ('posesion_equipo_promedio',        'Posesión (%)',            True),
+            ('tiros_a_puerta_equipo_promedio',  'Tiros a ptas / p',        True),
         ]
-        low_is_better = {'goles_concedidos_promedio'}
-        for key, label in metric_rows:
+        metric_rows = []
+        for key, label, hib in metric_keys:
             v1 = m1.get(key)
             v2 = m2.get(key)
-            s1 = fmt(v1)
-            s2 = fmt(v2)
-            hib = key not in low_is_better
-            b1, b2 = better(v1, v2, hib)
-            html.append(f'      <tr><td class="left">{label}</td>'
-                        f'<td style="{b1}">{s1}</td>'
-                        f'<td style="{b2}">{s2}</td></tr>')
-        html.append('    </tbody></table>')
+            s1, s2 = _fmt(v1), _fmt(v2)
+            b1, b2 = _better(v1, v2, hib)
+            metric_rows.append({'label': label, 'v1': s1, 'v2': s2, 'style1': b1, 'style2': b2})
 
-        # Historial
-        html.extend([
-            '  <h2>Historial de la temporada</h2>',
-            '  <table>',
-            f'    <thead><tr><th class="left">Historial</th><th class="t1">{team1}</th><th class="t2">{team2}</th></tr></thead>',
-            '    <tbody>',
-        ])
-        for key, label in record_rows:
+        # Historial de temporada
+        record_keys = [('victorias', 'Victorias'), ('empates', 'Empates'), ('derrotas', 'Derrotas'), ('puntos', 'Puntos')]
+        record_rows = []
+        for key, label in record_keys:
             v1 = r1.get(key, '-')
             v2 = r2.get(key, '-')
-            b1, b2 = better(v1, v2)
-            html.append(f'      <tr><td class="left">{label}</td>'
-                        f'<td style="{b1}">{v1}</td>'
-                        f'<td style="{b2}">{v2}</td></tr>')
+            b1, b2 = _better(v1, v2)
+            record_rows.append({'label': label, 'v1': v1, 'v2': v2, 'style1': b1, 'style2': b2})
+
         pj1 = len(r1.get('tabla_resultados', []))
         pj2 = len(r2.get('tabla_resultados', []))
         gf1_tot = sum(x['gf'] for x in r1.get('tabla_resultados', []))
@@ -722,53 +695,32 @@ class SportsAgent:
         gc2_tot = sum(x['gc'] for x in r2.get('tabla_resultados', []))
         dif1_tot = gf1_tot - gc1_tot
         dif2_tot = gf2_tot - gc2_tot
-        dif1_str = f'+{dif1_tot}' if dif1_tot > 0 else str(dif1_tot)
-        dif2_str = f'+{dif2_tot}' if dif2_tot > 0 else str(dif2_tot)
-        b1pj, b2pj = better(pj1, pj2)
-        b1gf, b2gf = better(gf1_tot, gf2_tot)
-        b1gc, b2gc = better(gc1_tot, gc2_tot, higher_is_better=False)
-        b1dif, b2dif = better(dif1_tot, dif2_tot)
-        html.append(f'      <tr><td class="left">Partidos</td><td style="{b1pj}">{pj1}</td><td style="{b2pj}">{pj2}</td></tr>')
-        html.append(f'      <tr><td class="left">Goles a favor (GF)</td><td style="{b1gf}">{gf1_tot}</td><td style="{b2gf}">{gf2_tot}</td></tr>')
-        html.append(f'      <tr><td class="left">Goles en contra (GC)</td><td style="{b1gc}">{gc1_tot}</td><td style="{b2gc}">{gc2_tot}</td></tr>')
-        html.append(f'      <tr><td class="left">Diferencia de goles</td><td style="{b1dif}">{dif1_str}</td><td style="{b2dif}">{dif2_str}</td></tr>')
-        html.append('    </tbody></table>')
 
-        # H2H
-        html.extend([
-            f'  <h2>Cara a cara ({hs.get("pj", 0)} partidos)</h2>',
-            '  <table>',
-            '    <tbody>',
-            f'      <tr><td class="left">Victorias {team1}</td><td colspan="2" class="t1">{hs.get("wins1", 0)}</td></tr>',
-            f'      <tr><td class="left">Empates</td><td colspan="2">{hs.get("draws", 0)}</td></tr>',
-            f'      <tr><td class="left">Victorias {team2}</td><td colspan="2" class="t2">{hs.get("wins2", 0)}</td></tr>',
-            f'      <tr><td class="left">Goles {team1} / {team2}</td><td>{hs.get("gf1", 0)}</td><td>{hs.get("gf2", 0)}</td></tr>',
-            '    </tbody></table>',
-        ])
-        if h2h:
-            html.extend([
-                '  <table>',
-                '    <thead><tr><th>Jornada</th><th>Local</th><th>Resultado</th><th>Visitante</th></tr></thead>',
-                '    <tbody>',
-            ])
-            for m in h2h[-10:]:
-                jor = m.get('jornada', '?')
-                loc = m.get('local', '?')
-                vis = m.get('visitante', '?')
-                res = f'{m.get("goles_local", "?")} - {m.get("goles_visitante", "?")}'
-                html.append(f'      <tr><td>{jor}</td><td>{loc}</td><td>{res}</td><td>{vis}</td></tr>')
-            html.append('    </tbody></table>')
-
-        # Gráfico radar
-        if relative_images:
-            html.extend(['  <h2>Radar comparativo</h2>', '  <div>'])
-            for img in relative_images:
-                html.append(f'    <img src="{img}" alt="Radar comparativo">')
-            html.append('  </div>')
-
-        html.extend(['</body>', '</html>'])
-        content = '\n'.join(html)
-        report_file.write_text(content, encoding='utf-8')
+        context = {
+            'team1':       team1,
+            'team2':       team2,
+            'metric_rows': metric_rows,
+            'record_rows': record_rows,
+            'hs_pj':       hs.get('pj', 0),
+            'wins1':       hs.get('wins1', 0),
+            'draws':       hs.get('draws', 0),
+            'wins2':       hs.get('wins2', 0),
+            'gf1':         hs.get('gf1', 0),
+            'gf2':         hs.get('gf2', 0),
+            'pj1':         pj1,
+            'pj2':         pj2,
+            'gf1_tot':     gf1_tot,
+            'gc1_tot':     gc1_tot,
+            'gf2_tot':     gf2_tot,
+            'gc2_tot':     gc2_tot,
+            'dif1_str':    (f'+{dif1_tot}' if dif1_tot > 0 else str(dif1_tot)),
+            'dif2_str':    (f'+{dif2_tot}' if dif2_tot > 0 else str(dif2_tot)),
+            'dif1_style':  _better(dif1_tot, dif2_tot)[0],
+            'dif2_style':  _better(dif1_tot, dif2_tot)[1],
+            'h2h':         h2h[-10:],
+            'images':      relative_images,
+        }
+        report_file.write_text(self._render_template('compare.html.j2', context), encoding='utf-8')
         return output_path
 
     def _generate_liga_report(self, output_path: Optional[str] = None) -> str:
@@ -892,7 +844,7 @@ class SportsAgent:
         return report_text
 
     def _generate_liga_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
-        """Informe HTML para el modo Liga."""
+        """Informe HTML para el modo Liga — renderizado con Jinja2."""
         s = self.liga_summary
         report_file = Path(output_path)
         report_file.parent.mkdir(parents=True, exist_ok=True)
@@ -906,198 +858,74 @@ class SportsAgent:
         ]
 
         pmg = s['partido_mas_goleador']
-        r = s['records']
+        r   = s['records']
 
-        html = [
-            '<!DOCTYPE html>',
-            '<html lang="es">',
-            '<head>',
-            '  <meta charset="UTF-8">',
-            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
-            f'  <title>{s["competition"]} {s["season"]}</title>',
-            '  <style>',
-            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
-            '    h1 { color: #1f4e79; } h2 { color: #2c7bb6; border-bottom: 2px solid #d0e4f7; padding-bottom: 4px; }',
-            '    .header-box { background: #1f4e79; color: white; border-radius: 12px;',
-            '      padding: 20px 28px; margin-bottom: 24px; }',
-            '    .header-box h1 { color: white; margin: 0 0 8px 0; }',
-            '    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }',
-            '    .kpi { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align:center; }',
-            '    .kpi .val { font-size: 1.8em; font-weight: bold; color: #1f4e79; }',
-            '    .kpi .lbl { font-size: 0.85em; color: #666; margin-top: 4px; }',
-            '    table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.9em; }',
-            '    th, td { padding: 7px 10px; border: 1px solid #d7dbe3; text-align: center; }',
-            '    th { background: #e4efff; }',
-            '    td.left { text-align: left; }',
-            '    tr.ucl td { background: #cce5ff; }',
-            '    tr.uel td { background: #d4edda; }',
-            '    tr.uecl td { background: #e8f5e9; }',
-            '    tr.descenso td { background: #fde8e8; }',
-            '    .zona-badge { font-size: 0.7em; vertical-align: middle; margin-left: 4px; opacity: 0.7; }',
-            '    .records { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '    .records ul { margin: 0; padding-left: 20px; line-height: 1.8; }',
-            '    img { max-width: 100%; border-radius: 8px; margin: 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 16px; }',
-            '  </style>',
-            '</head>',
-            '<body>',
-            f'  <div class="header-box">',
-            *(
-                [f'    <h1>{s["competition"]} — {s["season"]} &nbsp;<small style="font-size:0.6em;opacity:0.85">Jornadas {self.matchday_range[0]}–{self.matchday_range[1]}</small></h1>']
-                if self.matchday_range else
-                [f'    <h1>{s["competition"]} — {s["season"]}</h1>']
-            ),
-            f'    <p>Jornadas: {s["jornadas"]} &nbsp;|&nbsp; Partidos: {s["partidos_totales"]}</p>',
-            '  </div>',
-
-            # KPIs
-            '  <div class="kpi-grid">',
-            f'    <div class="kpi"><div class="val">{s["goles_totales"]}</div><div class="lbl">Goles totales</div></div>',
-            f'    <div class="kpi"><div class="val">{s["goles_promedio"]}</div><div class="lbl">Goles por partido</div></div>',
-            f'    <div class="kpi"><div class="val">{pmg["local"]} {pmg["goles_l"]}-{pmg["goles_v"]} {pmg["visitante"]}</div><div class="lbl">Partido más goleador</div></div>',
-            f'    <div class="kpi"><div class="val">{r["equipo_mas_goleador"]}</div><div class="lbl">Equipo más goleador</div></div>',
-            f'    <div class="kpi"><div class="val">{r["equipo_menos_goleado"]}</div><div class="lbl">Menos goleado</div></div>',
-            '  </div>',
-
-            # Récords
-            '  <h2>Récords de la temporada</h2>',
-            '  <div class="records"><ul>',
-            f'    <li><strong>Mejor racha:</strong> {r["equipo_mejor_racha"]} — {r["mejor_racha_victorias"]} victorias consecutivas</li>',
-        ]
-        if r['arbitro_top']:
-            html.append(f'    <li><strong>Árbitro más activo:</strong> {r["arbitro_top"]["nombre"]} ({r["arbitro_top"]["partidos"]} partidos)</li>')
-        if r['partido_max_asistencia']:
-            pa = r['partido_max_asistencia']
-            html.append(f'    <li><strong>Mayor asistencia:</strong> {pa["local"]} vs {pa["visitante"]} — {pa["espectadores"]:,} espectadores ({pa["estadio"]})</li>')
-        html.extend(['  </ul></div>'])
-
-        # Clasificación
+        # Preparar filas de clasificación como lista de dicts
         clf = s['clasificacion']
         total_teams = len(clf)
-        html.extend([
-            '  <h2>Clasificación</h2>',
-            '  <table>',
-            '    <thead><tr><th>Pos</th><th class="left">Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>DIF</th><th>PTS</th></tr></thead>',
-            '    <tbody>',
-        ])
-        for _, row in clf.iterrows():
-            pos = int(row['Pos'])
-            dif = f'+{int(row["DIF"])}' if row['DIF'] > 0 else str(int(row['DIF']))
-            if pos <= 4:
-                tr_class = ' class="ucl"'
-                badge = ' <span class="zona-badge" title="Champions League">🏦</span>'
-            elif pos <= 6:
-                tr_class = ' class="uel"'
-                badge = ' <span class="zona-badge" title="Europa League">🌟</span>'
-            elif pos == 7:
-                tr_class = ' class="uecl"'
-                badge = ' <span class="zona-badge" title="Conference League">🌿</span>'
-            elif pos >= total_teams - 2:
-                tr_class = ' class="descenso"'
-                badge = ' <span class="zona-badge" title="Descenso">⬇️</span>'
-            else:
-                tr_class = ''
-                badge = ''
-            html.append(
-                f'      <tr{tr_class}><td>{pos}</td>'
-                f'<td class="left"><strong>{row["Equipo"]}</strong>{badge}</td>'
-                f'<td>{int(row["PJ"])}</td><td>{int(row["G"])}</td><td>{int(row["E"])}</td><td>{int(row["P"])}</td>'
-                f'<td>{int(row["GF"])}</td><td>{int(row["GC"])}</td><td>{dif}</td><td><strong>{int(row["PTS"])}</strong></td></tr>'
-            )
-        html.extend(['    </tbody>', '  </table>'])
+        clf_rows = clf.to_dict(orient='records')
 
-        # Stats técnicas por equipo
-        st = s['stats_por_equipo']
-        html.extend([
-            '  <h2>Estadísticas técnicas por equipo</h2>',
-            '  <table>',
-            '    <thead><tr><th class="left">Equipo</th><th>GF</th><th>GC</th><th>xG medio</th><th>Over%</th><th>Posesión %</th><th>Tiros/partido</th></tr></thead>',
-            '    <tbody>',
-        ])
-        for _, row in st.iterrows():
-            xg  = f'{row["xG"]:.2f}' if pd.notna(row.get('xG')) and row.get('xG') is not None else '-'
-            over = f'{row["Over%"]:.2f}' if pd.notna(row.get('Over%')) and row.get('Over%') is not None else '-'
-            poss = f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-'
-            tir = f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-'
+        # Preparar filas técnicas
+        st_rows = []
+        for _, row in s['stats_por_equipo'].iterrows():
             over_val = row.get('Over%')
-            over_color = ''
             if pd.notna(over_val) and over_val is not None:
-                over_color = ' style="color:#27ae60;font-weight:bold"' if over_val > 1.2 else (' style="color:#e74c3c;font-weight:bold"' if over_val < 0.8 else '')
-            html.append(
-                f'      <tr><td class="left">{row["Equipo"]}</td>'
-                f'<td>{int(row["GF"])}</td><td>{int(row["GC"])}</td>'
-                f'<td>{xg}</td><td{over_color}>{over}</td><td>{poss}</td><td>{tir}</td></tr>'
-            )
-        html.extend(['    </tbody>', '  </table>'])
+                over_color = ('color:#27ae60;font-weight:bold' if over_val > 1.2
+                              else ('color:#e74c3c;font-weight:bold' if over_val < 0.8 else ''))
+            else:
+                over_color = ''
+            st_rows.append({
+                'Equipo': row['Equipo'],
+                'GF':     int(row['GF']),
+                'GC':     int(row['GC']),
+                'xG':     f'{row["xG"]:.2f}' if pd.notna(row.get('xG')) and row.get('xG') is not None else '-',
+                'Over':   f'{over_val:.2f}' if pd.notna(over_val) and over_val is not None else '-',
+                'Pos':    f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-',
+                'Tiros':  f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-',
+                'over_color': over_color,
+            })
 
-        # Clasificación por puntos esperados (xPts)
-        xpts = s.get('xpts_standings')
-        if xpts is not None and not xpts.empty:
-            html.extend([
-                '  <h2>Clasificación por puntos esperados <small style="color:#666;font-size:0.6em">(modelo Poisson sobre xG)</small></h2>',
-                '  <p style="color:#666;font-size:0.85em;margin-top:-8px">Diferencia positiva = equipo puntúa más de lo que sus xG sugieren (suerte/eficiencia). Diferencia negativa = infrarendimiento.</p>',
-                '  <table>',
-                '    <thead><tr><th>Pos</th><th class="left">Equipo</th><th>PJ</th><th>xPts</th><th>PTS reales</th><th>Diferencia</th></tr></thead>',
-                '    <tbody>',
-            ])
-            for _, row in xpts.iterrows():
-                diff = row['Diff']
-                if diff > 2:
-                    diff_color = ' style="color:#27ae60;font-weight:bold"'
-                    diff_str = f'+{diff:.1f}'
-                elif diff < -2:
-                    diff_color = ' style="color:#e74c3c;font-weight:bold"'
-                    diff_str = f'{diff:.1f}'
-                else:
-                    diff_color = ' style="color:#666"'
-                    diff_str = f'+{diff:.1f}' if diff >= 0 else f'{diff:.1f}'
-                html.append(
-                    f'      <tr><td>{int(row["Pos"])}</td>'
-                    f'<td class="left">{row["Equipo"]}</td>'
-                    f'<td>{int(row["PJ"])}</td>'
-                    f'<td><strong>{row["xPts"]:.1f}</strong></td>'
-                    f'<td>{int(row["PTS"])}</td>'
-                    f'<td{diff_color}>{diff_str}</td></tr>'
-                )
-            html.extend(['    </tbody>', '  </table>'])
+        # Preparar xPts
+        xpts_obj = s.get('xpts_standings')
+        xpts_rows = xpts_obj.to_dict(orient='records') if (xpts_obj is not None and not xpts_obj.empty) else []
 
-        # Rendimiento local/visitante
-        ha = s['home_away']
-        html.extend([
-            '  <h2>Rendimiento local vs visitante</h2>',
-            '  <table>',
-            '    <thead><tr><th class="left">Equipo</th><th>PJ Local</th><th>Pts Local</th><th>PJ Visit.</th><th>Pts Visit.</th></tr></thead>',
-            '    <tbody>',
-        ])
-        for _, row in ha.iterrows():
-            html.append(
-                f'      <tr><td class="left">{row["Equipo"]}</td>'
-                f'<td>{int(row["PJ_L"])}</td><td><strong>{int(row["Pts_L"])}</strong></td>'
-                f'<td>{int(row["PJ_V"])}</td><td><strong>{int(row["Pts_V"])}</strong></td></tr>'
-            )
-        html.extend(['    </tbody>', '  </table>'])
+        # Preparar home/away
+        ha_rows = s['home_away'].to_dict(orient='records')
 
-        if relative_images:
-            html.extend(['  <h2>Gráficos</h2>', '  <div class="charts">'])
-            for img in relative_images:
-                html.append(f'    <img src="{img}" alt="Gráfico de liga">')
-            html.append('  </div>')
-
+        # Conclusiones e intertemporada (HTML y texto plano)
         conclusions_html = self._generate_conclusions_html()
-        if conclusions_html:
-            html.append(conclusions_html)
+        interseason_lines = self._generate_interseason_narrative()
+        interseason_text = '\n'.join(interseason_lines) if interseason_lines else ''
 
-        interseason = self._generate_interseason_narrative()
-        if interseason:
-            html.append('  <h2>Evolución intertemporada</h2>')
-            html.append('  <div style="background:white;border-radius:8px;padding:16px 20px;'
-                        'box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:24px;">')
-            html.append('  <pre style="font-family:monospace;font-size:0.88em;margin:0;">')
-            html.append('\n'.join(interseason))
-            html.append('  </pre></div>')
-
-        html.extend(['</body>', '</html>'])
-        report_file.write_text('\n'.join(html), encoding='utf-8')
+        context = {
+            'competition':         s['competition'],
+            'season':              s['season'],
+            'jornadas':            s['jornadas'],
+            'partidos_totales':    s['partidos_totales'],
+            'goles_totales':       s['goles_totales'],
+            'goles_promedio':      s['goles_promedio'],
+            'pmg_local':           pmg['local'],
+            'pmg_gl':              pmg['goles_l'],
+            'pmg_gv':              pmg['goles_v'],
+            'pmg_visitante':       pmg['visitante'],
+            'equipo_mas_goleador': r['equipo_mas_goleador'],
+            'equipo_menos_goleado':r['equipo_menos_goleado'],
+            'equipo_mejor_racha':  r['equipo_mejor_racha'],
+            'mejor_racha_victorias': r['mejor_racha_victorias'],
+            'arbitro_top':         r['arbitro_top'],
+            'partido_max_asistencia': r['partido_max_asistencia'],
+            'clasificacion':       clf_rows,
+            'total_teams':         total_teams,
+            'stats_por_equipo':    st_rows,
+            'xpts':                xpts_rows,
+            'home_away':           ha_rows,
+            'images':              relative_images,
+            'matchday_range':      self.matchday_range,
+            'conclusions_html':    conclusions_html,
+            'interseason':         interseason_text,
+        }
+        content = self._render_template('liga.html.j2', context)
+        report_file.write_text(content, encoding='utf-8')
         return str(report_file)
 
     def _generate_match_report(self, output_path: Optional[str] = None) -> str:
@@ -1171,7 +999,7 @@ class SportsAgent:
         return report_text
 
     def _generate_match_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
-        """Informe HTML para el modo Partido."""
+        """Informe HTML para el modo Partido — renderizado con Jinja2."""
         m = self.match_detail
         report_file = Path(output_path)
         report_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1189,132 +1017,34 @@ class SportsAgent:
             else 'Victoria visitante' if m['resultado'] == 'visitante'
             else 'Empate'
         )
-        color_res = '#27ae60' if m['resultado'] == 'local' else ('#e74c3c' if m['resultado'] == 'visitante' else '#f39c12')
+        color_res = (
+            '#27ae60' if m['resultado'] == 'local'
+            else '#e74c3c' if m['resultado'] == 'visitante'
+            else '#f39c12'
+        )
 
-        html = [
-            '<!DOCTYPE html>',
-            '<html lang="es">',
-            '<head>',
-            '  <meta charset="UTF-8">',
-            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
-            f'  <title>{m["local"]} vs {m["visitante"]}</title>',
-            '  <style>',
-            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
-            '    h1, h2 { color: #1f4e79; }',
-            '    .section { margin-bottom: 24px; }',
-            '    .scoreboard { text-align: center; background: white; border-radius: 12px;',
-            '      padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); margin-bottom: 24px; }',
-            '    .score { font-size: 3em; font-weight: bold; color: #1f4e79; }',
-            '    .teams { font-size: 1.3em; margin-bottom: 8px; }',
-            '    .result-badge { display: inline-block; padding: 4px 16px; border-radius: 20px;',
-            f'      background: {color_res}; color: white; font-weight: bold; margin-top: 8px; }}',
-            '    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }',
-            '    .metric { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '    table { width: 100%; border-collapse: collapse; margin-top: 12px; }',
-            '    th, td { padding: 8px 10px; border: 1px solid #d7dbe3; text-align: center; }',
-            '    th { background: #e4efff; }',
-            '    td.stat-name { text-align: center; font-weight: bold; }',
-            '    .adv-local { background: #d4edfa; }',
-            '    .adv-visit { background: #fde8e8; }',
-            '    .narrativa { background: white; padding: 16px; border-radius: 8px;',
-            '      box-shadow: 0 2px 8px rgba(0,0,0,0.08); font-style: italic; line-height: 1.6; }',
-            '    img { max-width: 100%; border-radius: 8px; margin-top: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '  </style>',
-            '</head>',
-            '<body>',
-            '  <div class="scoreboard">',
-            f'    <div class="teams"><strong>{m["local"]}</strong> vs <strong>{m["visitante"]}</strong></div>',
-            f'    <div class="score">{m["goles_local"]} — {m["goles_visitante"]}</div>',
-            f'    <div class="result-badge">{resultado_str}</div>',
-            '  </div>',
-            '  <div class="section">',
-            '    <h2>Datos del partido</h2>',
-            '    <div class="metrics">',
-            f'      <div class="metric"><strong>Fecha</strong><p>{m["fecha"][:10]}</p></div>',
-        ]
-        if m['jornada']:
-            html.append(f'      <div class="metric"><strong>Jornada</strong><p>{m["jornada"]}</p></div>')
-        html.append(f'      <div class="metric"><strong>Competición</strong><p>{m["competition"]}</p></div>')
-        html.append(f'      <div class="metric"><strong>Temporada</strong><p>{m["season"]}</p></div>')
-        if m['estadio'] != '-':
-            html.append(f'      <div class="metric"><strong>Estadio</strong><p>{m["estadio"]}</p></div>')
-        if m['arbitro'] != '-':
-            html.append(f'      <div class="metric"><strong>Árbitro</strong><p>{m["arbitro"]}</p></div>')
-        if m['espectadores']:
-            html.append(f'      <div class="metric"><strong>Espectadores</strong><p>{m["espectadores"]:,}</p></div>')
-        html.extend(['    </div>', '  </div>'])
-
-        # Contexto clasificatorio
-        cl = m.get('contexto_local')
-        cv = m.get('contexto_visitante')
-        if cl or cv:
-            html.extend([
-                '  <div class="section">',
-                '    <h2>Clasificación previa</h2>',
-                '    <table>',
-                '      <thead><tr><th>Equipo</th><th>Pos</th><th>PJ</th><th>PTS</th><th>GF</th><th>GC</th></tr></thead>',
-                '      <tbody>',
-            ])
-            if cl:
-                html.append(
-                    f'        <tr><td class="adv-local"><strong>{m["local"]}</strong></td>'
-                    f'<td>{cl["pos"]}</td><td>{cl["pj"]}</td>'
-                    f'<td><strong>{cl["pts"]}</strong></td><td>{cl["gf"]}</td><td>{cl["gc"]}</td></tr>'
-                )
-            if cv:
-                html.append(
-                    f'        <tr><td class="adv-visit"><strong>{m["visitante"]}</strong></td>'
-                    f'<td>{cv["pos"]}</td><td>{cv["pj"]}</td>'
-                    f'<td><strong>{cv["pts"]}</strong></td><td>{cv["gf"]}</td><td>{cv["gc"]}</td></tr>'
-                )
-            html.extend(['      </tbody>', '    </table>', '  </div>'])
-
-        # Stats cara a cara
-        if m['stats']:
-            html.extend([
-                '  <div class="section">',
-                '    <h2>Estadísticas cara a cara</h2>',
-                '    <table>',
-                f'      <thead><tr><th>{m["local"]}</th><th class="stat-name">Estadística</th><th>{m["visitante"]}</th></tr></thead>',
-                '      <tbody>',
-            ])
-            for s in m['stats']:
-                css = 'adv-local' if s['ventaja'] == 'local' else ('adv-visit' if s['ventaja'] == 'visitante' else '')
-                css_l = f' class="{css}"' if s['ventaja'] == 'local' else ''
-                css_v = f' class="{css}"' if s['ventaja'] == 'visitante' else ''
-                html.append(
-                    f'        <tr>'
-                    f'<td{css_l}><strong>{s["local"]}</strong></td>'
-                    f'<td class="stat-name">{s["stat"]}</td>'
-                    f'<td{css_v}><strong>{s["visitante"]}</strong></td>'
-                    f'</tr>'
-                )
-            html.extend(['      </tbody>', '    </table>', '  </div>'])
-
-        # Narrativa
-        html.extend([
-            '  <div class="section">',
-            '    <h2>Análisis del partido</h2>',
-            f'    <p class="narrativa">{m["narrativa"]}</p>',
-            '  </div>',
-        ])
-
-        if m.get('video_highlights'):
-            html.extend([
-                '  <div class="section">',
-                '    <h2>Highlights</h2>',
-                f'    <p><a href="{m["video_highlights"]}" target="_blank">Ver highlights del partido</a></p>',
-                '  </div>',
-            ])
-
-        if relative_images:
-            html.extend(['  <div class="section">', '    <h2>Gráficos</h2>'])
-            for img in relative_images:
-                html.append(f'    <img src="{img}" alt="Gráfico del partido">')
-            html.append('  </div>')
-
-        html.extend(['</body>', '</html>'])
-        report_file.write_text('\n'.join(html), encoding='utf-8')
+        context = {
+            'local':            m['local'],
+            'visitante':        m['visitante'],
+            'goles_local':      m['goles_local'],
+            'goles_visitante':  m['goles_visitante'],
+            'resultado_str':    resultado_str,
+            'color_res':        color_res,
+            'fecha':            m['fecha'][:10],
+            'jornada':          m.get('jornada'),
+            'competition':      m['competition'],
+            'season':           m['season'],
+            'estadio':          m['estadio'],
+            'arbitro':          m['arbitro'],
+            'espectadores':     m['espectadores'],
+            'contexto_local':   m.get('contexto_local'),
+            'contexto_visitante': m.get('contexto_visitante'),
+            'stats':            m['stats'],
+            'narrativa':        m['narrativa'],
+            'video_highlights': m.get('video_highlights'),
+            'images':           relative_images,
+        }
+        report_file.write_text(self._render_template('match.html.j2', context), encoding='utf-8')
         return str(report_file)
 
     def _generate_matchday_report(self, output_path: Optional[str] = None) -> str:
@@ -1388,7 +1118,7 @@ class SportsAgent:
         return report_text
 
     def _generate_matchday_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
-        """Informe HTML para el modo Jornada."""
+        """Informe HTML para el modo Jornada — renderizado con Jinja2."""
         s = self.matchday_summary
         report_file = Path(output_path)
         report_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1404,130 +1134,37 @@ class SportsAgent:
         res_bg    = {'L': '#d4edda', 'E': '#fff3cd', 'V': '#f8d7da'}
         res_label = {'L': 'Victoria local', 'E': 'Empate', 'V': 'Victoria visitante'}
 
-        html = [
-            '<!DOCTYPE html>',
-            '<html lang="es">',
-            '<head>',
-            '  <meta charset="UTF-8">',
-            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
-            f'  <title>Jornada {s["jornada"]}</title>',
-            '  <style>',
-            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
-            '    h1, h2 { color: #1f4e79; }',
-            '    .section { margin-bottom: 24px; }',
-            '    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }',
-            '    .metric { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '    table { width: 100%; border-collapse: collapse; margin-top: 12px; }',
-            '    th, td { padding: 8px 10px; border: 1px solid #d7dbe3; text-align: left; }',
-            '    th { background: #e4efff; }',
-            '    .score { font-size: 1.2em; font-weight: bold; text-align: center; }',
-            '    img { max-width: 100%; border-radius: 8px; margin-top: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '  </style>',
-            '</head>',
-            '<body>',
-            f'  <h1>Jornada {s["jornada"]}</h1>',
-        ]
-
-        if self.season:
-            html.append(
-                f'  <p><strong>Temporada:</strong> {self.season}'
-                f' &nbsp; <strong>Partidos disputados:</strong> {s["num_partidos"]}</p>'
-            )
-
-        # Tarjetas de estadísticas
-        html.extend([
-            '  <div class="section">',
-            '    <h2>Estadísticas de la jornada</h2>',
-            '    <div class="metrics">',
-            f'      <div class="metric"><strong>Goles totales</strong>'
-            f'<p style="font-size:1.4em;font-weight:bold">{s["total_goals"]}</p></div>',
-            f'      <div class="metric"><strong>Goles por partido</strong>'
-            f'<p style="font-size:1.4em;font-weight:bold">{s["avg_goals"]:.2f}</p></div>',
-        ])
-        if s['total_yellow'] is not None:
-            html.append(
-                f'      <div class="metric"><strong>Tarjetas amarillas</strong>'
-                f'<p style="font-size:1.4em;font-weight:bold">{s["total_yellow"]}</p></div>'
-            )
-        if s['total_red'] is not None:
-            html.append(
-                f'      <div class="metric"><strong>Tarjetas rojas</strong>'
-                f'<p style="font-size:1.4em;font-weight:bold">{s["total_red"]}</p></div>'
-            )
-        if s['avg_possession_local'] is not None:
-            html.append(
-                f'      <div class="metric"><strong>Posesión media local</strong>'
-                f'<p>{s["avg_possession_local"]:.1f}%</p></div>'
-            )
-            html.append(
-                f'      <div class="metric"><strong>Posesión media visitante</strong>'
-                f'<p>{s["avg_possession_visitante"]:.1f}%</p></div>'
-            )
-        html.extend(['    </div>', '  </div>'])
-
-        # Tabla de resultados
-        html.extend([
-            '  <div class="section">',
-            '    <h2>Resultados</h2>',
-            '    <table>',
-            '      <thead><tr>'
-            '<th>Local</th><th class="score">Marcador</th><th>Visitante</th><th>Tipo</th>'
-            '</tr></thead>',
-            '      <tbody>',
-        ])
+        # Enriquecer resultados con badge y color de fondo
+        enriched_results = []
         for r in s['results']:
-            bg    = res_bg.get(r['resultado'], 'white')
-            label = res_label.get(r['resultado'], '')
-            html.append(
-                f'        <tr style="background:{bg}">'
-                f'<td><strong>{r["local"]}</strong></td>'
-                f'<td class="score">{r["goles_local"]} - {r["goles_visitante"]}</td>'
-                f'<td><strong>{r["visitante"]}</strong></td>'
-                f'<td>{label}</td>'
-                f'</tr>'
-            )
-        html.extend(['      </tbody>', '    </table>', '  </div>'])
+            enriched_results.append({
+                **r,
+                'bg':    res_bg.get(r['resultado'], 'white'),
+                'label': res_label.get(r['resultado'], ''),
+            })
 
-        # Datos destacados
-        if s['most_exciting'] or s['xg_surprise']:
-            html.extend(['  <div class="section">', '    <h2>Datos destacados</h2>'])
-            if s['most_exciting']:
-                m = s['most_exciting']
-                html.append(
-                    f'    <p><strong>Partido más espectacular:</strong> '
-                    f'{m["local"]} <strong>{m["goles_local"]} - {m["goles_visitante"]}</strong>'
-                    f' {m["visitante"]} <em>({m["goles_totales"]} goles)</em></p>'
-                )
-            if s['xg_surprise']:
-                sx = s['xg_surprise']
-                html.append(
-                    f'    <p><strong>Sorpresa de la jornada (resultado vs xG):</strong> '
-                    f'{sx["local"]} <strong>{sx["goles_local"]} - {sx["goles_visitante"]}</strong>'
-                    f' {sx["visitante"]} &mdash; xG esperado: {sx["local"][:15]}'
-                    f' <em>{sx["xg_local"]}</em> - <em>{sx["xg_visitante"]}</em>'
-                    f' {sx["visitante"][:15]}</p>'
-                )
-            html.append('  </div>')
+        standings_html = (
+            s['standings'].to_html(index=False, classes='dataframe', border=0)
+            if not s['standings'].empty else ''
+        )
 
-        # Clasificación acumulada
-        if not s['standings'].empty:
-            html.extend([
-                '  <div class="section">',
-                f'    <h2>Clasificación tras la jornada {s["jornada"]}</h2>',
-                s['standings'].to_html(index=False, classes='dataframe', border=0),
-                '  </div>',
-            ])
-
-        # Gráficos
-        if relative_images:
-            html.extend(['  <div class="section">', '    <h2>Gráficos</h2>'])
-            jornada_num = s['jornada']
-            for img in relative_images:
-                html.append(f'    <img src="{img}" alt="Gráfico jornada {jornada_num}">')
-            html.append('  </div>')
-
-        html.extend(['</body>', '</html>'])
-        report_file.write_text('\n'.join(html), encoding='utf-8')
+        context = {
+            'jornada':                  s['jornada'],
+            'season':                   self.season,
+            'num_partidos':             s['num_partidos'],
+            'total_goals':              s['total_goals'],
+            'avg_goals':                s['avg_goals'],
+            'total_yellow':             s['total_yellow'],
+            'total_red':                s['total_red'],
+            'avg_possession_local':     s['avg_possession_local'],
+            'avg_possession_visitante': s['avg_possession_visitante'],
+            'results':                  enriched_results,
+            'most_exciting':            s['most_exciting'],
+            'xg_surprise':              s['xg_surprise'],
+            'standings_html':           standings_html,
+            'images':                   relative_images,
+        }
+        report_file.write_text(self._render_template('matchday.html.j2', context), encoding='utf-8')
         return str(report_file)
 
     def _generate_player_report(self, output_path: Optional[str] = None) -> str:
@@ -1594,7 +1231,7 @@ class SportsAgent:
         return report_text
 
     def _generate_player_html_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
-        """Informe HTML para el modo Jugador."""
+        """Informe HTML para el modo Jugador — renderizado con Jinja2."""
         p = self.player_profile
         report_file = Path(output_path)
         report_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1614,80 +1251,30 @@ class SportsAgent:
         top_g = p.get('compañeros_goleadores')
         top_a = p.get('compañeros_asistentes')
 
-        html = [
-            '<!DOCTYPE html>',
-            '<html lang="es">',
-            '<head>',
-            '  <meta charset="UTF-8">',
-            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
-            f'  <title>{p["player_name"]} — {p["team"]}</title>',
-            '  <style>',
-            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
-            '    h1 { color: #1f4e79; } h2 { color: #2c7bb6; border-bottom: 2px solid #d0e4f7; padding-bottom: 4px; }',
-            '    .header-box { background: #1f4e79; color: white; border-radius: 12px; padding: 20px 28px; margin-bottom: 24px; }',
-            '    .header-box h1 { color: white; margin: 0 0 8px 0; }',
-            '    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 24px; }',
-            '    .kpi { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }',
-            '    .kpi .val { font-size: 2em; font-weight: bold; color: #1f4e79; }',
-            '    .kpi .lbl { font-size: 0.82em; color: #666; margin-top: 4px; }',
-            '    .rank-badge { display: inline-block; background: #e4efff; border-radius: 20px; padding: 3px 14px; font-weight: bold; color: #1f4e79; margin: 4px; }',
-            '    table { width: 100%; border-collapse: collapse; margin: 10px 0 20px 0; font-size: 0.9em; }',
-            '    th, td { padding: 7px 10px; border: 1px solid #d7dbe3; text-align: center; }',
-            '    th { background: #e4efff; }',
-            '    td.left { text-align: left; }',
-            '    img { max-width: 100%; border-radius: 8px; margin: 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }',
-            '  </style>',
-            '</head>',
-            '<body>',
-            f'  <div class="header-box">',
-            f'    <h1>{p["player_name"]}</h1>',
-            f'    <p>{p["team"]} &nbsp;|&nbsp; {p["position"]} &nbsp;|&nbsp; Temporada {p["season"]}</p>',
-            '  </div>',
-
-            '  <div class="kpi-grid">',
-            f'    <div class="kpi"><div class="val">{p["appearances"]}</div><div class="lbl">PJ</div></div>',
-            f'    <div class="kpi"><div class="val">{p["goals"]}</div><div class="lbl">Goles</div></div>',
-            f'    <div class="kpi"><div class="val">{p["assists"]}</div><div class="lbl">Asistencias</div></div>',
-            f'    <div class="kpi"><div class="val">{p["ga"]}</div><div class="lbl">G+A</div></div>',
-            f'    <div class="kpi"><div class="val">{p["shots_on_target"]}</div><div class="lbl">Tiros a puerta</div></div>',
-            f'    <div class="kpi"><div class="val">{p["yellow_cards"]}</div><div class="lbl">Amarillas</div></div>',
-            f'    <div class="kpi"><div class="val">{p["red_cards"]}</div><div class="lbl">Rojas</div></div>',
-            '  </div>',
-
-            '  <h2>Rendimiento por partido</h2>',
-            '  <div class="kpi-grid">',
-            f'    <div class="kpi"><div class="val">{p["goles_por_partido"]:.2f}</div><div class="lbl">Goles/PJ</div></div>',
-            f'    <div class="kpi"><div class="val">{p["asistencias_por_partido"]:.2f}</div><div class="lbl">Asist/PJ</div></div>',
-            f'    <div class="kpi"><div class="val">{p["ga_por_partido"]:.2f}</div><div class="lbl">G+A/PJ</div></div>',
-            f'    <div class="kpi"><div class="val">{p["pct_partidos_con_gol"]:.0f}%</div><div class="lbl">% con gol</div></div>',
-            f'    <div class="kpi"><div class="val">{p["pct_partidos_con_ga"]:.0f}%</div><div class="lbl">% con G+A</div></div>',
-            '  </div>',
-
-            '  <h2>Ranking en el equipo</h2>',
-            f'  <p><span class="rank-badge">#{p["ranking_goles"]} goleador</span>'
-            f' <span class="rank-badge">#{p["ranking_asistencias"]} asistente</span></p>',
-        ]
-
-        if top_g is not None and not top_g.empty:
-            html.extend([
-                '  <h2>Top 5 goleadores del equipo</h2>',
-                top_g.to_html(index=False, classes='dataframe', border=0),
-            ])
-        if top_a is not None and not top_a.empty:
-            html.extend([
-                '  <h2>Top 5 asistentes del equipo</h2>',
-                top_a.to_html(index=False, classes='dataframe', border=0),
-            ])
-
-        if relative_images:
-            html.extend(['  <h2>Gráficos</h2>', '  <div class="charts">'])
-            for img in relative_images:
-                html.append(f'    <img src="{img}" alt="Gráfico de jugador">')
-            html.append('  </div>')
-
-        html.extend(['</body>', '</html>'])
-        report_file.write_text('\n'.join(html), encoding='utf-8')
+        context = {
+            'player_name':              p['player_name'],
+            'team':                     p['team'],
+            'position':                 p['position'],
+            'season':                   p['season'],
+            'appearances':              p['appearances'],
+            'goals':                    p['goals'],
+            'assists':                  p['assists'],
+            'ga':                       p['ga'],
+            'shots_on_target':          p['shots_on_target'],
+            'yellow_cards':             p['yellow_cards'],
+            'red_cards':                p['red_cards'],
+            'goles_por_partido':        p['goles_por_partido'],
+            'asistencias_por_partido':  p['asistencias_por_partido'],
+            'ga_por_partido':           p['ga_por_partido'],
+            'pct_partidos_con_gol':     p['pct_partidos_con_gol'],
+            'pct_partidos_con_ga':      p['pct_partidos_con_ga'],
+            'ranking_goles':            p['ranking_goles'],
+            'ranking_asistencias':      p['ranking_asistencias'],
+            'top_goleadores_html':      (top_g.to_html(index=False, classes='dataframe', border=0) if top_g is not None and not top_g.empty else ''),
+            'top_asistentes_html':      (top_a.to_html(index=False, classes='dataframe', border=0) if top_a is not None and not top_a.empty else ''),
+            'images':                   relative_images,
+        }
+        report_file.write_text(self._render_template('player.html.j2', context), encoding='utf-8')
         return str(report_file)
 
     def generate_report(self, output_path: Optional[str] = None) -> str:

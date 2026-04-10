@@ -75,29 +75,29 @@ Features con alto impacto de producto pero mayor esfuerzo.
 Refactorizaciones y mejoras de robustez identificadas tras el analisis post-Fase 10.
 Enfocadas en mantenibilidad a largo plazo y reduccion de deuda tecnica critica.
 
-| # | Mejora | Descripcion | Esfuerzo | Prioridad |
-|---|--------|-------------|----------|-----------|
-| 11.1 | **Retry exponencial en el cliente API** | Sustituir el time.sleep() manual de api_client.py por tenacity (@retry con backoff exponencial, 3 intentos). Cubre 429 y errores de red transitorios. | Muy bajo | Alta | ✅ |
+| # | Mejora | Descripcion | Esfuerzo | Estado |
+|---|--------|-------------|----------|--------|
+| 11.1 | **Retry exponencial en el cliente API** | Sustituir el time.sleep() manual de api_client.py por tenacity (@retry con backoff exponencial, 3 intentos). Cubre 429 y errores de red transitorios. | Muy bajo | DONE | ✅ |
 | 11.2 | **Linting y type checking en CI** | Anadir 
-uff (linting) y mypy (tipos) al workflow de GitHub Actions. Sin linting, los type hints son decorativos y los errores de estilo pasan desapercibidos. | Muy bajo | Alta |
-| 11.3 | **src/thresholds.py — constantes centralizadas** | Extraer todos los magic numbers dispersos a un unico modulo importable. | Muy bajo | Alta | ✅ |
-| 11.4 | **Coverage report en CI** | Anadir pytest --cov=src --cov-report=term-missing al workflow. | Muy bajo | Media | ✅ |
-| 11.5 | **Validacion post-carga del DataFrame** | _warn_missing_optional() emite warnings si xg, posesion o shots estan vacias tras la carga. | Bajo | Media | ✅ |
-| 11.6 | **AgentConfig dataclass** | Sustituir los 15 parametros de SportsAgent.__init__ por un @dataclass AgentConfig en src/config.py. Todos los puntos de instanciacion actualizados. | Medio | Media | ✅ |
+uff (linting) y mypy (tipos) al workflow de GitHub Actions. Sin linting, los type hints son decorativos y los errores de estilo pasan desapercibidos. | Muy bajo | DONE |
+| 11.3 | **src/thresholds.py — constantes centralizadas** | Extraer todos los magic numbers dispersos a un unico modulo importable. | Muy bajo | DONE | ✅ |
+| 11.4 | **Coverage report en CI** | Anadir pytest --cov=src --cov-report=term-missing al workflow. | Muy bajo | DONE | ✅ |
+| 11.5 | **Validacion post-carga del DataFrame** | _warn_missing_optional() emite warnings si xg, posesion o shots estan vacias tras la carga. | Bajo | DONE | ✅ |
+| 11.6 | **AgentConfig dataclass** | Sustituir los 15 parametros de SportsAgent.__init__ por un @dataclass AgentConfig en src/config.py. Todos los puntos de instanciacion actualizados. | Medio | DONE | ✅ |
 
 ---
 
-## Fase 12 â€” Producto II [BAJA PRIORIDAD]
+## Fase 12 â€” Producto II [COMPLETADA]
 
-Mejoras de producto para cuando la deuda tecnica de Fase 11 este resuelta.
+Mejoras de producto implementadas en mayo 2026.
 
-| # | Mejora | Descripcion | Esfuerzo | Prioridad |
-|---|--------|-------------|----------|-----------|
-| 12.1 | **Templates Jinja2 para los informes HTML** | Sustituir los metodos _generate_*_html_report() (150-250 lineas de f-strings cada uno) por plantillas .html.j2 renderizadas con Jinja2. Permite personalizar el diseno sin tocar la logica. | Alto | Media |
-| 12.2 | **Paginacion en el bot Telegram** | Usar inline keyboards para paginar resultados largos (clasificaciones, listas de equipos) en lugar de fragmentar el texto en mensajes. Mejor UX movil. | Medio | Media |
-| 12.3 | **Autenticacion en la API REST** | Header X-API-Key verificado contra .env. Actualmente solo hay rate limiting por IP; cualquiera con la URL ngrok puede usar la API sin restriccion. | Bajo | Alta |
-| 12.4 | **Radar comparativo en modo multi-liga** | En el modo multi-liga del dashboard, anadir un grafico de radar superpuesto con las medias de cada liga (goles, xG, posesion, defensa). Complementa las tabs con clasificacion. | Bajo | Baja |
-| 12.5 | **Exportar a Excel desde el dashboard** | Boton st.download_button con df.to_excel() junto al boton PDF. Util para usuarios que quieren manipular los datos fuera del dashboard. | Muy bajo | Baja |
+| # | Mejora | Descripcion | Esfuerzo | Estado |
+|---|--------|-------------|----------|--------|
+| 12.1 | **Templates Jinja2 para los informes HTML** | Sustituir los metodos _generate_*_html_report() (150-250 lineas de f-strings cada uno) por plantillas .html.j2 renderizadas con Jinja2. Permite personalizar el diseno sin tocar la logica. | Alto | DONE |
+| 12.2 | **Paginacion en el bot Telegram** | Usar inline keyboards para paginar resultados largos (clasificaciones, listas de equipos) en lugar de fragmentar el texto en mensajes. Mejor UX movil. | Medio | DONE |
+| 12.3 | **Autenticacion en la API REST** | Header X-API-Key verificado contra .env. Actualmente solo hay rate limiting por IP; cualquiera con la URL ngrok puede usar la API sin restriccion. | Bajo | DONE |
+| 12.4 | **Radar comparativo en modo multi-liga** | En el modo multi-liga del dashboard, anadir un grafico de radar superpuesto con las medias de cada liga (goles, xG, posesion, defensa). Complementa las tabs con clasificacion. | Bajo | DONE |
+| 12.5 | **Exportar a Excel desde el dashboard** | Boton st.download_button con df.to_excel() junto al boton PDF. Util para usuarios que quieren manipular los datos fuera del dashboard. | Muy bajo | DONE |
 
 ---
 

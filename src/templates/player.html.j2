@@ -1,0 +1,62 @@
+{% extends "base.html.j2" %}
+
+{% block title %}{{ player_name }} — {{ team }}{% endblock %}
+
+{% block extra_style %}
+    .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+    .kpi .val { font-size: 2em; }
+    .rank-badge { display: inline-block; background: #e4efff; border-radius: 20px;
+      padding: 3px 14px; font-weight: bold; color: #1f4e79; margin: 4px; }
+    .charts { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
+{% endblock %}
+
+{% block content %}
+  <div class="header-box">
+    <h1>{{ player_name }}</h1>
+    <p>{{ team }} &nbsp;|&nbsp; {{ position }} &nbsp;|&nbsp; Temporada {{ season }}</p>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi"><div class="val">{{ appearances }}</div><div class="lbl">PJ</div></div>
+    <div class="kpi"><div class="val">{{ goals }}</div><div class="lbl">Goles</div></div>
+    <div class="kpi"><div class="val">{{ assists }}</div><div class="lbl">Asistencias</div></div>
+    <div class="kpi"><div class="val">{{ ga }}</div><div class="lbl">G+A</div></div>
+    <div class="kpi"><div class="val">{{ shots_on_target }}</div><div class="lbl">Tiros a puerta</div></div>
+    <div class="kpi"><div class="val">{{ yellow_cards }}</div><div class="lbl">Amarillas</div></div>
+    <div class="kpi"><div class="val">{{ red_cards }}</div><div class="lbl">Rojas</div></div>
+  </div>
+
+  <h2>Rendimiento por partido</h2>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="val">{{ "%.2f"|format(goles_por_partido) }}</div><div class="lbl">Goles/PJ</div></div>
+    <div class="kpi"><div class="val">{{ "%.2f"|format(asistencias_por_partido) }}</div><div class="lbl">Asist/PJ</div></div>
+    <div class="kpi"><div class="val">{{ "%.2f"|format(ga_por_partido) }}</div><div class="lbl">G+A/PJ</div></div>
+    <div class="kpi"><div class="val">{{ "%.0f"|format(pct_partidos_con_gol) }}%</div><div class="lbl">% con gol</div></div>
+    <div class="kpi"><div class="val">{{ "%.0f"|format(pct_partidos_con_ga) }}%</div><div class="lbl">% con G+A</div></div>
+  </div>
+
+  <h2>Ranking en el equipo</h2>
+  <p>
+    <span class="rank-badge">#{{ ranking_goles }} goleador</span>
+    <span class="rank-badge">#{{ ranking_asistencias }} asistente</span>
+  </p>
+
+  {% if top_goleadores_html %}
+  <h2>Top 5 goleadores del equipo</h2>
+  {{ top_goleadores_html | safe }}
+  {% endif %}
+
+  {% if top_asistentes_html %}
+  <h2>Top 5 asistentes del equipo</h2>
+  {{ top_asistentes_html | safe }}
+  {% endif %}
+
+  {% if images %}
+  <h2>Gráficos</h2>
+  <div class="charts">
+    {% for img in images %}
+    <img src="{{ img }}" alt="Gráfico de jugador">
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endblock %}

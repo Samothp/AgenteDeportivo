@@ -770,3 +770,61 @@ def plot_compare_radar(compare: dict, output_path: str) -> Optional[str]:
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     return output_path
+
+
+def plot_multi_league_radar(
+    leagues: list[dict],
+    output_path: str,
+) -> Optional[str]:
+    """Radar superpuesto comparando medias de varias ligas.
+
+    Args:
+        leagues: Lista de dicts con claves ``label`` (nombre de la liga)
+            y los valores numéricos de las métricas a comparar.
+            Ejemplo::
+
+                [
+                    {"label": "La Liga 2024", "Goles/partido": 2.6, "xG/partido": 2.4, ...},
+                    {"label": "Premier 2024", "Goles/partido": 2.9, ...},
+                ]
+        output_path: Ruta de salida de la imagen PNG.
+
+    Returns:
+        Ruta de la imagen generada, o None si hay menos de 2 ligas o métricas.
+    """
+    import numpy as np
+
+    METRICS = ["Goles/partido", "xG/partido", "Posesión %", "Tiros/partido", "Corners/partido"]
+
+    # Filtrar métricas presentes en todos los registros
+    available = [m for m in METRICS if all(m in lg for lg in leagues)]
+    if len(available) < 3 or len(leagues) < 2:
+        return None
+
+    # Normalizar por el máximo entre ligas (0-1)
+    maxima = {m: max(lg[m] for lg in leagues) or 1 for m in available}
+
+    angles = np.linspace(0, 2 * np.pi, len(available), endpoint=False).tolist()
+    angles_closed = angles + angles[:1]
+
+    palette = [plt.get_cmap('tab10')(i % 10) for i in range(len(leagues))]
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': 'polar'})
+
+    for lg, color in zip(leagues, palette):
+        vals = [lg[m] / maxima[m] for m in available]
+        vals_closed = vals + vals[:1]
+        ax.plot(angles_closed, vals_closed, 'o-', linewidth=2, color=color, label=lg['label'])
+        ax.fill(angles_closed, vals_closed, alpha=0.12, color=color)
+
+    ax.set_thetagrids(np.degrees(angles), available, fontsize=9)  # type: ignore[attr-defined]
+    ax.set_ylim(0, 1)
+    ax.set_yticklabels([])
+    ax.legend(loc='upper right', bbox_to_anchor=(1.45, 1.15), fontsize=9)
+    ax.set_title('Comparativa de ligas — medias', fontsize=12, pad=20)
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return output_path

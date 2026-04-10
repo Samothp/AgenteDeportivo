@@ -32,6 +32,7 @@ Ejemplos:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -52,9 +53,10 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 try:
-    from telegram import Update
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
     from telegram.ext import (
         Application,
+        CallbackQueryHandler,
         CommandHandler,
         ContextTypes,
     )
@@ -159,6 +161,73 @@ def _split_message(text: str, max_len: int = MAX_MSG_LENGTH) -> list[str]:
     return textwrap.wrap(text, width=max_len, break_long_words=False, replace_whitespace=False)
 
 
+# ---------------------------------------------------------------------------
+# 12.2 — Paginación con inline keyboards
+# ---------------------------------------------------------------------------
+
+# Cache en memoria: key → lista de páginas (fragmentos de texto)
+_page_cache: dict[str, list[str]] = {}
+
+
+def _cache_pages(text: str) -> str:
+    """Almacena las páginas en el caché y devuelve la clave."""
+    key = hashlib.md5(text.encode()).hexdigest()[:12]
+    _page_cache[key] = _split_message(text)
+    return key
+
+
+def _page_keyboard(key: str, current: int, total: int) -> InlineKeyboardMarkup:
+    """Genera el teclado inline de navegación por páginas."""
+    buttons: list[InlineKeyboardButton] = []
+    if current > 0:
+        buttons.append(InlineKeyboardButton("◀ Anterior", callback_data=f"page:{key}:{current - 1}"))
+    buttons.append(InlineKeyboardButton(f"{current + 1}/{total}", callback_data="noop"))
+    if current < total - 1:
+        buttons.append(InlineKeyboardButton("Siguiente ▶", callback_data=f"page:{key}:{current + 1}"))
+    return InlineKeyboardMarkup([buttons])
+
+
+async def _send_paged(update: Update, text: str) -> None:
+    """Envía texto largo con paginación inline; si cabe en un mensaje, lo envía directamente."""
+    pages = _split_message(text)
+    if len(pages) == 1:
+        await update.message.reply_text(f"```\n{pages[0]}\n```", parse_mode="Markdown")
+        return
+    key = _cache_pages(text)
+    await update.message.reply_text(
+        f"```\n{pages[0]}\n```",
+        parse_mode="Markdown",
+        reply_markup=_page_keyboard(key, 0, len(pages)),
+    )
+
+
+async def callback_page(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler del callback de botones de paginación."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data or ""
+    if data == "noop":
+        return
+    parts = data.split(":")
+    if len(parts) != 3 or parts[0] != "page":
+        return
+    key, raw_page = parts[1], parts[2]
+    try:
+        page_num = int(raw_page)
+    except ValueError:
+        return
+    pages = _page_cache.get(key)
+    if not pages:
+        await query.edit_message_text("⚠️ La sesión de paginación expiró. Vuelve a ejecutar el comando.")
+        return
+    page_num = max(0, min(page_num, len(pages) - 1))
+    await query.edit_message_text(
+        f"```\n{pages[page_num]}\n```",
+        parse_mode="Markdown",
+        reply_markup=_page_keyboard(key, page_num, len(pages)),
+    )
+
+
 def _parse_base(args: tuple[str, ...]) -> tuple[int, str] | str:
     """Parsea competition y season de los argumentos del comando."""
     if len(args) < 2:
@@ -235,8 +304,7 @@ async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await update.message.reply_text("⏳ Generando informe de liga...")
     text = _run_agent_text(competition, season)
-    for fragment in _split_message(text):
-        await update.message.reply_text(f"```\n{fragment}\n```", parse_mode="Markdown")
+    await _send_paged(update, text)
 
 
 async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -257,8 +325,7 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     await update.message.reply_text(f"⏳ Generando informe de {team}...")
     text = _run_agent_text(competition, season, team=team)
-    for fragment in _split_message(text):
-        await update.message.reply_text(f"```\n{fragment}\n```", parse_mode="Markdown")
+    await _send_paged(update, text)
 
 
 async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -283,8 +350,7 @@ async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     await update.message.reply_text(f"⏳ Generando informe de la jornada {jornada}...")
     text = _run_agent_text(competition, season, matchday=jornada)
-    for fragment in _split_message(text):
-        await update.message.reply_text(f"```\n{fragment}\n```", parse_mode="Markdown")
+    await _send_paged(update, text)
 
 
 async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -313,8 +379,7 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     await update.message.reply_text(f"⏳ Comparando {team1} vs {team2}...")
     text = _run_agent_text(competition, season, compare=(team1, team2))
-    for fragment in _split_message(text):
-        await update.message.reply_text(f"```\n{fragment}\n```", parse_mode="Markdown")
+    await _send_paged(update, text)
 
 
 # 9.3 — /ayuda contextual
@@ -703,6 +768,9 @@ def main() -> None:
     application.add_handler(CommandHandler("league", cmd_liga))
     application.add_handler(CommandHandler("team", cmd_equipo))
     application.add_handler(CommandHandler("matchday", cmd_jornada))
+
+    # 12.2 — Paginación inline
+    application.add_handler(CallbackQueryHandler(callback_page, pattern=r"^(page:|noop)"))
 
     application.add_error_handler(_error_handler)
 

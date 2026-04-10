@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Agente Deportivo{% endblock %}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }
+    h1 { color: #1f4e79; }
+    h2 { color: #2c7bb6; border-bottom: 2px solid #d0e4f7; padding-bottom: 4px; }
+    .header-box { background: #1f4e79; color: white; border-radius: 12px;
+      padding: 20px 28px; margin-bottom: 24px; }
+    .header-box h1 { color: white; margin: 0 0 8px 0; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px; margin-bottom: 24px; }
+    .kpi { background: white; padding: 16px; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center; }
+    .kpi .val { font-size: 1.8em; font-weight: bold; color: #1f4e79; }
+    .kpi .lbl { font-size: 0.85em; color: #666; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.9em; }
+    th, td { padding: 7px 10px; border: 1px solid #d7dbe3; text-align: center; }
+    th { background: #e4efff; }
+    td.left { text-align: left; }
+    .records { background: white; padding: 16px; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .records ul { margin: 0; padding-left: 20px; line-height: 1.8; }
+    img { max-width: 100%; border-radius: 8px; margin: 8px 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 16px; }
+    .section { margin-bottom: 24px; }
+    {% block extra_style %}{% endblock %}
+  </style>
+</head>
+<body>
+{% block content %}{% endblock %}
+</body>
+</html>
