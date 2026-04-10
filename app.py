@@ -744,8 +744,19 @@ def _tab_run_and_display(mode: str, extra_kw: dict) -> None:
         return
     _display_metrics(payload)
     st.markdown("---")
+
+    # Punto 6 — Gráfico de evolución de puntos al inicio del modo Equipo
+    _remaining_charts = list(image_paths)
+    if payload.get("modo") == "equipo":
+        _evo = [p for p in image_paths if "temporal_evolution" in Path(p).name]
+        _remaining_charts = [p for p in image_paths if "temporal_evolution" not in Path(p).name]
+        if _evo:
+            st.subheader("📈 Evolución por jornada")
+            st.image(_evo[0], use_container_width=True)
+            st.markdown("---")
+
     _display_mode_results(payload)
-    _display_charts(image_paths)
+    _display_charts(_remaining_charts)
     _display_export(payload, kw, mode)
 
 

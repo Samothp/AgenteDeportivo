@@ -13,6 +13,7 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
   - **equipo**: victorias/empates/derrotas, puntos, goles a favor y encajados por partido, xG, posesión y overperformance.
   - **jugador**: partidos jugados, minutos, goles, asistencias, goles/90 y asistencias/90 (calculados si hay minutos disponibles).
   - **jornada / partido / compare**: métricas genéricas del equipo de contexto (goles, xG, posesión, overperformance).
+- **Evolución temporal prominente en modo Equipo (RoadmapDashboard #6)**: en `_tab_run_and_display`, para modo equipo, el gráfico `temporal_evolution.png` (ya generado por `plot_temporal_evolution`) se extrae de `image_paths` y se muestra en una sección destacada `📈 Evolución por jornada` antes de las tablas, con `use_container_width=True`. El resto de gráficos sigue apareciendo al final como hasta ahora.
 - **Forma reciente en clasificación de liga (RoadmapDashboard #5)**: nueva función `compute_team_form(df, team, last_n=5)` en `analysis.py`. Devuelve los últimos 5 resultados de cada equipo como emojis (🟢 victoria · ⚪ empate · 🔴 derrota). La columna `Forma` se añade automáticamente al DataFrame `clasificacion` dentro de `compute_liga_summary()` y fluye sin cambios al payload JSON y a la tabla del dashboard.
 - **Tablas con `column_config` y barras de progreso (RoadmapDashboard #4)**: `_show_table()` ahora aplica `st.column_config` automáticamente sobre tablas de listas de diccionarios.
   - Barras de progreso para columnas de puntos, goles y posesión (detección por nombre de columna).

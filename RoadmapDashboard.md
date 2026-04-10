@@ -39,8 +39,9 @@
   Los datos ya están en el CSV; solo requiere un cálculo adicional en `analysis.py` y renderizado en `app.py`.  
   ✅ _Completado — commit `7c3cce7`_
 
-- [ ] **6. Gráfico de evolución de puntos en modo Equipo**  
-  El visualizador ya genera este gráfico. Mostrarlo de forma prominente en la parte superior de la vista de equipo, antes de las tablas, para dar contexto temporal que las métricas estáticas no ofrecen.
+- [x] **6. Gráfico de evolución de puntos en modo Equipo**  
+  El visualizador ya genera este gráfico. Mostrarlo de forma prominente en la parte superior de la vista de equipo, antes de las tablas, para dar contexto temporal que las métricas estáticas no ofrecen.  
+  ✅ _Completado — commit pendiente_
 
 - [ ] **7. Stats per-90 en modo Jugador**  
   Añadir métricas estándar del análisis moderno calculadas sobre los minutos jugados:  
