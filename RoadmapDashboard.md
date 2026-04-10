@@ -28,7 +28,7 @@
   - Barras de progreso en columnas de puntos, goles y posesión.  
   - Porcentajes formateados (p. ej. posesión: `52.3%`).  
   - Búsqueda y filtrado nativos habilitados en tablas largas.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `a42abf3`_
 
 ---
 
