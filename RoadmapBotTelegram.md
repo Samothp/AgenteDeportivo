@@ -42,10 +42,8 @@
 - [x] **10. Comando `/temporadas <comp>`** ✅
   Handler `cmd_temporadas` que escanea `data/` buscando ficheros `db_<comp>_<año>.csv` con regex y muestra las temporadas encontradas con su etiqueta (ej. `2025` → `25/26`). Si no hay ninguna, sugiere el comando de descarga.
 
-- [ ] **11. Enviar gráficos como foto adjunta**
-  Todos los agentes usan `no_charts=True`: los usuarios solo reciben texto plano.
-  Cambiar `/equipo`, `/liga` y `/compare` para generar gráficos en un directorio temporal y enviarlos con `reply_photo()` o `reply_document()` tras el texto de informe.
-  Añadir opción para desactivarlo con `/equipo ... --texto` para usuarios que prefieran solo texto.
+- [x] **11. Enviar gráficos como foto adjunta** ✅
+  Nueva función `_run_agent_with_charts(comp, season, tmp_dir, **kwargs)` que crea el agente con `no_charts=False` y llama a `save_visual_report(tmp_dir)`. Helper `_send_report_with_charts(update, text, images)` que envía el texto paginado y después cada PNG con `reply_photo()`. Los comandos `/liga`, `/equipo` y `/compare` usan gráficos por defecto y aceptan `--texto` para modo solo texto.
 
 - [ ] **12. Caché de informes por sesión**
   Si el mismo usuario pide el mismo informe (misma comp+temp+equipo) en menos de 10 minutos, devolver el resultado cacheado en lugar de re-ejecutar el agente.

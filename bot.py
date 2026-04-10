@@ -257,9 +257,51 @@ def _run_agent_text(competition: int, season: str, **kwargs) -> str:
         return "❌ Error inesperado al generar el informe. Revisa los logs del servidor."
 
 
+def _run_agent_with_charts(competition: int, season: str, tmp_dir: str, **kwargs) -> tuple[str, list[str]]:
+    """Crea un agente con gráficos, devuelve (texto_informe, [ruta_png, ...])."""
+    from src.agent import SportsAgent
+    from src.config import AgentConfig
+    from src.data_loader import get_db_path
+
+    db_path = get_db_path(competition, season)
+    if not db_path.exists():
+        return (
+            f"⚠️ No hay DB local para competition={competition} season={season}.",
+            [],
+        )
+    try:
+        agent = SportsAgent(AgentConfig(
+            data_path=str(db_path),
+            fetch_real=False,
+            competition_id=competition,
+            season=season,
+            no_charts=False,
+            **kwargs,
+        ))
+        agent.load_data()
+        agent.analyze()
+        text = agent.generate_report()
+        image_paths = agent.save_visual_report(output_folder=tmp_dir)
+        return text, image_paths
+    except Exception as exc:
+        logger.error("Error al generar gráficos: %s", exc, exc_info=True)
+        return "❌ Error inesperado al generar el informe. Revisa los logs del servidor.", []
+
+
 def _split_message(text: str, max_len: int = MAX_MSG_LENGTH) -> list[str]:
     """Divide un texto largo en fragmentos que Telegram puede enviar."""
     return textwrap.wrap(text, width=max_len, break_long_words=False, replace_whitespace=False)
+
+
+async def _send_report_with_charts(update: Update, text: str, image_paths: list[str]) -> None:
+    """Envía el informe paginado y luego las imágenes disponibles como fotos."""
+    await _send_paged(update, text)
+    for path in image_paths:
+        try:
+            with open(path, "rb") as f:
+                await update.message.reply_photo(photo=f)
+        except Exception as exc:
+            logger.warning("No se pudo enviar la imagen %s: %s", path, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -455,8 +497,14 @@ async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     competition, season = result
 
     await update.message.reply_text("⏳ Generando informe de liga...")
-    text = _run_agent_text(competition, season)
-    await _send_paged(update, text)
+    solo_texto = "--texto" in (context.args or [])
+    if solo_texto:
+        text = _run_agent_text(competition, season)
+        await _send_paged(update, text)
+    else:
+        with tempfile.TemporaryDirectory(prefix="agente_liga_") as tmp:
+            text, images = _run_agent_with_charts(competition, season, tmp)
+            await _send_report_with_charts(update, text, images)
 
 
 @_require_group_member
@@ -475,11 +523,18 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             parse_mode="Markdown",
         )
         return
-    team = " ".join(context.args[2:])
+    team_args = [a for a in context.args[2:] if a != "--texto"]
+    team = " ".join(team_args)
 
     await update.message.reply_text(f"⏳ Generando informe de {team}...")
-    text = _run_agent_text(competition, season, team=team)
-    await _send_paged(update, text)
+    solo_texto = "--texto" in (context.args or [])
+    if solo_texto:
+        text = _run_agent_text(competition, season, team=team)
+        await _send_paged(update, text)
+    else:
+        with tempfile.TemporaryDirectory(prefix="agente_equipo_") as tmp:
+            text, images = _run_agent_with_charts(competition, season, tmp, team=team)
+            await _send_report_with_charts(update, text, images)
 
 
 @_require_group_member
@@ -536,8 +591,14 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     await update.message.reply_text(f"⏳ Comparando {team1} vs {team2}...")
-    text = _run_agent_text(competition, season, compare=(team1, team2))
-    await _send_paged(update, text)
+    solo_texto = "--texto" in (context.args or [])
+    if solo_texto:
+        text = _run_agent_text(competition, season, compare=(team1, team2))
+        await _send_paged(update, text)
+    else:
+        with tempfile.TemporaryDirectory(prefix="agente_compare_") as tmp:
+            text, images = _run_agent_with_charts(competition, season, tmp, compare=(team1, team2))
+            await _send_report_with_charts(update, text, images)
 
 
 # ---------------------------------------------------------------------------

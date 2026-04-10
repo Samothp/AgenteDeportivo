@@ -21,6 +21,7 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
 - **Comando `/tabla` (RoadmapBotTelegram #8)**: nuevo handler `cmd_tabla` con `@_cooldown(15)`. Muestra la clasificación directamente desde el CSV sin ejecutar el análisis completo (más rápido). Incluye posición, puntos, GF:GC y forma reciente.
 - **Comando `/ultima` (RoadmapBotTelegram #9)**: nuevo handler `cmd_ultima`. Carga el CSV y llama a `compute_team_form(df, team, last_n=5)` de `analysis.py`, mostrando los últimos 5 resultados como emojis 🟢⚪🔴.
 - **Comando `/temporadas` (RoadmapBotTelegram #10)**: nuevo handler `cmd_temporadas`. Escanea `data/` con regex `db_<comp>_<año>.csv` y lista las temporadas disponibles con etiqueta legible (ej. `2025` → `25/26`).
+- **Envío de gráficos como foto adjunta en `/liga`, `/equipo`, `/compare` (RoadmapBotTelegram #11)**: nueva función `_run_agent_with_charts` que ejecuta el agente con `no_charts=False` en un directorio temporal. La helper `_send_report_with_charts` envía el informe paginado y a continuación cada PNG con `reply_photo()`. El flag `--texto` permite solicitar solo el texto sin gráficos.
 
 ### Añadido
 
