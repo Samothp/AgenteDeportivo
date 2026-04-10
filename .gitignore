@@ -4,5 +4,6 @@ __pycache__/
 *.pyd
 .env
 data/*.csv
+data/images/players/
 reports/
 .ipynb_checkpoints/
