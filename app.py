@@ -1045,7 +1045,8 @@ with tab_equipo:
         _tm = _get_meta(_eq_team, competition)
         _badge = _tm.get("badge_local")
         if _badge and Path(_badge).exists():
-            st.image(_badge, use_container_width=True)
+            _badge_col, _ = st.columns([1, 8])
+            _badge_col.image(_badge, width=80)
     except Exception:
         pass
     _tab_run_and_display("Equipo", {"team": _eq_team})
@@ -1070,7 +1071,8 @@ with tab_jugador:
         _tm2 = _get_meta2(_jug_team, competition)
         _badge2 = _tm2.get("badge_local")
         if _badge2 and Path(_badge2).exists():
-            st.image(_badge2, use_container_width=True)
+            _badge_col2, _ = st.columns([1, 8])
+            _badge_col2.image(_badge2, width=80)
     except Exception:
         pass
     _tab_run_and_display("Jugador", {"team": _jug_team, "player": _jug_player})
@@ -1090,9 +1092,9 @@ with tab_compare:
         _b1 = _get_meta3(_cmp_t1, competition).get("badge_local")
         _b2 = _get_meta3(_cmp_t2, competition).get("badge_local")
         if _b1 and Path(_b1).exists():
-            _bcol1.image(_b1, use_container_width=True)
+            _bcol1.image(_b1, width=80)
         if _b2 and Path(_b2).exists():
-            _bcol2.image(_b2, use_container_width=True)
+            _bcol2.image(_b2, width=80)
     except Exception:
         pass
     _tab_run_and_display("Compare", {"compare": (_cmp_t1, _cmp_t2)})
