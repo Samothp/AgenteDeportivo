@@ -453,6 +453,36 @@ def _payload_to_excel(p: dict) -> bytes:
     return output.getvalue()
 
 
+# ---------------------------------------------------------------------------
+# Cotización de mercado — caché local JSON (RoadmapDashboard #8)
+# ---------------------------------------------------------------------------
+
+_MV_PATH = Path("data/market_values.json")
+
+
+def _load_market_values() -> dict:
+    """Lee la caché local de valores de mercado."""
+    if _MV_PATH.exists():
+        try:
+            return json.loads(_MV_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_market_value(player_name: str, value: float, currency: str = "EUR") -> None:
+    """Persiste o actualiza el valor de mercado de un jugador."""
+    mv = _load_market_values()
+    mv[player_name] = {
+        "valor":      value,
+        "moneda":     currency,
+        "fuente":     "manual",
+        "actualizado": date.today().isoformat(),
+    }
+    _MV_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _MV_PATH.write_text(json.dumps(mv, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _display_metrics(payload: dict) -> None:
     metrics = payload.get("metrics", {})
     modo = payload.get("modo", "")
@@ -621,6 +651,37 @@ def _display_mode_results(payload: dict) -> None:
                 p2.metric("Asistencias / 90", pp.get("asistencias_90"))
                 p3.metric("G+A / 90", pp.get("ga_90"))
                 p4.metric("Tiros a puerta / 90", pp.get("sot_90"))
+            # Cotización de mercado
+            st.markdown("---")
+            _player_key = pp.get("player_name", "")
+            _mv_all = _load_market_values()
+            _mv = _mv_all.get(_player_key, {})
+            if _mv:
+                _currency = _mv.get("moneda", "EUR")
+                _valor_num = _mv.get("valor", 0)
+                _valor_fmt = f"€ {_valor_num:,.0f}" if _currency == "EUR" else f"{_valor_num:,.0f} {_currency}"
+                st.metric("💰 Valor de mercado", _valor_fmt)
+                st.caption(
+                    f"Fuente: {_mv.get('fuente', 'manual')} · "
+                    f"Actualizado: {_mv.get('actualizado', '-')}"
+                )
+            else:
+                st.info("Sin valor de mercado registrado para este jugador.")
+            with st.expander("✏️ Establecer / actualizar valor de mercado"):
+                _new_val = st.number_input(
+                    "Valor de mercado (€)",
+                    min_value=0,
+                    step=100_000,
+                    value=int(_mv.get("valor", 0)),
+                    key=f"mv_input_{_player_key}",
+                )
+                if st.button("💾 Guardar valor", key=f"mv_save_{_player_key}"):
+                    if _new_val > 0:
+                        _save_market_value(_player_key, float(_new_val), "EUR")
+                        st.success(f"Valor de **{_player_key}** actualizado a **€ {_new_val:,.0f}**")
+                        st.rerun()
+                    else:
+                        st.warning("Introduce un valor mayor que 0.")
     elif modo == "compare":
         c = payload.get("compare_data", {})
         if c:
