@@ -77,7 +77,7 @@
 - [x] **12. Timestamp visible en el área principal**  
   Mostrar "Datos analizados el [fecha y hora]" junto al título o debajo de las métricas principales.  
   Coste mínimo, elimina la duda del usuario sobre la frescura del informe mostrado.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `18a7cb1`_
 
 - [ ] **13. Ocultar JSON bruto para usuarios no técnicos**  
   El expander `🗂️ Datos en bruto (JSON)` es ruido para usuarios finales.  
