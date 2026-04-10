@@ -47,7 +47,7 @@
   Añadir métricas estándar del análisis moderno calculadas sobre los minutos jugados:  
   - Goles/90 · Asistencias/90 · Tiros/90 · Duelos ganados/90  
   Son más justas que los totales para comparar jugadores con distinto tiempo de juego.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `73f9299`_
 
 - [ ] **8. Cotización de mercado en modo Jugador**  
   Campo de valor de mercado (Transfermarkt / FIFAIndex) integrado en el perfil del jugador.  
