@@ -84,9 +84,10 @@
   Mostrarlo solo si `BETA_DEBUG=true` está definido en `.env`, o restringirlo a un rol admin futuro.  
   ✅ _Completado — commit `1ac0adc`_
 
-- [ ] **14. Compatibilidad mobile**  
+- [x] **14. Compatibilidad mobile**  
   Añadir `use_container_width=True` a todas las imágenes y limitar el número de columnas a 2 en resoluciones pequeñas.  
-  Streamlit no tiene detección de viewport nativa; se puede aproximar con CSS en `st.markdown`.
+  Streamlit no tiene detección de viewport nativa; se puede aproximar con CSS en `st.markdown`.  
+  ✅ _Completado — commit pendiente_
 
 - [ ] **15. Modo oscuro consistente en gráficos**  
   Los gráficos generados con matplotlib tienen fondo blanco aunque Streamlit esté en modo oscuro.  

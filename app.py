@@ -121,7 +121,33 @@ def _check_beta_access() -> None:
 _check_beta_access()
 
 # ---------------------------------------------------------------------------
-# Constantes
+# Punto 14 — Compatibilidad mobile (CSS responsive)
+# ---------------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+    /* En pantallas ≪768 px, colapsar columnas de datos a una sola */
+    @media (max-width: 768px) {
+        /* Columnas de métricas y tablas */
+        div[data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
+        /* Imágenes al 100% del viewport */
+        img {
+            max-width: 100% !important;
+            height: auto !important;
+        }
+        /* Sidebar colapsada por defecto en móvil */
+        section[data-testid="stSidebar"] {
+            min-width: 0 !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 # ---------------------------------------------------------------------------
 
 MODES = ["Liga", "Equipo", "Jornada", "Partido", "Jugador", "Compare"]
@@ -725,7 +751,7 @@ def _display_mode_results(payload: dict) -> None:
             _player_cols = st.columns([1, 4]) if _player_thumb and Path(_player_thumb).exists() else [None]
             if len(_player_cols) == 2:
                 with _player_cols[0]:
-                    st.image(_player_thumb, width=120)
+                    st.image(_player_thumb, use_container_width=True)
                 with _player_cols[1]:
                     st.subheader(f"👤 {pp.get('player_name', '')}")
                     _bio_parts = []
@@ -976,7 +1002,7 @@ with tab_equipo:
         _tm = _get_meta(_eq_team, competition)
         _badge = _tm.get("badge_local")
         if _badge and Path(_badge).exists():
-            st.image(_badge, width=60)
+            st.image(_badge, use_container_width=True)
     except Exception:
         pass
     _tab_run_and_display("Equipo", {"team": _eq_team})
@@ -1001,7 +1027,7 @@ with tab_jugador:
         _tm2 = _get_meta2(_jug_team, competition)
         _badge2 = _tm2.get("badge_local")
         if _badge2 and Path(_badge2).exists():
-            st.image(_badge2, width=60)
+            st.image(_badge2, use_container_width=True)
     except Exception:
         pass
     _tab_run_and_display("Jugador", {"team": _jug_team, "player": _jug_player})
@@ -1021,9 +1047,9 @@ with tab_compare:
         _b1 = _get_meta3(_cmp_t1, competition).get("badge_local")
         _b2 = _get_meta3(_cmp_t2, competition).get("badge_local")
         if _b1 and Path(_b1).exists():
-            _bcol1.image(_b1, width=60)
+            _bcol1.image(_b1, use_container_width=True)
         if _b2 and Path(_b2).exists():
-            _bcol2.image(_b2, width=60)
+            _bcol2.image(_b2, use_container_width=True)
     except Exception:
         pass
     _tab_run_and_display("Compare", {"compare": (_cmp_t1, _cmp_t2)})
