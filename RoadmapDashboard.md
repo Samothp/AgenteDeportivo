@@ -87,7 +87,7 @@
 - [x] **14. Compatibilidad mobile**  
   Añadir `use_container_width=True` a todas las imágenes y limitar el número de columnas a 2 en resoluciones pequeñas.  
   Streamlit no tiene detección de viewport nativa; se puede aproximar con CSS en `st.markdown`.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `00bd7c1`_
 
 - [ ] **15. Modo oscuro consistente en gráficos**  
   Los gráficos generados con matplotlib tienen fondo blanco aunque Streamlit esté en modo oscuro.  
