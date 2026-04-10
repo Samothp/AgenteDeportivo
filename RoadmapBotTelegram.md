@@ -10,9 +10,9 @@
   `ALLOWED_GROUP_ID`, `_MEMBER_STATUSES`, `_is_group_member()` y `_require_group_member()` estaban definidos **dos veces** en `bot.py`.
   Se eliminó el primer bloque duplicado, dejando únicamente la definición canónica con su sección de encabezado.
 
-- [ ] **2. Corregir `asyncio.run()` dentro de `_check_alerts_sync`**
-  APScheduler llama a `_check_alerts_sync` desde un hilo secundario mientras el event loop principal ya está en marcha.
-  Usar `asyncio.get_event_loop().call_soon_threadsafe(...)` o `run_coroutine_threadsafe()` para enviar las alertas sin crear un nuevo event loop.
+- [x] **2. Corregir `asyncio.run()` dentro de `_check_alerts_sync`** ✅
+  Se añadió `_main_loop: asyncio.AbstractEventLoop | None = None` a nivel de módulo y un callback `post_init` que captura el event loop del hilo principal al arrancar la aplicación.
+  En `_check_alerts_sync`, `asyncio.run(_send(...))` se reemplazó por `asyncio.run_coroutine_threadsafe(_send(...), _main_loop).result(timeout=30)` para enviar alertas de forma segura desde el hilo de APScheduler.
 
 - [ ] **3. Persistir el caché de paginación en disco**
   `_page_cache` es un dict en memoria: al reiniciar el bot, los botones ◀/▶ de mensajes anteriores devuelven "sesión expirada".

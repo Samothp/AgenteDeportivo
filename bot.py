@@ -37,6 +37,7 @@ Ejemplos:
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -87,6 +88,10 @@ logger = logging.getLogger("AgenteDeportivo.bot")
 # ---------------------------------------------------------------------------
 
 MAX_MSG_LENGTH = 4000  # Telegram permite hasta 4096 caracteres por mensaje
+
+# Event loop del hilo principal, capturado en post_init para que APScheduler
+# pueda enviar corrutinas desde hilos secundarios sin crear un nuevo loop.
+_main_loop: asyncio.AbstractEventLoop | None = None
 
 # 10.2 — Archivos de persistencia de suscripciones y estado de alertas
 SUBSCRIPTIONS_FILE = Path("data/subscriptions.json")
@@ -704,8 +709,6 @@ async def cmd_desuscribir(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 def _check_alerts_sync(bot_token: str) -> None:
     """Comprueba todas las suscripciones y envía alertas si un equipo lleva ≥3 derrotas seguidas."""
-    import asyncio
-
     from telegram import Bot
 
     subs = _load_subscriptions()
@@ -771,7 +774,11 @@ def _check_alerts_sync(bot_token: str) -> None:
                         f"en {comp_name} {season}.\n\n"
                         f"Racha reciente: `{racha}`"
                     )
-                    asyncio.run(_send(chat_id, msg))
+                    if _main_loop is not None and _main_loop.is_running():
+                        future = asyncio.run_coroutine_threadsafe(_send(chat_id, msg), _main_loop)
+                        future.result(timeout=30)
+                    else:
+                        asyncio.run(_send(chat_id, msg))
                     logger.info("Alerta enviada a %s: %s lleva %d derrotas", chat_id, team, consecutive_losses)
             except Exception as exc:
                 logger.warning("Error comprobando alertas para %s/%s/%s: %s", comp, season, team, exc)
@@ -809,7 +816,12 @@ def main() -> None:
         )
         sys.exit(1)
 
-    application = Application.builder().token(token).build()
+    async def _post_init(app: Application) -> None:  # noqa: F811
+        """Captura el event loop del hilo principal para uso desde APScheduler."""
+        global _main_loop
+        _main_loop = asyncio.get_running_loop()
+
+    application = Application.builder().token(token).post_init(_post_init).build()
 
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("ayuda", cmd_ayuda))
