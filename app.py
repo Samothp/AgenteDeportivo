@@ -13,7 +13,7 @@ import logging
 import os
 import tempfile
 import threading
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
@@ -895,6 +895,8 @@ def _tab_run_and_display(mode: str, extra_kw: dict) -> None:
             st.session_state[_last_key_name] = _cache_key
             # Punto 11 — actualizar URL params para compartir el informe
             _update_url_params(mode, extra_kw, competition, season)
+            # Punto 12 — guardar timestamp del informe generado
+            st.session_state[f"_ts_{_cache_key}"] = datetime.now()
         else:
             payload, image_paths = _run_agent(competition, season, mode, **kw)
     except FileNotFoundError as e:
@@ -909,6 +911,10 @@ def _tab_run_and_display(mode: str, extra_kw: dict) -> None:
             st.code(_full_tb)
         return
     _display_metrics(payload)
+    # Punto 12 — timestamp del informe
+    _ts = st.session_state.get(f"_ts_{_cache_key}")
+    if _ts:
+        st.caption(f"🕒 Datos analizados el {_ts.strftime('%d/%m/%Y a las %H:%M:%S')}")
     st.markdown("---")
 
     # Punto 6 — Gráfico de evolución de puntos al inicio del modo Equipo
