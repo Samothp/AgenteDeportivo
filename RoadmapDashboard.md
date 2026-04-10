@@ -43,10 +43,11 @@
   El visualizador ya genera este gráfico. Mostrarlo de forma prominente en la parte superior de la vista de equipo, antes de las tablas, para dar contexto temporal que las métricas estáticas no ofrecen.  
   ✅ _Completado — commit `100873a`_
 
-- [ ] **7. Stats per-90 en modo Jugador**  
+- [x] **7. Stats per-90 en modo Jugador**  
   Añadir métricas estándar del análisis moderno calculadas sobre los minutos jugados:  
   - Goles/90 · Asistencias/90 · Tiros/90 · Duelos ganados/90  
-  Son más justas que los totales para comparar jugadores con distinto tiempo de juego.
+  Son más justas que los totales para comparar jugadores con distinto tiempo de juego.  
+  ✅ _Completado — commit pendiente_
 
 - [ ] **8. Cotización de mercado en modo Jugador**  
   Campo de valor de mercado (Transfermarkt / FIFAIndex) integrado en el perfil del jugador.  

@@ -498,25 +498,17 @@ def _display_metrics(payload: dict) -> None:
         pp = payload.get("player_profile", {})
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            _metric_row("Partidos jugados", pp.get("pj"))
-            _metric_row("Minutos jugados", pp.get("minutos"))
+            _metric_row("Partidos jugados", pp.get("appearances"))
+            _metric_row("Min. estimados", pp.get("minutos_estimados"))
         with col2:
-            _metric_row("Goles", pp.get("goles"))
-            _metric_row("Asistencias", pp.get("asistencias"))
+            _metric_row("Goles", pp.get("goals"))
+            _metric_row("Asistencias", pp.get("assists"))
         with col3:
-            # Calcular stats per-90 si hay minutos disponibles
-            _min = pp.get("minutos") or 0
-            if _min > 0:
-                _g90 = round((pp.get("goles") or 0) / _min * 90, 2)
-                _a90 = round((pp.get("asistencias") or 0) / _min * 90, 2)
-                _metric_row("Goles / 90 min", _g90)
-                _metric_row("Asistencias / 90 min", _a90)
-            else:
-                _metric_row("Goles", pp.get("goles"))
-                _metric_row("Asistencias", pp.get("asistencias"))
+            _metric_row("Goles / 90 min \u2217", pp.get("goles_90"))
+            _metric_row("Asistencias / 90 min \u2217", pp.get("asist_90") or pp.get("asistencias_90"))
         with col4:
-            _metric_row("Tiros / partido", metrics.get("tiros_equipo_promedio"))
-            _metric_row("xG equipo / partido", metrics.get("xg_equipo_promedio"))
+            _metric_row("G+A / 90 min \u2217", pp.get("ga_90"))
+            _metric_row("Tiros a puerta / 90 \u2217", pp.get("sot_90"))
 
     elif modo in ("jornada", "partido", "compare"):
         # Para estos modos mostramos métricas generales del contexto cargado
@@ -603,7 +595,7 @@ def _display_mode_results(payload: dict) -> None:
                 with _player_cols[0]:
                     st.image(_player_thumb, width=120)
                 with _player_cols[1]:
-                    st.subheader(f"👤 {pp.get('nombre', '')}")
+                    st.subheader(f"👤 {pp.get('player_name', '')}")
                     _bio_parts = []
                     if pp.get("nationality"): _bio_parts.append(pp["nationality"])
                     if pp.get("position_full"): _bio_parts.append(pp["position_full"])
@@ -614,11 +606,21 @@ def _display_mode_results(payload: dict) -> None:
                     if _bio_parts:
                         st.caption(" · ".join(_bio_parts))
             else:
-                st.subheader(f"👤 {pp.get('nombre', '')}")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Partidos jugados", pp.get("pj"))
-            col2.metric("Goles", pp.get("goles"))
-            col3.metric("Asistencias", pp.get("asistencias"))
+                st.subheader(f"👤 {pp.get('player_name', '')}")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Partidos jugados", pp.get("appearances"))
+            col2.metric("Goles", pp.get("goals"))
+            col3.metric("Asistencias", pp.get("assists"))
+            col4.metric("G+A", pp.get("ga"))
+            # Bloque per-90
+            if pp.get("minutos_estimados", 0) > 0:
+                st.markdown("---")
+                st.caption("\u2217 Stats per-90 min (estimadas asumiendo 90 min por partido completo)")
+                p1, p2, p3, p4 = st.columns(4)
+                p1.metric("Goles / 90", pp.get("goles_90"))
+                p2.metric("Asistencias / 90", pp.get("asistencias_90"))
+                p3.metric("G+A / 90", pp.get("ga_90"))
+                p4.metric("Tiros a puerta / 90", pp.get("sot_90"))
     elif modo == "compare":
         c = payload.get("compare_data", {})
         if c:

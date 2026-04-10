@@ -1376,6 +1376,13 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
     pct_gol   = round(goals / pj * 100, 1) if pj > 0 else 0.0
     pct_ga    = round(ga / pj * 100, 1) if pj > 0 else 0.0
 
+    # Stats per-90 (asumiendo ~90 min por aparición, mejor estimación sin datos de minutos)
+    _min_est  = pj * 90
+    goles_90  = round(goals   / _min_est * 90, 2) if _min_est > 0 else 0.0
+    asist_90  = round(assists / _min_est * 90, 2) if _min_est > 0 else 0.0
+    ga_90     = round(ga      / _min_est * 90, 2) if _min_est > 0 else 0.0
+    sot_90    = round(sot     / _min_est * 90, 2) if _min_est > 0 else 0.0
+
     # Rankings dentro del equipo (mismo equipo, sin contar al propio jugador primero)
     df_team = df_players[df_players['team'] == team].copy()
 
@@ -1424,6 +1431,12 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
         'ga_por_partido':           ga_pp,
         'pct_partidos_con_gol':     pct_gol,
         'pct_partidos_con_ga':      pct_ga,
+        # Per-90 (estimado sobre minutos_estimados = appearances * 90)
+        'minutos_estimados':        _min_est,
+        'goles_90':                 goles_90,
+        'asistencias_90':           asist_90,
+        'ga_90':                    ga_90,
+        'sot_90':                   sot_90,
         'ranking_goles':            ranking_goles,
         'ranking_asistencias':      ranking_asistencias,
         'compañeros_goleadores':    compañeros_goleadores,
