@@ -30,21 +30,17 @@
 
 ## 🟠 Media prioridad — Nuevas funcionalidades
 
-- [ ] **7. Comando `/jugador <comp> <temp> <equipo> <nombre>`**
-  El dashboard tiene modo Jugador completo (stats per-90, cotización, foto) pero el bot no lo expone.
-  Añadir `cmd_jugador` usando `_run_agent_text(..., team=equipo, player=nombre)` y actualizar `/start` y `/ayuda`.
+- [x] **7. Comando `/jugador <comp> <temp> <equipo> <nombre>`** ✅
+  Nuevo handler `cmd_jugador` decorado con `@_require_group_member` y `@_cooldown(30)`. Llama a `_run_agent_text(..., team=equipo, player=nombre)` y devuelve el informe paginado. Registrado como `/jugador`. Añadido a `/start`, `/ayuda` y `_AYUDA_CMDS`.
 
-- [ ] **8. Comando `/tabla <comp> <temp>`**
-  Devuelve solo la clasificación en texto formateado (sin generar el informe completo), mucho más rápido.
-  Útil para consultas rápidas que no justifican esperar el análisis completo.
+- [x] **8. Comando `/tabla <comp> <temp>`** ✅
+  Nuevo handler `cmd_tabla` con `@_cooldown(15)`. Carga el CSV directamente con `load_match_data` + `compute_liga_summary`, formatea la clasificación con posición, puntos, marcador y forma reciente. Mucho más rápido que `/liga` para consultas rápidas.
 
-- [ ] **9. Comando `/ultima <comp> <temp> <equipo>`**
-  Devuelve los últimos 5 resultados del equipo con emojis 🟢 victoria · ⚪ empate · 🔴 derrota.
-  Reutiliza `compute_team_form()` de `analysis.py` que ya existe.
+- [x] **9. Comando `/ultima <comp> <temp> <equipo>`** ✅
+  Handler `cmd_ultima` que carga el CSV y llama a `compute_team_form(df, team, last_n=5)` de `analysis.py`. Responde con la cadena de emojis y la leyenda.
 
-- [ ] **10. Comando `/temporadas <comp>`**
-  Lista las temporadas disponibles localmente para una competición.
-  Evita que el usuario tenga que adivinar qué temporadas hay en la DB.
+- [x] **10. Comando `/temporadas <comp>`** ✅
+  Handler `cmd_temporadas` que escanea `data/` buscando ficheros `db_<comp>_<año>.csv` con regex y muestra las temporadas encontradas con su etiqueta (ej. `2025` → `25/26`). Si no hay ninguna, sugiere el comando de descarga.
 
 - [ ] **11. Enviar gráficos como foto adjunta**
   Todos los agentes usan `no_charts=True`: los usuarios solo reciben texto plano.

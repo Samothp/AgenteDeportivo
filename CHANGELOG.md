@@ -15,6 +15,13 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
 - **`/start` completo con todos los comandos (RoadmapBotTelegram #5)**: reescrito con saludo personalizado y tres secciones agrupadas: *Análisis e informes*, *Alertas proactivas* y *Ayuda*. Incluye ahora `/pdf`, `/suscribir`, `/suscripciones`, `/desuscribir` y `/ayuda`. Migrado a `MarkdownV2`.
 - **Temporada actual inferida automáticamente (RoadmapBotTelegram #6)**: nueva función `_current_season()` con lógica julio=inicio de temporada. Constantes `_SEASON_EXAMPLE`, `_SEASON_NEXT` y `_SEASON_LABEL` calculadas al arranque. Todos los mensajes de error y ejemplos de `/start`, `/ayuda` y `_parse_base` usan estas constantes en lugar del año `2024` hardcodeado.
 
+### Añadido (bot)
+
+- **Comando `/jugador` (RoadmapBotTelegram #7)**: nuevo handler `cmd_jugador` con `@_cooldown(30)`. Llama a `_run_agent_text(..., team=equipo, player=nombre)` y devuelve el informe de jugador paginado. Actualiza `/start`, `/ayuda` y `_AYUDA_CMDS`.
+- **Comando `/tabla` (RoadmapBotTelegram #8)**: nuevo handler `cmd_tabla` con `@_cooldown(15)`. Muestra la clasificación directamente desde el CSV sin ejecutar el análisis completo (más rápido). Incluye posición, puntos, GF:GC y forma reciente.
+- **Comando `/ultima` (RoadmapBotTelegram #9)**: nuevo handler `cmd_ultima`. Carga el CSV y llama a `compute_team_form(df, team, last_n=5)` de `analysis.py`, mostrando los últimos 5 resultados como emojis 🟢⚪🔴.
+- **Comando `/temporadas` (RoadmapBotTelegram #10)**: nuevo handler `cmd_temporadas`. Escanea `data/` con regex `db_<comp>_<año>.csv` y lista las temporadas disponibles con etiqueta legible (ej. `2025` → `25/26`).
+
 ### Añadido
 
 - **Restricción de acceso al bot por membresía a grupo de Telegram**: nuevo mecanismo de control de acceso opcional. Si se define la variable de entorno `ALLOWED_GROUP_ID`, todos los comandos del bot (excepto `/start`) verifican que el usuario es miembro activo del grupo indicado usando `get_chat_member`. Los usuarios no autorizados reciben un mensaje `⛔ No tienes acceso…` y el intento queda registrado en el log. Cuando `ALLOWED_GROUP_ID` está vacío, el bot funciona sin restricciones como antes. Se añade `ALLOWED_GROUP_ID` al fichero `.env.example`.

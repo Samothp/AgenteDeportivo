@@ -386,8 +386,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "📊 *Análisis e informes*\n"
         "/competiciones — Lista de IDs de competición\n"
         "/equipos `<comp> <temp>` — Equipos disponibles\n"
+        "/temporadas `<comp>` — Temporadas descargadas\n"
+        "/tabla `<comp> <temp>` — Clasificación rápida\n"
+        "/ultima `<comp> <temp> <equipo>` — Últimos 5 resultados\n"
         "/liga `<comp> <temp>` — Informe completo de liga\n"
         "/equipo `<comp> <temp> <nombre>` — Informe de equipo\n"
+        "/jugador `<comp> <temp> <equipo> <nombre>` — Informe de jugador\n"
         "/jornada `<comp> <temp> <N>` — Informe de jornada\n"
         "/compare `<comp> <temp> <eq1> | <eq2>` — Comparativa\n"
         "/pdf `<comp> <temp>` — Descargar informe en PDF\n\n"
@@ -536,14 +540,193 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await _send_paged(update, text)
 
 
+# ---------------------------------------------------------------------------
+# RoadmapBotTelegram #7 — /jugador
+# ---------------------------------------------------------------------------
+
+@_require_group_member
+@_cooldown(30)
+async def cmd_jugador(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/jugador <comp> <temp> <equipo> <nombre> — Informe de jugador."""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    if len(context.args) < 4:
+        await update.message.reply_text(
+            f"❌ Uso: `/jugador <comp> <temp> <equipo> <nombre>`\n"
+            f"Ejemplo: `/jugador 2014 {_SEASON_EXAMPLE} Mallorca Muriqi`",
+            parse_mode="Markdown",
+        )
+        return
+
+    # El tercer argumento es el equipo, el resto el nombre del jugador.
+    # No hay separador explícito, así que el bot toma args[2] como equipo y args[3:] como nombre.
+    team = context.args[2]
+    player = " ".join(context.args[3:])
+
+    await update.message.reply_text(f"⏳ Buscando informe de {player} ({team})...")
+    text = _run_agent_text(competition, season, team=team, player=player)
+    await _send_paged(update, text)
+
+
+# ---------------------------------------------------------------------------
+# RoadmapBotTelegram #8 — /tabla
+# ---------------------------------------------------------------------------
+
+@_require_group_member
+@_cooldown(15)
+async def cmd_tabla(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/tabla <comp> <temp> — Clasificación rápida sin análisis completo."""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    from src.data_loader import get_db_path, load_match_data
+    from src.analysis import compute_liga_summary
+
+    db_path = get_db_path(competition, season)
+    if not db_path.exists():
+        await update.message.reply_text(
+            f"⚠️ No hay DB local para competition={competition} season={season}."
+        )
+        return
+
+    try:
+        df = load_match_data(str(db_path), fetch_real=False, competition_id=competition, season=season)
+        summary = compute_liga_summary(df)
+        tabla = summary.get("clasificacion", [])
+        if not tabla:
+            await update.message.reply_text("⚠️ No se pudo obtener la clasificación.")
+            return
+
+        comp_name = COMPETITION_NAMES.get(competition, str(competition))
+        lines = [f"🏆 *{comp_name} {season}* — Clasificación\n"]
+        for row in tabla:
+            pos = row.get("pos", row.get("Pos", "?"))
+            team = row.get("Equipo", row.get("equipo", "?"))
+            pts = row.get("Pts", row.get("pts", "?"))
+            gf = row.get("GF", row.get("gf", "?"))
+            ga = row.get("GC", row.get("gc", row.get("ga", "?")))
+            forma = row.get("Forma", "")
+            forma_str = f"  {forma}" if forma else ""
+            lines.append(f"`{str(pos).rjust(2)}.` {team} — *{pts}* pts  ({gf}:{ga}){forma_str}")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    except Exception as exc:
+        logger.error("Error en /tabla: %s", exc, exc_info=True)
+        await update.message.reply_text("❌ Error al obtener la clasificación.")
+
+
+# ---------------------------------------------------------------------------
+# RoadmapBotTelegram #9 — /ultima
+# ---------------------------------------------------------------------------
+
+@_require_group_member
+async def cmd_ultima(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/ultima <comp> <temp> <equipo> — Últimos 5 resultados del equipo."""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            f"❌ Uso: `/ultima <comp> <temp> <equipo>`\n"
+            f"Ejemplo: `/ultima 2014 {_SEASON_EXAMPLE} Mallorca`",
+            parse_mode="Markdown",
+        )
+        return
+    team = " ".join(context.args[2:])
+
+    from src.data_loader import get_db_path, load_match_data
+    from src.analysis import compute_team_form
+
+    db_path = get_db_path(competition, season)
+    if not db_path.exists():
+        await update.message.reply_text(
+            f"⚠️ No hay DB local para competition={competition} season={season}."
+        )
+        return
+
+    try:
+        df = load_match_data(str(db_path), fetch_real=False, competition_id=competition, season=season)
+        forma = compute_team_form(df, team, last_n=5)
+        if not forma:
+            await update.message.reply_text(f"⚠️ No se encontraron partidos para *{team}*.", parse_mode="Markdown")
+            return
+        comp_name = COMPETITION_NAMES.get(competition, str(competition))
+        text = (
+            f"📊 *{team}* — Últimos resultados\n"
+            f"({comp_name} {season})\n\n"
+            f"{forma}\n\n"
+            f"🟢 Victoria · ⚪ Empate · 🔴 Derrota"
+        )
+        await update.message.reply_text(text, parse_mode="Markdown")
+    except Exception as exc:
+        logger.error("Error en /ultima: %s", exc, exc_info=True)
+        await update.message.reply_text("❌ Error al obtener los resultados.")
+
+
+# ---------------------------------------------------------------------------
+# RoadmapBotTelegram #10 — /temporadas
+# ---------------------------------------------------------------------------
+
+@_require_group_member
+async def cmd_temporadas(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/temporadas <comp> — Lista las temporadas disponibles localmente."""
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Indica el ID de competición. Ejemplo: `/temporadas 2014`",
+            parse_mode="Markdown",
+        )
+        return
+    try:
+        competition = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ El ID de competición debe ser un número entero.")
+        return
+
+    import re as _re
+    pattern = _re.compile(rf"^db_{competition}_(\d+)\.csv$")
+    seasons = sorted(
+        m.group(1) for f in Path("data").iterdir()
+        if (m := pattern.match(f.name))
+    )
+    if not seasons:
+        comp_name = COMPETITION_NAMES.get(competition, str(competition))
+        await update.message.reply_text(
+            f"⚠️ No hay datos locales para *{comp_name}* (ID `{competition}`).\n"
+            f"Descarga los datos con:\n"
+            f"`python -m src.run_agent --fetch-real --competition {competition} --season <año>`",
+            parse_mode="Markdown",
+        )
+        return
+
+    comp_name = COMPETITION_NAMES.get(competition, str(competition))
+    lines = [f"📅 *{comp_name}* — Temporadas disponibles localmente:\n"]
+    for s in seasons:
+        nxt = str(int(s) + 1)
+        lines.append(f"  `{s}` ({s[2:]}/{nxt[2:]})")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 # 9.3 — /ayuda contextual
 _AYUDA_GENERAL = (
     "⚽ *Agente Deportivo* — Ayuda\n\n"
     "Usa `/ayuda <comando>` para ver la sintaxis detallada de cada comando:\n\n"
     "  `/ayuda liga`\n"
     "  `/ayuda equipo`\n"
+    "  `/ayuda jugador`\n"
+    "  `/ayuda tabla`\n"
+    "  `/ayuda ultima`\n"
     "  `/ayuda jornada`\n"
     "  `/ayuda compare`\n"
+    "  `/ayuda temporadas`\n"
     "  `/ayuda equipos`\n"
     "  `/ayuda competiciones`"
 )
@@ -617,6 +800,46 @@ _AYUDA_CMDS: dict[str, str] = {
         "Sin parámetros adicionales.\n\n"
         "*Ejemplo:*\n"
         "`/competiciones`"
+    ),
+    "jugador": (
+        "📋 *Comando:* `/jugador`\n\n"
+        "*Sintaxis:*\n"
+        "`/jugador <competition\\_id> <temporada> <equipo> <nombre>`\n\n"
+        "*Parámetros:*\n"
+        "  • `competition_id` — ID numérico de la competición\n"
+        "  • `temporada` — Año de inicio de la temporada\n"
+        "  • `equipo` — Nombre del equipo (una sola palabra)\n"
+        "  • `nombre` — Nombre del jugador (puede tener espacios)\n\n"
+        "*Ejemplos:*\n"
+        f"`/jugador 2014 {_SEASON_EXAMPLE} Mallorca Muriqi`\n"
+        f"`/jugador 2021 {_SEASON_EXAMPLE} Arsenal Saka`"
+    ),
+    "tabla": (
+        "📋 *Comando:* `/tabla`\n\n"
+        "*Sintaxis:*\n"
+        "`/tabla <competition\\_id> <temporada>`\n\n"
+        "Muestra la clasificación en texto formateado sin ejecutar el análisis completo.\n\n"
+        "*Ejemplos:*\n"
+        f"`/tabla 2014 {_SEASON_EXAMPLE}` — Clasificación de La Liga {_SEASON_LABEL}\n"
+        f"`/tabla 2021 {_SEASON_EXAMPLE}` — Clasificación de Premier League {_SEASON_LABEL}"
+    ),
+    "ultima": (
+        "📋 *Comando:* `/ultima`\n\n"
+        "*Sintaxis:*\n"
+        "`/ultima <competition\\_id> <temporada> <equipo>`\n\n"
+        "Muestra los últimos 5 resultados del equipo con emojis.\n\n"
+        "*Ejemplos:*\n"
+        f"`/ultima 2014 {_SEASON_EXAMPLE} Mallorca`\n"
+        f"`/ultima 2021 {_SEASON_EXAMPLE} Arsenal`"
+    ),
+    "temporadas": (
+        "📋 *Comando:* `/temporadas`\n\n"
+        "*Sintaxis:*\n"
+        "`/temporadas <competition\\_id>`\n\n"
+        "Lista las temporadas disponibles localmente para una competición.\n\n"
+        "*Ejemplos:*\n"
+        "`/temporadas 2014` — Temporadas descargadas de La Liga\n"
+        "`/temporadas 2021` — Temporadas descargadas de Premier League"
     ),
 }
 
@@ -935,6 +1158,12 @@ def main() -> None:
     application.add_handler(CommandHandler("league", cmd_liga))
     application.add_handler(CommandHandler("team", cmd_equipo))
     application.add_handler(CommandHandler("matchday", cmd_jornada))
+
+    # RoadmapBotTelegram #7-10 — Nuevos comandos
+    application.add_handler(CommandHandler("jugador", cmd_jugador))
+    application.add_handler(CommandHandler("tabla", cmd_tabla))
+    application.add_handler(CommandHandler("ultima", cmd_ultima))
+    application.add_handler(CommandHandler("temporadas", cmd_temporadas))
 
     # 12.2 — Paginación inline
     application.add_handler(CallbackQueryHandler(callback_page, pattern=r"^(page:|noop)"))
