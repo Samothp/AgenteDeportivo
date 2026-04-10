@@ -17,7 +17,6 @@ from .analysis import (
     compute_overall_metrics,
     compute_player_profile,
     compute_player_rankings,
-    compute_standings,
     compute_team_percentiles,
     compute_team_record,
     match_highlights,
@@ -28,12 +27,10 @@ from .config import AgentConfig
 from .data_loader import load_match_data
 from .player_loader import load_player_stats
 from .thresholds import (
-    CACHE_TTL_DAYS_DEFAULT,
     FORM_STREAK_THRESHOLD,
     HIGH_SCORING_THRESHOLD,
     MIN_MATCHES_PERCENTILE,
     OVERPERFORMANCE_EXCELLENT,
-    TOP_N_DEFAULT,
 )
 
 

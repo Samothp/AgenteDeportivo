@@ -179,6 +179,26 @@ def _run_agent(competition: int, season: str, mode: str, **kwargs) -> tuple[dict
 # Sidebar
 # ---------------------------------------------------------------------------
 
+
+def _metric_row(label: str, value, delta=None):
+    """Muestra una métrica con formato."""
+    if value is None:
+        return
+    if isinstance(value, float):
+        value = f"{value:.2f}"
+    st.metric(label=label, value=value, delta=delta)
+
+
+def _show_table(data: list, title: str = ""):
+    """Muestra una lista de dicts como tabla."""
+    if not data:
+        return
+    if title:
+        st.subheader(title)
+    import pandas as pd
+    st.dataframe(pd.DataFrame(data), use_container_width=True)
+
+
 st.sidebar.title("⚽ Agente Deportivo")
 st.sidebar.markdown("---")
 
@@ -398,25 +418,6 @@ except Exception as e:
 # ---------------------------------------------------------------------------
 # Mostrar resultados
 # ---------------------------------------------------------------------------
-
-
-def _metric_row(label: str, value, delta=None):
-    """Muestra una métrica con formato."""
-    if value is None:
-        return
-    if isinstance(value, float):
-        value = f"{value:.2f}"
-    st.metric(label=label, value=value, delta=delta)
-
-
-def _show_table(data: list, title: str = ""):
-    """Muestra una lista de dicts como tabla."""
-    if not data:
-        return
-    if title:
-        st.subheader(title)
-    import pandas as pd
-    st.dataframe(pd.DataFrame(data), use_container_width=True)
 
 
 # ── Métricas generales ──────────────────────────────────────────────────────

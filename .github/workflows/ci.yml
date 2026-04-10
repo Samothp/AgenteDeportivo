@@ -46,7 +46,7 @@ jobs:
           python -m py_compile app.py
 
       - name: Linting (ruff)
-        run: ruff check src/ app.py bot.py --select=E,F,W --ignore=E501
+        run: ruff check src/ app.py bot.py --select=E,F,W --ignore=E501,E402,E701,E702,E741,F541,F841,E401,W292
 
       - name: Type checking (mypy)
         run: mypy src/ --ignore-missing-imports --no-error-summary

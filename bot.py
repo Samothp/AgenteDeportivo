@@ -123,6 +123,7 @@ def _save_alert_state(state: dict) -> None:
 def _run_agent_text(competition: int, season: str, **kwargs) -> str:
     """Crea un agente, lo ejecuta y devuelve el informe de texto."""
     from src.agent import SportsAgent
+    from src.config import AgentConfig
     from src.data_loader import get_db_path
 
     db_path = get_db_path(competition, season)
@@ -435,7 +436,7 @@ async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await update.message.reply_text("⏳ Generando PDF… puede tardar unos segundos.")
     try:
-        from weasyprint import HTML as WeasyprintHTML  # type: ignore
+        from weasyprint import HTML as WeasyprintHTML  # type: ignore  # noqa: F401
     except ImportError:
         await update.message.reply_text(
             "❌ `weasyprint` no está instalado en el servidor.\n"
