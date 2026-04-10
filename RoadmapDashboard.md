@@ -72,7 +72,7 @@
 - [x] **11. URL params para compartir informes**  
   Usar `st.query_params` para serializar la competición, temporada, modo y equipo/jugador seleccionados en la URL.  
   Permite compartir un informe concreto con un enlace directo sin necesidad de configurar nada.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `51054dd`_
 
 - [ ] **12. Timestamp visible en el área principal**  
   Mostrar "Datos analizados el [fecha y hora]" junto al título o debajo de las métricas principales.  
