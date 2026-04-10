@@ -148,8 +148,51 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ---------------------------------------------------------------------------
+# Punto 15 — Modo oscuro consistente en gráficos
 # ---------------------------------------------------------------------------
 
+def _detect_dark_mode() -> bool:
+    """Detecta si el dashboard está en modo oscuro.
+
+    Orden de precedencia:
+      1. Variable de entorno STREAMLIT_DARK_MODE (1/true/yes → oscuro).
+      2. Fichero .streamlit/config.toml → [theme] base = "dark".
+      3. Defecto: modo claro.
+    """
+    env_val = os.getenv("STREAMLIT_DARK_MODE", "").strip().lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    try:
+        import tomllib  # Python ≥3.11
+    except ImportError:
+        try:
+            import tomli as tomllib  # type: ignore
+        except ImportError:
+            tomllib = None  # type: ignore
+    if tomllib is not None:
+        _cfg = Path(".streamlit/config.toml")
+        if _cfg.exists():
+            try:
+                _data = tomllib.loads(_cfg.read_text(encoding="utf-8"))
+                if _data.get("theme", {}).get("base") == "dark":
+                    return True
+            except Exception:
+                pass
+    return False
+
+
+_dark_mode = _detect_dark_mode()
+try:
+    from src.visualizer import set_chart_theme as _set_chart_theme
+    _set_chart_theme(dark=_dark_mode)
+except Exception:
+    pass
+
+# ---------------------------------------------------------------------------
 MODES = ["Liga", "Equipo", "Jornada", "Partido", "Jugador", "Compare"]
 
 # ---------------------------------------------------------------------------

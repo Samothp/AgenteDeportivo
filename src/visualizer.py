@@ -6,7 +6,29 @@ import seaborn as sns
 import pandas as pd
 
 
-sns.set(style='whitegrid')
+# ---------------------------------------------------------------------------
+# Punto 15 — Tema de gráficos (claro / oscuro)
+# ---------------------------------------------------------------------------
+
+def set_chart_theme(dark: bool = False) -> None:
+    """Aplica el estilo de matplotlib y seaborn según el tema del dashboard.
+
+    Llamar una vez al arrancar la app antes de generar cualquier gráfico.
+    Los colores base se ajustan para que los gráficos sean coherentes con el
+    fondo del dashboard (blanco en modo claro, gris oscuro en modo oscuro).
+
+    Args:
+        dark: True para activar el estilo oscuro, False para el claro (defecto).
+    """
+    if dark:
+        plt.style.use("dark_background")
+        sns.set(style="darkgrid", palette="muted")
+    else:
+        plt.style.use("default")
+        sns.set(style="whitegrid")
+
+
+set_chart_theme(dark=False)
 
 
 def plot_goals_distribution(df: pd.DataFrame, output_path: str) -> str:

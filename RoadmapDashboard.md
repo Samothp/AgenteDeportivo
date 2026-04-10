@@ -89,6 +89,7 @@
   Streamlit no tiene detección de viewport nativa; se puede aproximar con CSS en `st.markdown`.  
   ✅ _Completado — commit `00bd7c1`_
 
-- [ ] **15. Modo oscuro consistente en gráficos**  
+- [x] **15. Modo oscuro consistente en gráficos**  
   Los gráficos generados con matplotlib tienen fondo blanco aunque Streamlit esté en modo oscuro.  
-  Solución: detectar el tema activo y pasar `plt.style.use('dark_background')` condicionalmente al visualizador.
+  Solución: detectar el tema activo y pasar `plt.style.use('dark_background')` condicionalmente al visualizador.  
+  ✅ _Completado — commit pendiente_
