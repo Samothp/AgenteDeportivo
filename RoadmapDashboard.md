@@ -92,4 +92,4 @@
 - [x] **15. Modo oscuro consistente en gráficos**  
   Los gráficos generados con matplotlib tienen fondo blanco aunque Streamlit esté en modo oscuro.  
   Solución: detectar el tema activo y pasar `plt.style.use('dark_background')` condicionalmente al visualizador.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `088d7e8`_
