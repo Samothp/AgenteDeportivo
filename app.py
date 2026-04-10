@@ -687,6 +687,8 @@ def _display_mode_results(payload: dict) -> None:
         if c:
             st.subheader(f"⚔️ {c.get('team1', '')} vs {c.get('team2', '')}")
             _show_table(c.get("h2h", []), "🤝 Enfrentamientos directos (H2H)")
+            _show_table(c.get("stats_team1", []), f"📊 Stats {c.get('team1', 'Equipo 1')}")
+            _show_table(c.get("stats_team2", []), f"📊 Stats {c.get('team2', 'Equipo 2')}")
 
 
 def _display_charts(image_paths: list) -> None:
@@ -809,6 +811,7 @@ def _tab_run_and_display(mode: str, extra_kw: dict) -> None:
     st.markdown("---")
 
     # Punto 6 — Gráfico de evolución de puntos al inicio del modo Equipo
+    # Punto 9 — Radar comparativo al inicio del modo Compare
     _remaining_charts = list(image_paths)
     if payload.get("modo") == "equipo":
         _evo = [p for p in image_paths if "temporal_evolution" in Path(p).name]
@@ -816,6 +819,18 @@ def _tab_run_and_display(mode: str, extra_kw: dict) -> None:
         if _evo:
             st.subheader("📈 Evolución por jornada")
             st.image(_evo[0], use_container_width=True)
+            st.markdown("---")
+
+    elif payload.get("modo") == "compare":
+        _radar = [p for p in image_paths if "compare_radar" in Path(p).name]
+        _remaining_charts = [p for p in image_paths if "compare_radar" not in Path(p).name]
+        if _radar:
+            _c = payload.get("compare_data", {})
+            _t1 = _c.get("team1", "Equipo 1") if _c else "Equipo 1"
+            _t2 = _c.get("team2", "Equipo 2") if _c else "Equipo 2"
+            st.subheader(f"📊 Radar comparativo — {_t1} vs {_t2}")
+            _rc1, _rc2, _rc3 = st.columns([1, 2, 1])
+            _rc2.image(_radar[0], use_container_width=True)
             st.markdown("---")
 
     _display_mode_results(payload)

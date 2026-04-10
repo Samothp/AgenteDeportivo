@@ -55,9 +55,10 @@
   Dato de altísimo valor para el uso de scouting del producto.  
   ✅ _Completado — commit `80c68cd`_
 
-- [ ] **9. Radar visual en modo Compare**  
+- [x] **9. Radar visual en modo Compare**  
   El visualizador ya genera el radar comparativo entre equipos. Actualmente el modo Compare solo muestra la tabla H2H.  
-  Mostrar el radar al inicio de la vista para dar lectura inmediata de fortalezas y debilidades relativas.
+  Mostrar el radar al inicio de la vista para dar lectura inmediata de fortalezas y debilidades relativas.  
+  ✅ _Completado — commit pendiente_
 
 - [ ] **10. Prefetch de escudos al seleccionar equipo**  
   Llamar a `get_team_assets()` en segundo plano en cuanto el usuario cambia el selector de equipo, en lugar de esperar a que se genere el informe.  
