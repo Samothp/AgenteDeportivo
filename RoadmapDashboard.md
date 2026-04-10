@@ -41,7 +41,7 @@
 
 - [x] **6. Gráfico de evolución de puntos en modo Equipo**  
   El visualizador ya genera este gráfico. Mostrarlo de forma prominente en la parte superior de la vista de equipo, antes de las tablas, para dar contexto temporal que las métricas estáticas no ofrecen.  
-  ✅ _Completado — commit pendiente_
+  ✅ _Completado — commit `100873a`_
 
 - [ ] **7. Stats per-90 en modo Jugador**  
   Añadir métricas estándar del análisis moderno calculadas sobre los minutos jugados:  
