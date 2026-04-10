@@ -225,14 +225,44 @@ def _split_message(text: str, max_len: int = MAX_MSG_LENGTH) -> list[str]:
 # 12.2 — Paginación con inline keyboards
 # ---------------------------------------------------------------------------
 
-# Cache en memoria: key → lista de páginas (fragmentos de texto)
-_page_cache: dict[str, list[str]] = {}
+# Caché de paginación: persiste en disco con TTL de 1 hora para que los botones
+# ◀/▶ sigan funcionando tras reinicios del bot.
+PAGE_CACHE_FILE = Path("data/page_cache.json")
+_PAGE_CACHE_TTL = 3600  # segundos
+
+
+def _pc_load() -> dict[str, list[str]]:
+    """Carga el caché de paginación desde disco, descartando entradas expiradas."""
+    import time
+    if not PAGE_CACHE_FILE.exists():
+        return {}
+    try:
+        raw: dict = json.loads(PAGE_CACHE_FILE.read_text(encoding="utf-8"))
+        now = time.time()
+        return {k: v["pages"] for k, v in raw.items() if now - v.get("ts", 0) < _PAGE_CACHE_TTL}
+    except Exception:
+        return {}
+
+
+def _pc_save(cache: dict[str, list[str]]) -> None:
+    """Persiste el caché en disco añadiendo timestamp a cada entrada."""
+    import time
+    try:
+        PAGE_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        raw = {k: {"pages": pages, "ts": time.time()} for k, pages in cache.items()}
+        PAGE_CACHE_FILE.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+_page_cache: dict[str, list[str]] = _pc_load()
 
 
 def _cache_pages(text: str) -> str:
-    """Almacena las páginas en el caché y devuelve la clave."""
+    """Almacena las páginas en el caché (memoria + disco) y devuelve la clave."""
     key = hashlib.md5(text.encode()).hexdigest()[:12]
     _page_cache[key] = _split_message(text)
+    _pc_save(_page_cache)
     return key
 
 

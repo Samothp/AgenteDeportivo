@@ -14,9 +14,8 @@
   Se añadió `_main_loop: asyncio.AbstractEventLoop | None = None` a nivel de módulo y un callback `post_init` que captura el event loop del hilo principal al arrancar la aplicación.
   En `_check_alerts_sync`, `asyncio.run(_send(...))` se reemplazó por `asyncio.run_coroutine_threadsafe(_send(...), _main_loop).result(timeout=30)` para enviar alertas de forma segura desde el hilo de APScheduler.
 
-- [ ] **3. Persistir el caché de paginación en disco**
-  `_page_cache` es un dict en memoria: al reiniciar el bot, los botones ◀/▶ de mensajes anteriores devuelven "sesión expirada".
-  Reemplazar con un caché en disco (JSON + TTL de 1 hora) o simplemente deshabilitar los botones de paginación al reiniciar guardando el estado en `data/page_cache.json`.
+- [x] **3. Persistir el caché de paginación en disco** ✅
+  `_page_cache` ya no es un dict en memoria efímero. Se añadieron `PAGE_CACHE_FILE`, `_pc_load()` y `_pc_save()`. Al arrancar el bot se cargan las entradas válidas del fichero `data/page_cache.json` (TTL 1 hora). Cada vez que se almacena un nuevo resultado paginado, se persiste en disco. Los botones ◀/▶ de mensajes anteriores siguen funcionando tras reinicios.
 
 - [ ] **4. Rate limiting por usuario**
   Sin cooldown, un usuario puede spamear `/liga` o `/equipo` indefinidamente y saturar el servidor con análisis costosos.
