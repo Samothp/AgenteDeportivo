@@ -137,13 +137,23 @@ def _list_teams(competition: int, season: str) -> list[str]:
     return list_available_teams(competition, season)
 
 
-@st.cache_data(show_spinner=False)
 def _run_agent(competition: int, season: str, mode: str, **kwargs) -> tuple[dict, list[str]]:
     """Ejecuta el agente y devuelve (json_payload, image_paths).
 
-    Cachea el resultado por (competition, season, mode, kwargs hashables).
+    Usa st.session_state para caché dentro de la sesión.
     La caché se invalida automáticamente al cambiar cualquier parámetro.
     """
+    import logging as _logging
+    _log = _logging.getLogger("AgenteDeportivo.dashboard")
+    _log.debug("_run_agent llamado: competition=%r season=%r mode=%r kwargs=%r", competition, season, mode, kwargs)
+
+    # Caché por sesión — invalida si cambia cualquier parámetro
+    import hashlib as _hashlib
+    _key_data = f"{competition}|{season}|{mode}|{sorted(kwargs.items())!r}"
+    _cache_key = "_run_agent_" + _hashlib.md5(_key_data.encode()).hexdigest()
+    if _cache_key in st.session_state:
+        return st.session_state[_cache_key]
+
     from src.agent import SportsAgent
     from src.config import AgentConfig
     from src.data_loader import get_db_path
@@ -172,7 +182,9 @@ def _run_agent(competition: int, season: str, mode: str, **kwargs) -> tuple[dict
     json_str = agent.generate_json_report()
     image_paths = agent.save_visual_report(str(tmp_dir))
 
-    return json.loads(json_str), image_paths
+    result = json.loads(json_str), image_paths
+    st.session_state[_cache_key] = result
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -416,7 +428,10 @@ if not run_btn:
                 )
             if result.returncode == 0:
                 st.success("✅ Datos descargados correctamente. Pulsa **▶ Generar informe** para continuar.")
-                st.cache_data.clear()
+                # Limpiar caché de sesión para forzar recarga de datos
+                for _k in list(st.session_state.keys()):
+                    if _k.startswith("_run_agent_"):
+                        del st.session_state[_k]
             else:
                 st.error("❌ Error al descargar los datos.")
                 with st.expander("Ver detalles del error"):
@@ -443,7 +458,12 @@ except FileNotFoundError as e:
     st.error(str(e))
     st.stop()
 except Exception as e:
+    import traceback as _tb
+    _full_tb = _tb.format_exc()
+    _logger.error("Error en _run_agent:\n%s", _full_tb)
     st.error(f"Error al generar el informe: {e}")
+    with st.expander("🔍 Traceback completo (para diagnóstico)"):
+        st.code(_full_tb)
     st.stop()
 
 # ---------------------------------------------------------------------------
