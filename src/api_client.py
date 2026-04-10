@@ -70,7 +70,7 @@ class SportsDBAPI:
             api_key
             or os.getenv('THESPORTSDB_API_KEY')
             or os.getenv('SPORTSDB_API_KEY')
-            or '078593'
+            or '3'
         )
 
     @retry(
