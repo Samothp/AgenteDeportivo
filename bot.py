@@ -305,6 +305,44 @@ async def _send_report_with_charts(update: Update, text: str, image_paths: list[
 
 
 # ---------------------------------------------------------------------------
+# RoadmapBotTelegram #12 — Caché de informes por sesión
+# ---------------------------------------------------------------------------
+
+_REPORT_CACHE_TTL = 600  # 10 minutos
+_report_cache: dict[str, tuple[float, str]] = {}  # key → (timestamp_monotonic, text)
+
+
+def _report_cache_key(competition: int, season: str, **kwargs) -> str:
+    """Genera una clave única para una solicitud de informe."""
+    parts = f"{competition}:{season}:" + ":".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
+    return hashlib.md5(parts.encode()).hexdigest()[:16]
+
+
+def _report_cache_get(key: str) -> str | None:
+    """Devuelve el texto cacheado si existe y no ha expirado, o None."""
+    import time
+    entry = _report_cache.get(key)
+    if entry is None:
+        return None
+    ts, text = entry
+    if time.monotonic() - ts > _REPORT_CACHE_TTL:
+        del _report_cache[key]
+        return None
+    return text
+
+
+def _report_cache_set(key: str, text: str) -> None:
+    """Almacena el texto en la caché con timestamp actual."""
+    import time
+    _report_cache[key] = (time.monotonic(), text)
+    # Limpieza oportunista: eliminar entradas expiradas
+    now = time.monotonic()
+    expired = [k for k, (ts, _) in _report_cache.items() if now - ts > _REPORT_CACHE_TTL]
+    for k in expired:
+        del _report_cache[k]
+
+
+# ---------------------------------------------------------------------------
 # 12.2 — Paginación con inline keyboards
 # ---------------------------------------------------------------------------
 
@@ -498,12 +536,19 @@ async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await update.message.reply_text("⏳ Generando informe de liga...")
     solo_texto = "--texto" in (context.args or [])
-    if solo_texto:
+    _ck = _report_cache_key(competition, season)
+    cached = _report_cache_get(_ck)
+    if cached:
+        await update.message.reply_text("💾 (informe cacheado)")
+        await _send_paged(update, cached)
+    elif solo_texto:
         text = _run_agent_text(competition, season)
+        _report_cache_set(_ck, text)
         await _send_paged(update, text)
     else:
         with tempfile.TemporaryDirectory(prefix="agente_liga_") as tmp:
             text, images = _run_agent_with_charts(competition, season, tmp)
+            _report_cache_set(_ck, text)
             await _send_report_with_charts(update, text, images)
 
 
@@ -528,12 +573,19 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     await update.message.reply_text(f"⏳ Generando informe de {team}...")
     solo_texto = "--texto" in (context.args or [])
-    if solo_texto:
+    _ck = _report_cache_key(competition, season, team=team)
+    cached = _report_cache_get(_ck)
+    if cached:
+        await update.message.reply_text("💾 (informe cacheado)")
+        await _send_paged(update, cached)
+    elif solo_texto:
         text = _run_agent_text(competition, season, team=team)
+        _report_cache_set(_ck, text)
         await _send_paged(update, text)
     else:
         with tempfile.TemporaryDirectory(prefix="agente_equipo_") as tmp:
             text, images = _run_agent_with_charts(competition, season, tmp, team=team)
+            _report_cache_set(_ck, text)
             await _send_report_with_charts(update, text, images)
 
 
@@ -592,12 +644,19 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     await update.message.reply_text(f"⏳ Comparando {team1} vs {team2}...")
     solo_texto = "--texto" in (context.args or [])
-    if solo_texto:
+    _ck = _report_cache_key(competition, season, compare=f"{team1}|{team2}")
+    cached = _report_cache_get(_ck)
+    if cached:
+        await update.message.reply_text("💾 (informe cacheado)")
+        await _send_paged(update, cached)
+    elif solo_texto:
         text = _run_agent_text(competition, season, compare=(team1, team2))
+        _report_cache_set(_ck, text)
         await _send_paged(update, text)
     else:
         with tempfile.TemporaryDirectory(prefix="agente_compare_") as tmp:
             text, images = _run_agent_with_charts(competition, season, tmp, compare=(team1, team2))
+            _report_cache_set(_ck, text)
             await _send_report_with_charts(update, text, images)
 
 

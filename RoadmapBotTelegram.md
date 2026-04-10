@@ -45,9 +45,8 @@
 - [x] **11. Enviar gráficos como foto adjunta** ✅
   Nueva función `_run_agent_with_charts(comp, season, tmp_dir, **kwargs)` que crea el agente con `no_charts=False` y llama a `save_visual_report(tmp_dir)`. Helper `_send_report_with_charts(update, text, images)` que envía el texto paginado y después cada PNG con `reply_photo()`. Los comandos `/liga`, `/equipo` y `/compare` usan gráficos por defecto y aceptan `--texto` para modo solo texto.
 
-- [ ] **12. Caché de informes por sesión**
-  Si el mismo usuario pide el mismo informe (misma comp+temp+equipo) en menos de 10 minutos, devolver el resultado cacheado en lugar de re-ejecutar el agente.
-  Implementar con un dict `{key: (timestamp, resultado)}` limpiado periódicamente.
+- [x] **12. Caché de informes por sesión** ✅
+  Dict en memoria `_report_cache: dict[str, (ts, text)]` con TTL de 10 minutos. Funciones `_report_cache_key`, `_report_cache_get` (con limpieza oportunista de expiradas) y `_report_cache_set`. Si el mismo usuario \u2014o cualquiera\u2014 pide el mismo informe (misma comp+temp+equipo) antes de 10 minutos, el bot responde con el texto cacheado directamente, indicando 💾 (informe cacheado). Aplicado a `/liga`, `/equipo` y `/compare`.
 
 ---
 

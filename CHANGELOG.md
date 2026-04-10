@@ -22,6 +22,7 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
 - **Comando `/ultima` (RoadmapBotTelegram #9)**: nuevo handler `cmd_ultima`. Carga el CSV y llama a `compute_team_form(df, team, last_n=5)` de `analysis.py`, mostrando los últimos 5 resultados como emojis 🟢⚪🔴.
 - **Comando `/temporadas` (RoadmapBotTelegram #10)**: nuevo handler `cmd_temporadas`. Escanea `data/` con regex `db_<comp>_<año>.csv` y lista las temporadas disponibles con etiqueta legible (ej. `2025` → `25/26`).
 - **Envío de gráficos como foto adjunta en `/liga`, `/equipo`, `/compare` (RoadmapBotTelegram #11)**: nueva función `_run_agent_with_charts` que ejecuta el agente con `no_charts=False` en un directorio temporal. La helper `_send_report_with_charts` envía el informe paginado y a continuación cada PNG con `reply_photo()`. El flag `--texto` permite solicitar solo el texto sin gráficos.
+- **Caché de informes con TTL de 10 minutos (RoadmapBotTelegram #12)**: `_report_cache` dict en memoria con funciones `_report_cache_key`, `_report_cache_get` y `_report_cache_set`. Evita re-ejecutar el agente para la misma solicitud (comp+temp+equipo) si no han pasado 10 minutos. Con limpieza oportunista de entradas expiradas. Aplicado a `/liga`, `/equipo` y `/compare`.
 
 ### Añadido
 
