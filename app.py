@@ -274,6 +274,78 @@ def _show_table(data: list, title: str = ""):
     st.dataframe(display_df, use_container_width=True, column_config=column_cfg)
 
 
+# ---------------------------------------------------------------------------
+# 11 — URL params para compartir informes
+# ---------------------------------------------------------------------------
+
+def _init_from_url_params() -> None:
+    """Pre-rellena st.session_state con los parámetros de la URL (solo en la primera carga).
+
+    Parámetros soportados:
+      comp      → ID de competición (int)
+      season    → Temporada (YYYY)
+      team      → Nombre de equipo (tabs Equipo y Jugador)
+      player    → Nombre de jugador
+      matchday  → Número de jornada (int)
+      match_id  → ID de partido (int)
+      t1, t2    → Equipos para el modo Compare
+    """
+    if st.session_state.get("_url_params_loaded"):
+        return
+    st.session_state["_url_params_loaded"] = True
+    qp = st.query_params
+    if "comp" in qp:
+        try:
+            st.session_state["sidebar_competition"] = int(qp["comp"])
+        except ValueError:
+            pass
+    if "season" in qp:
+        st.session_state["sidebar_season"] = str(qp["season"])
+    if "team" in qp:
+        st.session_state["equipo_team"] = str(qp["team"])
+        st.session_state["jugador_team"] = str(qp["team"])
+    if "player" in qp:
+        st.session_state["jugador_nombre"] = str(qp["player"])
+    if "matchday" in qp:
+        try:
+            st.session_state["jornada_num"] = int(qp["matchday"])
+        except ValueError:
+            pass
+    if "match_id" in qp:
+        try:
+            st.session_state["partido_id"] = int(qp["match_id"])
+        except ValueError:
+            pass
+    if "t1" in qp:
+        st.session_state["compare_t1"] = str(qp["t1"])
+    if "t2" in qp:
+        st.session_state["compare_t2"] = str(qp["t2"])
+
+
+def _update_url_params(mode: str, kw: dict, comp: int, seas: str) -> None:
+    """Actualiza st.query_params con el estado del informe recién generado."""
+    params: dict[str, str] = {
+        "comp": str(comp),
+        "season": seas,
+        "tab": mode.lower(),
+    }
+    if "team" in kw:
+        params["team"] = str(kw["team"])
+    if "player" in kw:
+        params["player"] = str(kw["player"])
+    if "matchday" in kw:
+        params["matchday"] = str(kw["matchday"])
+    if "match_id" in kw:
+        params["match_id"] = str(kw["match_id"])
+    if "compare" in kw:
+        t1, t2 = kw["compare"]
+        params["t1"] = str(t1)
+        params["t2"] = str(t2)
+    st.query_params.update(params)
+
+
+_init_from_url_params()
+
 st.sidebar.title("⚽ Agente Deportivo")
 st.sidebar.markdown("---")
 
@@ -300,8 +372,9 @@ else:
         "Competición",
         options=list(COMPETITION_NAMES.keys()),
         format_func=lambda x: COMPETITION_NAMES[x],
+        key="sidebar_competition",
     )
-    season = st.sidebar.text_input("Temporada (YYYY)", value="2024")
+    season = st.sidebar.text_input("Temporada (YYYY)", value="2024", key="sidebar_season")
 
 st.sidebar.markdown("---")
 
@@ -820,6 +893,8 @@ def _tab_run_and_display(mode: str, extra_kw: dict) -> None:
                 payload, image_paths = _run_agent(competition, season, mode, **kw)
             # Guardar la key del informe recién generado
             st.session_state[_last_key_name] = _cache_key
+            # Punto 11 — actualizar URL params para compartir el informe
+            _update_url_params(mode, extra_kw, competition, season)
         else:
             payload, image_paths = _run_agent(competition, season, mode, **kw)
     except FileNotFoundError as e:
