@@ -317,6 +317,29 @@ if not use_multi:
 
     st.sidebar.markdown("---")
     _show_data_freshness(competition, season)
+    # Escudo del equipo (Equipo, Jugador o Compare)
+    if mode in ("Equipo", "Jugador") and extra_kwargs.get("team"):
+        try:
+            from src.image_fetcher import get_cached_team_meta
+            _tm = get_cached_team_meta(extra_kwargs["team"], competition)
+            _badge = _tm.get("badge_local")
+            if _badge and Path(_badge).exists():
+                st.sidebar.image(_badge, width=80)
+        except Exception:
+            pass
+    elif mode == "Compare" and extra_kwargs.get("compare"):
+        try:
+            from src.image_fetcher import get_cached_team_meta
+            _t1, _t2 = extra_kwargs["compare"]
+            _b1 = get_cached_team_meta(_t1, competition).get("badge_local")
+            _b2 = get_cached_team_meta(_t2, competition).get("badge_local")
+            _scol1, _scol2 = st.sidebar.columns(2)
+            if _b1 and Path(_b1).exists():
+                _scol1.image(_b1, width=60)
+            if _b2 and Path(_b2).exists():
+                _scol2.image(_b2, width=60)
+        except Exception:
+            pass
     st.sidebar.markdown("---")
     run_btn = st.sidebar.button("▶ Generar informe", use_container_width=True)
 
@@ -544,7 +567,25 @@ elif modo == "partido":
 elif modo == "jugador":
     pp = payload.get("player_profile", {})
     if pp:
-        st.subheader(f"👤 {pp.get('nombre', '')}")
+        # Foto del jugador (de la cach\xe9 local si est\xe1 disponible)
+        _player_thumb = pp.get("thumb_local") or pp.get("cutout_local")
+        _player_cols = st.columns([1, 4]) if _player_thumb and Path(_player_thumb).exists() else [None]
+        if len(_player_cols) == 2:
+            with _player_cols[0]:
+                st.image(_player_thumb, width=120)
+            with _player_cols[1]:
+                st.subheader(f"\U0001f464 {pp.get('nombre', '')}")
+                _bio_parts = []
+                if pp.get('nationality'): _bio_parts.append(pp['nationality'])
+                if pp.get('position_full'): _bio_parts.append(pp['position_full'])
+                if pp.get('age'): _bio_parts.append(f"{pp['age']} a\xf1os")
+                if pp.get('height_cm'): _bio_parts.append(f"{pp['height_cm']} cm")
+                if pp.get('weight_kg'): _bio_parts.append(f"{pp['weight_kg']} kg")
+                if pp.get('jersey'): _bio_parts.append(f"Dorsal #{pp['jersey']}")
+                if _bio_parts:
+                    st.caption(" \u00b7 ".join(_bio_parts))
+        else:
+            st.subheader(f"\U0001f464 {pp.get('nombre', '')}")
         col1, col2, col3 = st.columns(3)
         col1.metric("Partidos jugados", pp.get("pj"))
         col2.metric("Goles", pp.get("goles"))

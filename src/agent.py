@@ -89,6 +89,48 @@ class SportsAgent:
         """Renderiza un template Jinja2 y devuelve el HTML generado."""
         return self._get_jinja_env().get_template(template_name).render(**context)
 
+    @staticmethod
+    def _rel_image(local_path: str, report_file: Path) -> str:
+        """Convierte una ruta absoluta de imagen a ruta relativa desde el HTML.
+
+        Retorna cadena vacía si la ruta está vacía o el archivo no existe.
+        """
+        if not local_path:
+            return ""
+        p = Path(local_path)
+        if not p.exists():
+            return ""
+        try:
+            return Path(os.path.relpath(p, start=report_file.parent)).as_posix()
+        except ValueError:
+            return str(p)
+
+    def _get_team_badges_for_report(self, clf_rows: list, report_file: Path) -> dict:
+        """Devuelve dict {equipo: ruta_relativa_badge} para los equipos de la clasificación.
+
+        Solo usa la caché local (no hace llamadas a la API) para no ralentizar
+        la generación del informe. Los escudos deben haberse descargado previamente
+        con image_fetcher.get_team_assets() o prefetch_league_assets().
+        """
+        try:
+            from .image_fetcher import get_cached_team_meta
+        except ImportError:
+            return {}
+
+        result: dict = {}
+        cid = self.competition_id or 2014
+        for row in clf_rows:
+            team = row.get("Equipo", "")
+            if not team:
+                continue
+            meta = get_cached_team_meta(team, cid)
+            badge_local = meta.get("badge_local")
+            if badge_local:
+                rel = self._rel_image(badge_local, report_file)
+                if rel:
+                    result[team] = rel
+        return result
+
     def __init__(self, config: AgentConfig):
         self.data_path = config.data_path
         self.fetch_real = config.fetch_real
@@ -923,6 +965,7 @@ class SportsAgent:
             'matchday_range':      self.matchday_range,
             'conclusions_html':    conclusions_html,
             'interseason':         interseason_text,
+            'team_badges':         self._get_team_badges_for_report(clf_rows, report_file),
         }
         content = self._render_template('liga.html.j2', context)
         report_file.write_text(content, encoding='utf-8')
@@ -1255,6 +1298,7 @@ class SportsAgent:
             'player_name':              p['player_name'],
             'team':                     p['team'],
             'position':                 p['position'],
+            'position_full':            p.get('position_full', ''),
             'season':                   p['season'],
             'appearances':              p['appearances'],
             'goals':                    p['goals'],
@@ -1270,6 +1314,14 @@ class SportsAgent:
             'pct_partidos_con_ga':      p['pct_partidos_con_ga'],
             'ranking_goles':            p['ranking_goles'],
             'ranking_asistencias':      p['ranking_asistencias'],
+            # Perfil físico/biográfico
+            'nationality':              p.get('nationality', ''),
+            'age':                      p.get('age', ''),
+            'height_cm':                p.get('height_cm', ''),
+            'weight_kg':                p.get('weight_kg', ''),
+            'jersey':                   p.get('jersey', ''),
+            # Foto del jugador (ruta relativa al html)
+            'player_thumb':             self._rel_image(p.get('thumb_local', ''), report_file),
             'top_goleadores_html':      (top_g.to_html(index=False, classes='dataframe', border=0) if top_g is not None and not top_g.empty else ''),
             'top_asistentes_html':      (top_a.to_html(index=False, classes='dataframe', border=0) if top_a is not None and not top_a.empty else ''),
             'images':                   relative_images,

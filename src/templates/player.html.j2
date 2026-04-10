@@ -11,9 +11,26 @@
 {% endblock %}
 
 {% block content %}
-  <div class="header-box">
-    <h1>{{ player_name }}</h1>
-    <p>{{ team }} &nbsp;|&nbsp; {{ position }} &nbsp;|&nbsp; Temporada {{ season }}</p>
+  <div class="header-box" style="display:flex; align-items:center; gap:20px;">
+    {% if player_thumb %}
+    <img src="{{ player_thumb }}" alt="{{ player_name }}"
+         style="width:100px; height:100px; border-radius:50%; object-fit:cover;
+                border:3px solid rgba(255,255,255,0.4); flex-shrink:0;">
+    {% endif %}
+    <div>
+      <h1>{{ player_name }}</h1>
+      <p>{{ team }} &nbsp;|&nbsp; {{ position }}{% if position_full and position_full != position %} ({{ position_full }}){% endif %}
+         &nbsp;|&nbsp; Temporada {{ season }}</p>
+      {% if nationality or age or height_cm or weight_kg or jersey %}
+      <p style="font-size:0.85em; opacity:0.85; margin:4px 0 0 0;">
+        {% if jersey %}#{{ jersey }} &nbsp;·&nbsp;{% endif %}
+        {% if nationality %}{{ nationality }}{% endif %}
+        {% if age %} &nbsp;·&nbsp; {{ age }} años{% endif %}
+        {% if height_cm %} &nbsp;·&nbsp; {{ height_cm }} cm{% endif %}
+        {% if weight_kg %} &nbsp;·&nbsp; {{ weight_kg }} kg{% endif %}
+      </p>
+      {% endif %}
+    </div>
   </div>
 
   <div class="kpi-grid">

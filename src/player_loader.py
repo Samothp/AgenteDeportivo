@@ -47,6 +47,16 @@ _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 _DATA_DIR = Path(__file__).parent.parent / "data"
 _ESPN_STAT_FIELDS = ("totalGoals", "goalAssists", "yellowCards", "redCards", "appearances", "shotsOnTarget")
 
+# Campos del roster ESPN que capturamos adicionalmente (perfil físico/biográfico)
+_ESPN_PROFILE_FIELDS = (
+    "height",       # pulgadas → convertir a cm
+    "weight",       # libras → convertir a kg
+    "age",          # años
+    "dateOfBirth",  # 'YYYY-MM-DDTHH:MMZ'
+    "jersey",       # número dorsal
+    "citizenship",  # nacionalidad en texto (p.ej. 'Spain')
+)
+
 # Cache en memoria: (league_slug) -> list[{id, name, slug}]
 _teams_cache: dict[str, list[dict]] = {}
 
@@ -92,8 +102,29 @@ def _find_team_id(team_name: str, league_slug: str) -> Optional[int]:
     return None
 
 
+def _inches_to_cm(inches) -> Optional[float]:
+    try:
+        return round(float(inches) * 2.54, 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _lbs_to_kg(lbs) -> Optional[float]:
+    try:
+        return round(float(lbs) * 0.453592, 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_dob(raw: str) -> Optional[str]:
+    """Extrae la fecha YYYY-MM-DD de cadenas como '1984-05-27T07:00Z'."""
+    if not raw:
+        return None
+    return str(raw).split("T")[0]
+
+
 def _fetch_roster(team_id: int, league_slug: str, team_name: str) -> list[dict]:
-    """Descarga el roster de un equipo y extrae las stats."""
+    """Descarga el roster de un equipo y extrae stats de rendimiento y perfil físico."""
     data = _get(f"{_ESPN_BASE}/{league_slug}/teams/{team_id}/roster")
     athletes = data.get("athletes", [])
 
@@ -103,7 +134,7 @@ def _fetch_roster(team_id: int, league_slug: str, team_name: str) -> list[dict]:
         if not stats_block:
             continue
         cats = stats_block.get("splits", {}).get("categories", [])
-        stat_values: dict[str, int] = {}
+        stat_values: dict[str, float] = {}
         for cat in cats:
             for stat in cat.get("stats", []):
                 if stat["name"] in _ESPN_STAT_FIELDS:
@@ -111,18 +142,36 @@ def _fetch_roster(team_id: int, league_slug: str, team_name: str) -> list[dict]:
 
         goals = stat_values.get("totalGoals", 0)
         assists = stat_values.get("goalAssists", 0)
+
+        # Posición completa (ej. 'Centre-Forward') vs abbreviation (ej. 'CF')
+        pos_block = a.get("position") or {}
+
         rows.append({
-            "player_id": int(a["id"]),
-            "player_name": a.get("displayName", ""),
-            "team": team_name,
-            "position": a.get("position", {}).get("abbreviation", ""),
-            "appearances": stat_values.get("appearances", 0),
-            "goals": goals,
-            "assists": assists,
-            "yellow_cards": stat_values.get("yellowCards", 0),
-            "red_cards": stat_values.get("redCards", 0),
-            "shots_on_target": stat_values.get("shotsOnTarget", 0),
-            "goals_assists": goals + assists,
+            "player_id":      int(a["id"]),
+            "player_name":    a.get("displayName", ""),
+            "team":           team_name,
+            "position":       pos_block.get("abbreviation", ""),
+            "position_full":  pos_block.get("displayName") or pos_block.get("name", ""),
+            "appearances":    int(stat_values.get("appearances", 0)),
+            "goals":          int(goals),
+            "assists":        int(assists),
+            "yellow_cards":   int(stat_values.get("yellowCards", 0)),
+            "red_cards":      int(stat_values.get("redCards", 0)),
+            "shots_on_target":int(stat_values.get("shotsOnTarget", 0)),
+            "goals_assists":  int(goals + assists),
+            # Perfil físico/biográfico (ESPN)
+            "height_cm":      _inches_to_cm(a.get("height")),
+            "weight_kg":      _lbs_to_kg(a.get("weight")),
+            "age":            a.get("age"),
+            "date_of_birth":  _parse_dob(a.get("dateOfBirth", "")),
+            "nationality":    a.get("citizenship") or "",
+            "jersey":         a.get("jersey") or "",
+            # Imágenes (se rellenan después con TheSportsDB)
+            "thumb_url":      "",
+            "thumb_local":    "",
+            "cutout_url":     "",
+            "cutout_local":   "",
+            "player_id_tsdb": "",
         })
     return rows
 
@@ -203,21 +252,84 @@ def _fetch_roster_thesportsdb(team_name: str, verbose: bool = False) -> list[dic
     return rows
 
 
+def _enrich_with_tsdb_images(df: pd.DataFrame, team_name: str, verbose: bool = False) -> pd.DataFrame:
+    """Enriquece el DataFrame de jugadores con URLs e imágenes locales de TheSportsDB.
+
+    Con API key de pago: UNA llamada batch para todos los jugadores.
+    Con clave gratuita: usa lookup_all_players (sin imágenes batch) o búsqueda
+    individual por nombre (solo para el jugador en foco, no en batch).
+    """
+    try:
+        from .image_fetcher import get_player_images_for_team, get_cached_team_meta
+    except ImportError:
+        return df
+
+    if verbose:
+        print(f"  Enriqueciendo con imágenes TheSportsDB para '{team_name}'...")
+
+    # Obtener team_id_tsdb de la caché para mejorar el fallback
+    meta_cached = get_cached_team_meta(team_name, 2014)
+    team_id_tsdb = meta_cached.get("team_id_tsdb", "")
+
+    tsdb_players = get_player_images_for_team(team_name, team_id_tsdb=team_id_tsdb, download=True)
+    if not tsdb_players:
+        if verbose:
+            print("  [info] Sin datos de imagen de TheSportsDB para este equipo (clave gratuita).")
+        return df
+
+    df = df.copy()
+    # Asegurar que existen las columnas de imagen/metadata
+    for col in ("thumb_url", "thumb_local", "cutout_url", "cutout_local", "player_id_tsdb",
+                "date_born", "position_tsdb"):
+        if col not in df.columns:
+            df[col] = ""
+
+    for idx, row in df.iterrows():
+        name_lower = str(row.get("player_name", "")).lower()
+        # Búsqueda exacta primero, luego por apellido
+        tsdb = tsdb_players.get(name_lower)
+        if tsdb is None:
+            parts = name_lower.split()
+            last = parts[-1] if parts else ""
+            for k, v in tsdb_players.items():
+                if last and last in k:
+                    tsdb = v
+                    break
+        if tsdb is None:
+            continue
+        for col in ("thumb_url", "thumb_local", "cutout_url", "cutout_local",
+                    "player_id_tsdb", "date_born", "position_tsdb"):
+            val = tsdb.get(col) or ""
+            if val:
+                df.at[idx, col] = val
+        if not df.at[idx, "nationality"] and tsdb.get("nationality"):
+            df.at[idx, "nationality"] = tsdb["nationality"]
+
+    if verbose:
+        matched = df["thumb_local"].astype(bool).sum()
+        print(f"  {matched}/{len(df)} jugadores con foto local.")
+
+    return df
+
+
 def fetch_player_stats(
     team_name: str,
     competition_id: int = 2014,
     season: str = "2025-2026",
     verbose: bool = True,
+    with_images: bool = True,
 ) -> pd.DataFrame:
-    """
-    Descarga estadisticas de todos los jugadores de un equipo via ESPN
-    y guarda en cache CSV local.
+    """Descarga estadisticas de todos los jugadores de un equipo via ESPN
+    y opcionalmente enriquece con imágenes de TheSportsDB.
+
+    Guarda el resultado en caché CSV local.
 
     Args:
         team_name:      Nombre del equipo (busqueda parcial, case-insensitive)
         competition_id: ID de competicion del proyecto (2014 = La Liga)
         season:         Temporada 'YYYY-YYYY' o 'YYYY' (solo para nombrar el cache)
         verbose:        Imprimir progreso en consola
+        with_images:    Si True, descarga imágenes de jugadores de TheSportsDB
     """
     league_slug = _get_espn_league(competition_id)
 
@@ -235,6 +347,8 @@ def fetch_player_stats(
         df = pd.DataFrame(rows)
         df["season"] = f"{season_year}-{season_year + 1}"
         df["competition_id"] = competition_id
+        if with_images:
+            df = _enrich_with_tsdb_images(df, team_name, verbose=verbose)
         csv_path = _players_csv_path(competition_id, season)
         csv_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(csv_path, index=False)
@@ -253,6 +367,9 @@ def fetch_player_stats(
     df = pd.DataFrame(rows)
     df["season"] = f"{season_year}-{season_year + 1}"
     df["competition_id"] = competition_id
+
+    if with_images:
+        df = _enrich_with_tsdb_images(df, team_name, verbose=verbose)
 
     csv_path = _players_csv_path(competition_id, season)
     csv_path.parent.mkdir(parents=True, exist_ok=True)

@@ -59,20 +59,24 @@
     {% for row in clasificacion %}
       {% set pos = row.Pos | int %}
       {% if pos <= 4 %}
-        {% set tr_class = "ucl" %}{% set badge = ' <span class="zona-badge" title="Champions League">🏦</span>' %}
+        {% set tr_class = "ucl" %}{% set zona_badge = ' <span class="zona-badge" title="Champions League">🏦</span>' %}
       {% elif pos <= 6 %}
-        {% set tr_class = "uel" %}{% set badge = ' <span class="zona-badge" title="Europa League">🌟</span>' %}
+        {% set tr_class = "uel" %}{% set zona_badge = ' <span class="zona-badge" title="Europa League">🌟</span>' %}
       {% elif pos == 7 %}
-        {% set tr_class = "uecl" %}{% set badge = ' <span class="zona-badge" title="Conference League">🌿</span>' %}
+        {% set tr_class = "uecl" %}{% set zona_badge = ' <span class="zona-badge" title="Conference League">🌿</span>' %}
       {% elif pos >= total_teams - 2 %}
-        {% set tr_class = "descenso" %}{% set badge = ' <span class="zona-badge" title="Descenso">⬇️</span>' %}
+        {% set tr_class = "descenso" %}{% set zona_badge = ' <span class="zona-badge" title="Descenso">⬇️</span>' %}
       {% else %}
-        {% set tr_class = "" %}{% set badge = "" %}
+        {% set tr_class = "" %}{% set zona_badge = "" %}
       {% endif %}
       {% set dif = row.DIF | int %}
+      {% set team_badge = team_badges.get(row.Equipo) if team_badges else None %}
       <tr{% if tr_class %} class="{{ tr_class }}"{% endif %}>
         <td>{{ pos }}</td>
-        <td class="left"><strong>{{ row.Equipo }}</strong>{{ badge | safe }}</td>
+        <td class="left">
+          {% if team_badge %}<img src="{{ team_badge }}" alt="" style="width:20px;height:20px;vertical-align:middle;margin-right:6px;">{% endif %}
+          <strong>{{ row.Equipo }}</strong>{{ zona_badge | safe }}
+        </td>
         <td>{{ row.PJ | int }}</td><td>{{ row.G | int }}</td><td>{{ row.E | int }}</td>
         <td>{{ row.P | int }}</td><td>{{ row.GF | int }}</td><td>{{ row.GC | int }}</td>
         <td>{% if dif > 0 %}+{{ dif }}{% else %}{{ dif }}{% endif %}</td>

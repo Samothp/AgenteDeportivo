@@ -1325,6 +1325,17 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
     position   = str(row.get('position', '-'))
     season     = str(row.get('season', '-'))
 
+    # Nuevos campos de perfil físico/biográfico (ESPN + TheSportsDB)
+    position_full = str(row.get('position_full', '') or '')
+    nationality   = str(row.get('nationality', '') or '')
+    age           = row.get('age')
+    height_cm     = row.get('height_cm')
+    weight_kg     = row.get('weight_kg')
+    jersey        = str(row.get('jersey', '') or '')
+    thumb_local   = str(row.get('thumb_local', '') or '')
+    cutout_local  = str(row.get('cutout_local', '') or '')
+    date_of_birth = str(row.get('date_of_birth', '') or '')
+
     goles_pp  = round(goals / pj, 3) if pj > 0 else 0.0
     asist_pp  = round(assists / pj, 3) if pj > 0 else 0.0
     ga_pp     = round(ga / pj, 3) if pj > 0 else 0.0
@@ -1365,6 +1376,7 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
         'player_name':              str(row['player_name']),
         'team':                     team,
         'position':                 _translate_pos(position),
+        'position_full':            position_full,
         'season':                   season,
         'appearances':              pj,
         'goals':                    goals,
@@ -1382,4 +1394,14 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
         'ranking_asistencias':      ranking_asistencias,
         'compañeros_goleadores':    compañeros_goleadores,
         'compañeros_asistentes':    compañeros_asistentes,
+        # Perfil físico/biográfico
+        'nationality':              nationality,
+        'age':                      age,
+        'height_cm':                height_cm,
+        'weight_kg':                weight_kg,
+        'jersey':                   jersey,
+        'date_of_birth':            date_of_birth,
+        # Imágenes
+        'thumb_local':              thumb_local,
+        'cutout_local':             cutout_local,
     }
