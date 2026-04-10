@@ -147,6 +147,36 @@ def _require_group_member(handler):
 
     return wrapper
 
+
+def _cooldown(seconds: int):
+    """Decorador de rate limiting por usuario. Rechaza el comando si el mismo usuario
+    lo volvió a llamar antes de que hayan transcurrido `seconds` segundos."""
+    import functools
+    import time
+
+    def decorator(handler):
+        @functools.wraps(handler)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            user = update.effective_user
+            if user is None:
+                return await handler(update, context)
+            cd_key = f"_cd_{handler.__name__}"
+            last_ts: float = context.user_data.get(cd_key, 0.0)
+            elapsed = time.monotonic() - last_ts
+            if elapsed < seconds:
+                remaining = int(seconds - elapsed) + 1
+                await update.message.reply_text(
+                    f"⏳ Comando en cooldown. Vuelve a intentarlo en {remaining} segundos."
+                )
+                return
+            context.user_data[cd_key] = time.monotonic()
+            return await handler(update, context)
+
+        return wrapper
+
+    return decorator
+
+
 # ---------------------------------------------------------------------------
 # Helpers del agente
 # ---------------------------------------------------------------------------
@@ -388,6 +418,7 @@ async def cmd_equipos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 @_require_group_member
+@_cooldown(30)
 async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/liga <competition> <season>"""
     result = _parse_base(context.args)
@@ -402,6 +433,7 @@ async def cmd_liga(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 @_require_group_member
+@_cooldown(30)
 async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/equipo <competition> <season> <nombre_equipo>"""
     result = _parse_base(context.args)
@@ -424,6 +456,7 @@ async def cmd_equipo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 @_require_group_member
+@_cooldown(30)
 async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/jornada <competition> <season> <N>"""
     result = _parse_base(context.args)
@@ -450,6 +483,7 @@ async def cmd_jornada(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 @_require_group_member
+@_cooldown(30)
 async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/compare <competition> <season> <equipo1> | <equipo2>"""
     result = _parse_base(context.args)
@@ -590,6 +624,7 @@ async def cmd_ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 @_require_group_member
+@_cooldown(30)
 async def cmd_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/pdf <competition> <season> — Genera y envía un PDF del informe de liga."""
     result = _parse_base(context.args)

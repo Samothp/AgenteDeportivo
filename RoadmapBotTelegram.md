@@ -17,9 +17,8 @@
 - [x] **3. Persistir el caché de paginación en disco** ✅
   `_page_cache` ya no es un dict en memoria efímero. Se añadieron `PAGE_CACHE_FILE`, `_pc_load()` y `_pc_save()`. Al arrancar el bot se cargan las entradas válidas del fichero `data/page_cache.json` (TTL 1 hora). Cada vez que se almacena un nuevo resultado paginado, se persiste en disco. Los botones ◀/▶ de mensajes anteriores siguen funcionando tras reinicios.
 
-- [ ] **4. Rate limiting por usuario**
-  Sin cooldown, un usuario puede spamear `/liga` o `/equipo` indefinidamente y saturar el servidor con análisis costosos.
-  Implementar un decorador `_cooldown(seconds)` que rechace el mismo comando del mismo usuario si no han pasado N segundos desde la última ejecución (estado en `context.user_data`).
+- [x] **4. Rate limiting por usuario** ✅
+  Nuevo decorador `_cooldown(seconds)` que usa `context.user_data` para registrar el último uso por comando. Si el mismo usuario reejuta el comando antes de que pasen `seconds` segundos, recibe un mensaje con el tiempo restante. Aplicado con `@_cooldown(30)` a los comandos costosos: `/liga`, `/equipo`, `/jornada`, `/compare` y `/pdf`.
 
 - [ ] **5. Completar `/start` — incluir todos los comandos**
   El mensaje de bienvenida no menciona `/suscribir`, `/desuscribir`, `/suscripciones`, `/pdf` ni `/ayuda`.
