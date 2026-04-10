@@ -6,9 +6,9 @@
 
 ## 🔴 Alta prioridad — Bugs críticos y riesgos en producción
 
-- [ ] **1. Eliminar código duplicado de control de acceso**
-  `ALLOWED_GROUP_ID`, `_MEMBER_STATUSES`, `_is_group_member()` y `_require_group_member()` están definidos **dos veces** en `bot.py` (≈líneas 97-144 y 150-192).
-  Eliminar el primer bloque y dejar únicamente la segunda definición.
+- [x] **1. Eliminar código duplicado de control de acceso** ✅
+  `ALLOWED_GROUP_ID`, `_MEMBER_STATUSES`, `_is_group_member()` y `_require_group_member()` estaban definidos **dos veces** en `bot.py`.
+  Se eliminó el primer bloque duplicado, dejando únicamente la definición canónica con su sección de encabezado.
 
 - [ ] **2. Corregir `asyncio.run()` dentro de `_check_alerts_sync`**
   APScheduler llama a `_check_alerts_sync` desde un hilo secundario mientras el event loop principal ya está en marcha.

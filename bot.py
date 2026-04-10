@@ -96,56 +96,6 @@ ALERT_STATE_FILE = Path("data/alert_state.json")
 # Control de acceso por membresía a grupo
 # ---------------------------------------------------------------------------
 
-# ID numérico del grupo (negativo, ej. -1001234567890). None → bot público.
-_RAW_GROUP_ID = os.getenv("ALLOWED_GROUP_ID", "").strip()
-ALLOWED_GROUP_ID: int | None = int(_RAW_GROUP_ID) if _RAW_GROUP_ID else None
-
-# Estados de Telegram que se consideran "miembro activo"
-_MEMBER_STATUSES = {"creator", "administrator", "member", "restricted"}
-
-
-async def _is_group_member(user_id: int, bot) -> bool:
-    """Devuelve True si el usuario pertenece al grupo ALLOWED_GROUP_ID."""
-    if ALLOWED_GROUP_ID is None:
-        return True  # Sin restricción configurada → acceso abierto
-    try:
-        member = await bot.get_chat_member(chat_id=ALLOWED_GROUP_ID, user_id=user_id)
-        return member.status in _MEMBER_STATUSES
-    except Exception:
-        # Si el bot no está en el grupo o la API falla, denegamos por seguridad
-        return False
-
-
-def _require_group_member(handler):
-    """Decorador: deniega el handler si el usuario no es miembro del grupo."""
-    import functools
-
-    @functools.wraps(handler)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if ALLOWED_GROUP_ID is None:
-            return await handler(update, context)
-        user = update.effective_user
-        if user is None:
-            return
-        allowed = await _is_group_member(user.id, context.bot)
-        if not allowed:
-            await update.message.reply_text(
-                "⛔ No tienes acceso a este bot.\n"
-                "Debes ser miembro del grupo autorizado para usarlo."
-            )
-            logger.warning(
-                "Acceso denegado a user_id=%s username=%s",
-                user.id, user.username,
-            )
-            return
-        return await handler(update, context)
-
-    return wrapper
-
-# ---------------------------------------------------------------------------
-# Control de acceso por membresía a grupo
-# ---------------------------------------------------------------------------
-
 # ID numérico del grupo (negativo: ej. -1001234567890). None = bot público.
 _RAW_GROUP_ID = os.getenv("ALLOWED_GROUP_ID", "").strip()
 ALLOWED_GROUP_ID: int | None = int(_RAW_GROUP_ID) if _RAW_GROUP_ID else None

@@ -6,6 +6,10 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.
 
 ## [Unreleased]
 
+### Corregido
+
+- **Código duplicado de control de acceso en `bot.py` (RoadmapBotTelegram #1)**: `ALLOWED_GROUP_ID`, `_MEMBER_STATUSES`, `_is_group_member()` y `_require_group_member()` estaban definidos dos veces en el fichero. Se eliminó el primer bloque duplicado, dejando únicamente la definición canónica con su sección de encabezado.
+
 ### Añadido
 
 - **Restricción de acceso al bot por membresía a grupo de Telegram**: nuevo mecanismo de control de acceso opcional. Si se define la variable de entorno `ALLOWED_GROUP_ID`, todos los comandos del bot (excepto `/start`) verifican que el usuario es miembro activo del grupo indicado usando `get_chat_member`. Los usuarios no autorizados reciben un mensaje `⛔ No tienes acceso…` y el intento queda registrado en el log. Cuando `ALLOWED_GROUP_ID` está vacío, el bot funciona sin restricciones como antes. Se añade `ALLOWED_GROUP_ID` al fichero `.env.example`.
