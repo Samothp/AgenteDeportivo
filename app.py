@@ -587,15 +587,34 @@ def _tab_run_and_display(mode: str, extra_kw: dict) -> None:
     _key_data = f"{competition}|{season}|{mode}|{sorted(kw.items())!r}"
     _cache_key = "_run_agent_" + _hashlib.md5(_key_data.encode()).hexdigest()
     has_cache = _cache_key in st.session_state
+
+    # ── Punto 2: badge de informe desactualizado ─────────────────────────────
+    # Guardamos la key del último informe GENERADO (al pulsar el botón).
+    # Si la key actual difiere de la guardada → los parámetros cambiaron.
+    _last_key_name = f"_last_generated_key_{mode}"
+    _last_generated = st.session_state.get(_last_key_name)
+    _params_changed = has_cache and _last_generated is not None and _last_generated != _cache_key
+
+    if _params_changed:
+        st.warning(
+            "⚠️ Los parámetros han cambiado desde el último informe generado. "
+            "Pulsa **▶ Actualizar informe** para refrescar los resultados.",
+            icon="⚠️",
+        )
+
     btn_label = "🔄 Actualizar informe" if has_cache else "▶ Generar informe"
     run_clicked = st.button(btn_label, key=f"run_{mode}", type="primary", use_container_width=True)
+
     if not run_clicked and not has_cache:
         st.info("Configura los parámetros y pulsa **▶ Generar informe**.")
         return
+
     try:
         if run_clicked:
             with st.spinner("Analizando datos..."):
                 payload, image_paths = _run_agent(competition, season, mode, **kw)
+            # Guardar la key del informe recién generado
+            st.session_state[_last_key_name] = _cache_key
         else:
             payload, image_paths = _run_agent(competition, season, mode, **kw)
     except FileNotFoundError as e:
