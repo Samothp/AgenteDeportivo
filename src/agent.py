@@ -459,8 +459,8 @@ class SportsAgent:
             return []
 
         def _metrics_for_season(s: str) -> dict:
-            mask = self.data['season'].astype(str).str.startswith(str(s))
-            sub = self.data[mask]
+            mask = self.data['season'].astype(str).str.startswith(str(s))  # type: ignore[index]
+            sub = self.data[mask]  # type: ignore[index]
             if sub.empty:
                 return {}
             return compute_overall_metrics(sub, team=self.team)
@@ -1017,7 +1017,7 @@ class SportsAgent:
         for _, row in st.iterrows():
             xg  = f'{row["xG"]:.2f}' if pd.notna(row.get('xG')) and row.get('xG') is not None else '-'
             over = f'{row["Over%"]:.2f}' if pd.notna(row.get('Over%')) and row.get('Over%') is not None else '-'
-            pos = f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-'
+            poss = f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-'
             tir = f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-'
             over_val = row.get('Over%')
             over_color = ''
@@ -1026,7 +1026,7 @@ class SportsAgent:
             html.append(
                 f'      <tr><td class="left">{row["Equipo"]}</td>'
                 f'<td>{int(row["GF"])}</td><td>{int(row["GC"])}</td>'
-                f'<td>{xg}</td><td{over_color}>{over}</td><td>{pos}</td><td>{tir}</td></tr>'
+                f'<td>{xg}</td><td{over_color}>{over}</td><td>{poss}</td><td>{tir}</td></tr>'
             )
         html.extend(['    </tbody>', '  </table>'])
 
@@ -2055,7 +2055,7 @@ class SportsAgent:
         if self.liga_summary:
             return self._generate_liga_html_report(output_path, image_folder=image_folder)
 
-    # 10.1 — Exportar análisis a PDF con weasyprint
+        return ''  # fallback: ninguna rama activa
     def generate_pdf_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
         """Convierte el informe HTML a PDF usando weasyprint.
 

@@ -89,7 +89,7 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
             ('xg_local',                 'xg_visitante',                 'xg'),
             ('posesion_local',           'posesion_visitante',           'posesion'),
         ]
-        team_tech: Dict[str, float] = {}
+        team_tech = {}
         for col_h, col_a, prefix in TECH_PAIRS:
             if col_h in df.columns and col_a in df.columns:
                 eq = df[col_h].where(is_home, df[col_a]).astype(float)

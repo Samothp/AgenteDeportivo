@@ -252,7 +252,7 @@ def plot_temporal_evolution(df: pd.DataFrame, team: Optional[str], output_path: 
         if shots_ot.notna().any():
             plots.append(('Tiros a puerta', shots_ot, '#e67e22'))
 
-        for ax, (label, serie, color) in zip(axes, plots):
+        for ax, (label, serie, color) in zip(axes, plots):  # type: ignore[assignment]
             valid = serie.dropna()
             if valid.empty:
                 continue
@@ -371,7 +371,7 @@ def plot_match_stats_bar(stats: list, local: str, visitante: str, output_path: s
     # Ocultar ticks negativos en el eje X (usando FixedLocator para evitar warning)
     from matplotlib.ticker import FixedLocator, FixedFormatter
     xticks = ax.get_xticks()
-    ax.xaxis.set_major_locator(FixedLocator(xticks))
+    ax.xaxis.set_major_locator(FixedLocator(list(xticks)))
     ax.xaxis.set_major_formatter(FixedFormatter([str(abs(int(t))) for t in xticks]))
     ax.tick_params(axis='x', labelsize=7)
 
@@ -407,8 +407,8 @@ def plot_match_radar(stats: list, local: str, visitante: str, output_path: str) 
         return vl / total, vv / total
 
     norm_l, norm_v = zip(*[_norm(vl, vv) for vl, vv in zip(vals_l, vals_v)])
-    norm_l = list(norm_l) + [norm_l[0]]
-    norm_v = list(norm_v) + [norm_v[0]]
+    norm_l = list(norm_l) + [norm_l[0]]  # type: ignore[assignment]
+    norm_v = list(norm_v) + [norm_v[0]]  # type: ignore[assignment]
 
     angles = np.linspace(0, 2 * np.pi, len(selected), endpoint=False).tolist()
     angles += angles[:1]
@@ -421,7 +421,7 @@ def plot_match_radar(stats: list, local: str, visitante: str, output_path: str) 
     ax.plot(angles, norm_v, 'o-', linewidth=2, color='#e74c3c', label=visitante)
     ax.fill(angles, norm_v, alpha=0.2, color='#e74c3c')
 
-    ax.set_thetagrids(np.degrees(angles[:-1]), selected, fontsize=8)
+    ax.set_thetagrids(np.degrees(angles[:-1]), selected, fontsize=8)  # type: ignore[attr-defined]
     ax.set_ylim(0, 1)
     ax.set_yticklabels([])
     ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1), fontsize=9)
@@ -593,7 +593,7 @@ def plot_player_radar(profile: dict, output_path: str) -> Optional[str]:
     fig, ax = plt.subplots(figsize=(6, 6), subplot_kw={'projection': 'polar'})
     ax.plot(angles_closed, norm_closed, 'o-', linewidth=2, color='#1f77b4', label=player)
     ax.fill(angles_closed, norm_closed, alpha=0.25, color='#1f77b4')
-    ax.set_thetagrids(np.degrees(angles), metrics, fontsize=9)
+    ax.set_thetagrids(np.degrees(angles), metrics, fontsize=9)  # type: ignore[attr-defined]
     ax.set_ylim(0, 1)
     ax.set_yticklabels([])
     ax.set_title(f'Perfil — {player}', fontsize=12, pad=20)
@@ -761,7 +761,7 @@ def plot_compare_radar(compare: dict, output_path: str) -> Optional[str]:
     ax.fill(ac, v1c, alpha=0.18, color='#2e86de')
     ax.plot(ac, v2c, 's-', linewidth=2, color='#e74c3c', label=compare['team2'])
     ax.fill(ac, v2c, alpha=0.18, color='#e74c3c')
-    ax.set_thetagrids(np.degrees(angles), labels, fontsize=9)
+    ax.set_thetagrids(np.degrees(angles), labels, fontsize=9)  # type: ignore[attr-defined]
     ax.set_ylim(0, 1)
     ax.set_yticklabels([])
     ax.legend(loc='upper right', bbox_to_anchor=(1.35, 1.1), fontsize=10)

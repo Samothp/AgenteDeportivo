@@ -31,7 +31,7 @@ jobs:
           pip install pytest httpx
 
       - name: Instalar herramientas de calidad
-        run: pip install ruff mypy
+        run: pip install ruff mypy types-requests
 
       - name: Verificar sintaxis de módulos principales
         run: |
