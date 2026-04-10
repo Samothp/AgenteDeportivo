@@ -4,6 +4,25 @@ Todos los cambios importantes de este proyecto se documentarán en este archivo.
 
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [5.0.0] — 2026-04-10
+
+### Añadido
+
+**Fase 12 — Producto II**
+
+- **12.1 — Templates Jinja2 para informes HTML**: creado `src/templates/` con 6 plantillas `.html.j2` (`base`, `liga`, `compare`, `match`, `matchday`, `player`). Los 5 métodos `_generate_*_html_report()` (>200 líneas de f-strings c/u) sustituidos por versiones de ~40 líneas que preparan un contexto y llaman a `_render_template()`. Nuevo classmétodo `_get_jinja_env()` con caché en `SportsAgent`. Autoescape activado para seguridad XSS; las cadenas HTML pre-generadas se pasan con el filtro `| safe`.
+- **12.2 — Paginación con inline keyboards en el bot Telegram**: nuevo sistema `_page_cache` (dict MD5 → lista de páginas). Funciones `_cache_pages()`, `_page_keyboard()` y `_send_paged()`. Nuevo handler `callback_page()` registrado con `CallbackQueryHandler` para manejar callbacks `page:<key>:<n>` y `noop`. Los comandos `/liga`, `/equipo`, `/jornada` y `/compare` usan `_send_paged()` en lugar de fragmentar el texto en múltiples mensajes.
+- **12.3 — Autenticación X-API-Key en la API REST**: nueva dependencia `_require_api_key()` con `Depends(Header(...))` aplicada a todos los endpoints `/report/*`. La variable `API_REST_KEY` en `.env` activa la autenticación; si no está definida, la API funciona en modo desarrollo sin restricciones. Los endpoints públicos `/` y `/teams` no requieren clave. Añadida instrucción en `.env.example`.
+- **12.4 — Radar comparativo en modo multi-liga**: nueva función `plot_multi_league_radar(leagues, output_path)` en `visualizer.py`. Normaliza cada métrica 0–1 sobre el máximo entre ligas y dibuja polígonos polares superpuestos con paleta `tab10`. En el dashboard, tras las tabs de clasificación, se muestra una sección de radar comparativo entre las ligas seleccionadas.
+- **12.5 — Exportar a Excel desde el dashboard**: nueva función `_payload_to_excel(payload)` en `app.py` que convierte las secciones del payload JSON en hojas de un workbook `openpyxl`. El botón PDF se acompaña ahora de un `st.download_button` para descargar el Excel directamente desde el navegador.
+
+### Dependencias añadidas
+
+- `jinja2==3.1.6` — motor de plantillas HTML
+- `openpyxl==3.1.5` — generación de Excel desde el dashboard
+
+---
+
 ## [4.0.0] — 2026-04-09
 
 ### Añadido

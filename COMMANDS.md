@@ -390,6 +390,10 @@ ALERT_HOUR=9
 
 El bot comprueba diariamente los equipos suscritos y envía un aviso si alguno lleva 3 o más derrotas consecutivas.
 
+### Paginación automática
+
+Las respuestas largas (clasificaciones, listas de equipos, informes completos) se dividen automáticamente en páginas. Navega entre ellas con los botones inline **◄ Anterior** y **Siguiente ►** que aparecen bajo cada mensaje.
+
 ### Exportar informe a PDF por bot
 
 ```
@@ -397,6 +401,74 @@ El bot comprueba diariamente los equipos suscritos y envía un aviso si alguno l
 ```
 
 Requiere `weasyprint` instalado en el servidor (`pip install weasyprint`). En Linux puede necesitar `apt-get install libpango-1.0-0`.
+
+---
+
+## API REST local
+
+Arranca con:
+
+```bash
+uvicorn src.api:app --reload
+```
+
+Documentación interactiva (Swagger UI) en `http://localhost:8000/docs`.
+
+### Endpoints públicos (sin autenticación)
+
+| Método | Endpoint | Parámetros | Descripción |
+|--------|----------|-----------|-------------|
+| `GET` | `/` | — | Health check |
+| `GET` | `/teams` | `competition`, `season` | Equipos disponibles en la DB local |
+
+### Endpoints protegidos (`X-API-Key`)
+
+| Método | Endpoint | Body JSON | Descripción |
+|--------|----------|-----------|-------------|
+| `POST` | `/report/liga` | `{competition, season}` | Informe de liga completo |
+| `POST` | `/report/equipo` | `{competition, season, team}` | Informe de un equipo |
+| `POST` | `/report/jornada` | `{competition, season, jornada}` | Informe de una jornada |
+| `POST` | `/report/partido` | `{competition, season, match_id}` | Ficha técnica de un partido |
+| `POST` | `/report/jugador` | `{competition, season, team, player}` | Perfil de un jugador |
+| `POST` | `/report/compare` | `{competition, season, team1, team2}` | Comparativa entre dos equipos |
+
+### Configurar autenticación
+
+Añade en `.env`:
+
+```
+API_REST_KEY=tu_clave_segura_aqui
+```
+
+Genera una clave segura con:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Si `API_REST_KEY` no está definida, la API funciona sin autenticación (modo desarrollo).
+
+### Ejemplos de uso
+
+```bash
+# Health check (público)
+curl http://localhost:8000/
+
+# Listar equipos (público)
+curl "http://localhost:8000/teams?competition=2014&season=2025"
+
+# Informe de liga (protegido)
+curl -X POST http://localhost:8000/report/liga \
+  -H "X-API-Key: tu_clave" \
+  -H "Content-Type: application/json" \
+  -d '{"competition": 2014, "season": 2025}'
+
+# Comparativa entre dos equipos (protegido)
+curl -X POST http://localhost:8000/report/compare \
+  -H "X-API-Key: tu_clave" \
+  -H "Content-Type: application/json" \
+  -d '{"competition": 2014, "season": 2025, "team1": "Barcelona", "team2": "Real Madrid"}'
+```
 
 ---
 
@@ -408,8 +480,14 @@ Arranca con `streamlit run app.py`.
 
 Activa el checkbox "🔀 Comparar múltiples ligas" en el sidebar para seleccionar hasta 3 competiciones y temporadas y comparar sus clasificaciones + KPIs en tabs paralelos.
 
+Tras las tabs aparece un **radar comparativo** con las medias de cada liga seleccionada (goles, xG, posesión, tiros y corners).
+
 ### Exportar a PDF desde el dashboard
 
-Al final de cualquier informe generado, pulsa el botón **📄 Generar PDF del informe**. Si la generación es correcta, aparecerá el botón **⬇️ Descargar PDF**.
+Al final de cualquier informe generado, pulsa el botón **📄 Generar PDF del informe**. Si la generación es correcta, aparece el botón **⬇️ Descargar PDF**.
 
 Requiere `weasyprint` instalado (`pip install weasyprint`).
+
+### Exportar a Excel desde el dashboard
+
+Junto al botón de PDF, pulsa **📊 Descargar Excel** para obtener el payload del informe en formato `.xlsx` (una hoja por sección de datos). No requiere dependencias adicionales.

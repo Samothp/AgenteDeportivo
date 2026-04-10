@@ -67,6 +67,11 @@ print(competitions)
 - ✅ **Alertas proactivas Telegram**: `/suscribir` para recibir avisos de rachas negativas (≥3 derrotas)
 - ✅ **Caché de gráficos por hash**: los PNG se reutilizan si los datos no cambian (hash MD5)
 - ✅ **Bot bilingüe**: comandos en inglés (`/league`, `/team`, `/matchday`, `/help`, `/competitions`, `/teams`)
+- ✅ **Templates Jinja2**: los 5 informes HTML se renderizan desde plantillas `.html.j2` en `src/templates/` (fácil personalización sin tocar lógica)
+- ✅ **Paginación en el bot**: respuestas largas divididas en páginas navegables con botones ◄/► de inline keyboard
+- ✅ **Autenticación API REST**: header `X-API-Key` verificado contra `API_REST_KEY` en `.env`; sin clave = modo desarrollo
+- ✅ **Radar multi-liga en el dashboard**: gráfico de radar superpuesto con las medias de cada liga seleccionada
+- ✅ **Exportar a Excel desde el dashboard**: botón de descarga junto al PDF (formato `.xlsx` con `openpyxl`)
 
 ### Último análisis disponible
 
@@ -259,7 +264,9 @@ Funcionalidades destacadas:
 - **Indicador de frescura** de datos (antigüedad del caché local)
 - **Descarga de datos** directamente desde el dashboard (sin terminal)
 - **Modo multi-liga**: checkbox "Comparar múltiples ligas" → hasta 3 competiciones en tabs paralelos
+- **Radar multi-liga**: gráfico de radar superpuesto tras las tabs de clasificación
 - **Exportar a PDF**: botón al final del informe; descarga directa desde el navegador
+- **Exportar a Excel**: botón junto al PDF; descarga directa en formato `.xlsx`
 
 ## Bot de Telegram
 
@@ -291,3 +298,60 @@ Requiere `TELEGRAM_BOT_TOKEN` en el archivo `.env`.
 ### Aliases en inglés
 
 `/help`, `/competitions`, `/teams`, `/league`, `/team`, `/matchday` son alias directos de sus equivalentes en español.
+
+### Paginación automática
+
+Las respuestas largas (clasificaciones, listas de equipos) se dividen en páginas con botones inline **◄ Anterior** / **Siguiente ►** para facilitar la navegación en móvil.
+
+## API REST local
+
+Arranca con:
+
+```bash
+uvicorn src.api:app --reload
+```
+
+Documentación interactiva disponible en `http://localhost:8000/docs`.
+
+### Endpoints públicos
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/` | Health check |
+| `GET` | `/teams?competition=&season=` | Equipos disponibles en la DB local |
+
+### Endpoints protegidos (`X-API-Key`)
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `POST` | `/report/liga` | Informe de liga completo |
+| `POST` | `/report/equipo` | Informe de un equipo |
+| `POST` | `/report/jornada` | Informe de una jornada |
+| `POST` | `/report/partido` | Ficha técnica de un partido |
+| `POST` | `/report/jugador` | Perfil de un jugador |
+| `POST` | `/report/compare` | Comparativa entre dos equipos |
+
+### Autenticación
+
+Añade en `.env`:
+
+```
+API_REST_KEY=tu_clave_segura_aqui
+```
+
+Genera una clave con:
+
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Luego incluye el header en cada petición protegida:
+
+```bash
+curl -X POST http://localhost:8000/report/liga \
+  -H "X-API-Key: tu_clave" \
+  -H "Content-Type: application/json" \
+  -d '{"competition": 2014, "season": 2025}'
+```
+
+Si `API_REST_KEY` no está definida, la API funciona sin autenticación (modo desarrollo).
