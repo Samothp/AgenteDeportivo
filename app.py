@@ -868,9 +868,9 @@ def _display_mode_results(payload: dict) -> None:
             st.subheader(f"🔮 Previsión: {local_name} vs {visit_name}")
             # Probabilidades Poisson
             col_l, col_e, col_v = st.columns(3)
-            col_l.metric(f"Victoria {local_name}",  f"{pr.get('prob_local',  0)*100:.1f} %")
-            col_e.metric("Empate",                  f"{pr.get('prob_empate', 0)*100:.1f} %")
-            col_v.metric(f"Victoria {visit_name}",  f"{pr.get('prob_visit',  0)*100:.1f} %")
+            col_l.metric(f"Victoria {local_name}",  f"{pr.get('prob_local',  0):.1f} %")
+            col_e.metric("Empate",                  f"{pr.get('prob_empate', 0):.1f} %")
+            col_v.metric(f"Victoria {visit_name}",  f"{pr.get('prob_visit',  0):.1f} %")
             # λ esperados
             st.markdown("---")
             lc1, lc2 = st.columns(2)
@@ -891,17 +891,17 @@ def _display_mode_results(payload: dict) -> None:
                 st.markdown("---")
                 st.subheader("📊 Resultados más probables")
                 _show_table(
-                    [{"Marcador": f"{r['g_local']}-{r['g_visit']}", "Probabilidad": f"{r['prob']*100:.2f} %"} for r in top],
+                    [{"Marcador": f"{r['goles_local']}-{r['goles_visit']}", "Probabilidad": f"{r['prob']:.2f} %"} for r in top],
                 )
             # Forma reciente
             st.markdown("---")
             fl, fv = st.columns(2)
             with fl:
-                forma_l = " ".join(pr.get("forma_local", []))
+                forma_l = pr.get("forma_local", "")
                 st.metric(f"Forma {local_name} (últimos 5)", forma_l or "—")
                 st.caption(f"Puntos últimos 5: {pr.get('pts5_local', '?')}")
             with fv:
-                forma_v = " ".join(pr.get("forma_visit", []))
+                forma_v = pr.get("forma_visit", "")
                 st.metric(f"Forma {visit_name} (últimos 5)", forma_v or "—")
                 st.caption(f"Puntos últimos 5: {pr.get('pts5_visit', '?')}")
             # H2H
@@ -910,9 +910,9 @@ def _display_mode_results(payload: dict) -> None:
                 st.markdown("---")
                 h2h_bal = pr.get("h2h_balance", {})
                 st.subheader(
-                    f"🤝 H2H — {h2h_bal.get('local_wins', 0)}V "
-                    f"{h2h_bal.get('draws', 0)}E "
-                    f"{h2h_bal.get('visit_wins', 0)}D"
+                    f"\U0001f91d H2H \u2014 {h2h_bal.get('victorias_local', 0)}V "
+                    f"{h2h_bal.get('empates', 0)}E "
+                    f"{h2h_bal.get('victorias_visitante', 0)}D"
                 )
                 _show_table(h2h, "Últimos enfrentamientos directos")
             # Estadísticas de temporada
