@@ -905,12 +905,8 @@ def _display_export(payload: dict, kw: dict, mode: str) -> None:
                     mime="application/pdf",
                     key=f"dl_pdf_{mode}",
                 )
-            except ImportError:
-                st.warning(
-                    "**weasyprint** no está instalado.\n\n"
-                    "Instálalo con: `pip install weasyprint`\n\n"
-                    "En Linux puede requerir además: `apt-get install libpango-1.0-0`"
-                )
+            except ImportError as _ie:
+                st.warning(str(_ie))
             except Exception as _e:
                 st.error(f"Error al generar el PDF: {_e}")
     with _btn_excel:

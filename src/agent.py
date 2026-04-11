@@ -2060,9 +2060,9 @@ class SportsAgent:
         try:
             from xhtml2pdf import pisa
             with open(output_path, 'wb') as f:
-                result = pisa.CreatePDF(html_content, dest=f, encoding='utf-8')
-            if result.err:
-                raise RuntimeError(f'xhtml2pdf reportó errores: {result.err}')
+                pisa.CreatePDF(html_content, dest=f, encoding='utf-8')
+            if not Path(output_path).exists() or Path(output_path).stat().st_size == 0:
+                raise RuntimeError('xhtml2pdf no generó el archivo PDF.')
             return output_path
         except ImportError:
             raise ImportError(
