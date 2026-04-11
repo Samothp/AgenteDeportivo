@@ -62,6 +62,7 @@ print(competitions)
 - ✅ **Narrativa intertemporada**: con `--seasons`, evolución % de métricas entre temporadas
 - ✅ **Listado de equipos**: `--list-teams` muestra los equipos disponibles en la DB local
 - ✅ **6 tipos de informe**: Liga, Equipo, Jornada, Partido, Jugador y Compare
+- ✅ **Previsión de partido (Preview)**: modelo Poisson sobre xG históricos, top marcadores, H2H, forma y bajas manuales; disponible en el dashboard y el bot (`/preview`)
 - ✅ **Exportación a PDF**: botón en el dashboard y comando `/pdf` en el bot (requiere `weasyprint`)
 - ✅ **Modo multi-liga en el dashboard**: compara hasta 3 competiciones simultáneamente en tabs
 - ✅ **Alertas proactivas Telegram**: `/suscribir` para recibir avisos de rachas negativas (≥3 derrotas)
@@ -150,6 +151,7 @@ El agente detecta automáticamente el tipo de informe según los argumentos prop
 | **Partido** | `--match-id <id>` | Ficha técnica detallada y estadísticas cara a cara de un partido |
 | **Jugador** | `--team <nombre>` + `--player <nombre>` | Perfil individual: stats, ratios, ranking y gráficos comparativos |
 | **Compare** | `--compare TEAM1 TEAM2` | Radar comparativo, H2H y diferencias en todas las métricas entre dos equipos |
+| **Preview** | Dashboard / `/preview` en bot | Previsión Poisson del partido: probabilidades, top marcadores, H2H, forma y bajas manuales |
 
 ## Uso básico
 
@@ -265,6 +267,7 @@ Funcionalidades destacadas:
 - **Descarga de datos** directamente desde el dashboard (sin terminal)
 - **Modo multi-liga**: checkbox "Comparar múltiples ligas" → hasta 3 competiciones en tabs paralelos
 - **Radar multi-liga**: gráfico de radar superpuesto tras las tabs de clasificación
+- **Previsión de partido (Preview)**: pestaña *Preview* con selectores de equipo local/visitante, campos de bajas y resultados Poisson (probabilidades, top marcadores, H2H, forma)
 - **Exportar a PDF**: botón al final del informe; descarga directa desde el navegador
 - **Exportar a Excel**: botón junto al PDF; descarga directa en formato `.xlsx`
 
@@ -290,6 +293,7 @@ Requiere `TELEGRAM_BOT_TOKEN` en el archivo `.env`.
 | `/equipo <comp> <temp> <nombre>` | Informe de un equipo |
 | `/jornada <comp> <temp> <N>` | Informe de una jornada |
 | `/compare <comp> <temp> <eq1> \| <eq2>` | Comparativa entre dos equipos |
+| `/preview <comp> <temp> <local> \| <visit>` | Previsión Poisson de un partido (soporta `--bl`/`--bv` para bajas) |
 | `/pdf <comp> <temp>` | Genera y envía el informe en PDF |
 | `/suscribir <comp> <temp> <equipo>` | Activa alertas de racha negativa para un equipo |
 | `/suscripciones` | Lista tus suscripciones activas |

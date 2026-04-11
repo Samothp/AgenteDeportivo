@@ -40,6 +40,7 @@ El agente selecciona el modo según los argumentos:
 | **Partido** | `--match-id ID` | Ficha técnica detallada de un partido |
 | **Jugador** | `--team` + `--player` | Perfil individual de un jugador |
 | **Compare** | `--compare TEAM1 TEAM2` | Radar, H2H y diferencias entre dos equipos |
+| **Preview** | Dashboard / bot `/preview` | Previsión estadística Poisson de un partido con bajas manuales |
 
 ---
 
@@ -117,6 +118,35 @@ python -m src.run_agent --competition 2014 --season 2025 \
 La búsqueda del jugador es parcial e insensible a mayúsculas. `"muriqi"` y `"Vedat Muriqi"` funcionan igual.
 
 Gráficos: `player_bar.png` (barras jugador vs media equipo), `player_radar.png` (radar 5 métricas normalizadas)
+
+---
+
+## Previsión de partido (Preview)
+
+> **Disponible únicamente** desde el dashboard Streamlit (pestaña *Preview*) y el bot de Telegram (`/preview`). No existe flag CLI equivalente.
+
+Genera una previsión estadística del partido usando un **modelo Poisson** a partir de los xG históricos de ambos equipos en la temporada seleccionada.
+
+**Qué incluye:**
+- λ goles esperados para cada equipo (local y visitante)
+- Probabilidades de victoria local / empate / victoria visitante
+- Top 5 marcadores más probables
+- Forma reciente (últimas 5 jornadas) y puntos obtenidos
+- Enfrentamientos directos (H2H) en la DB
+- Estadísticas de temporada como local/visitante
+- Penalización por bajas (−0.10 xG por jugador, máx −0.30)
+
+**En el dashboard:** pestaña *Preview* → seleccionar equipo local, visitante y bajas opcionales.
+
+**En el bot de Telegram:**
+```
+/preview 2014 2025-2026 Mallorca | Rayo Vallecano
+/preview 2014 2025-2026 Mallorca | Rayo Vallecano --bl Muriqi,Copete --bv Álvaro García
+```
+- `--bl` — bajas del equipo **local** (separadas por coma)
+- `--bv` — bajas del equipo **visitante** (separadas por coma)
+
+> ⚠️ Disclainer: previsión estadística basada en datos históricos. No constituye asesoramiento de apuestas.
 
 ---
 
@@ -375,6 +405,7 @@ Arranca el bot con `python bot.py`. Requiere `TELEGRAM_BOT_TOKEN` en `.env`.
 | `/equipo <comp> <temp> <nombre>` | `/team` | Informe de un equipo |
 | `/jornada <comp> <temp> <N>` | `/matchday` | Informe de una jornada |
 | `/compare <comp> <temp> <eq1> \| <eq2>` | — | Comparativa entre dos equipos |
+| `/preview <comp> <temp> <local> \| <visit>` | — | Previsión Poisson de un partido (con `--bl`/`--bv` para bajas) |
 | `/pdf <comp> <temp>` | — | Genera y envía el informe en PDF |
 | `/suscribir <comp> <temp> <equipo>` | — | Activa alertas de racha negativa |
 | `/suscripciones` | — | Lista tus suscripciones activas |
