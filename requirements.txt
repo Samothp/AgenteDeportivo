@@ -19,7 +19,7 @@ python-telegram-bot==22.7
 slowapi==0.1.9
 
 # 10.1 — Exportar análisis a PDF
-weasyprint==63.1
+xhtml2pdf==0.2.17
 
 # 10.2 — Alertas proactivas Telegram
 apscheduler==3.11.0
