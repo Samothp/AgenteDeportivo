@@ -171,6 +171,7 @@ class SportsAgent:
         self.player_rankings_raw: Optional[pd.DataFrame] = None  # CSV jugadores cargado
         self.compare: Optional[tuple] = config.compare  # (team1, team2) para modo --compare
         self.compare_data: dict = {}  # resultado de compute_compare()
+        self.top_goleadores_liga: Optional[pd.DataFrame] = None  # top goleadores de toda la liga (modo equipo)
 
     def load_data(self):
         if self.seasons and len(self.seasons) > 1:
@@ -381,6 +382,20 @@ class SportsAgent:
                 verbose=self.fetch_real,
             )
             self.player_rankings = compute_player_rankings(df_players)
+            # Ranking global de la liga para indicar si el tope goleador está en top 10
+            _comp_id = self.competition_id or 2014
+            _season  = self.season or '2025-2026'
+            _csv_all = _players_csv_path(_comp_id, _season)
+            if _csv_all.exists():
+                try:
+                    _df_all = pd.read_csv(_csv_all)
+                    if not _df_all.empty and 'goals' in _df_all.columns:
+                        _with_apps = _df_all[_df_all['appearances'] > 0] if 'appearances' in _df_all.columns else _df_all
+                        self.top_goleadores_liga = (
+                            _with_apps.sort_values('goals', ascending=False).head(10).reset_index(drop=True)
+                        )
+                except Exception:
+                    pass
         return self.metrics
 
 
@@ -1600,12 +1615,20 @@ class SportsAgent:
             report_lines.append(f"Goles promedio por partido: {self.metrics['goles_promedio_por_partido']:.2f}")
             report_lines.append(self.format_metric('tarjetas_amarillas', 'Tarjetas amarillas'))
             report_lines.append(self.format_metric('tarjetas_rojas', 'Tarjetas rojas'))
-        report_lines.append(self.format_metric('posesion_local_promedio', 'Posesión local promedio', is_percent=True))
-        report_lines.append(self.format_metric('asistencia_promedio', 'Asistencia promedio'))
+        # Posesión: usar la propia del equipo en modo equipo; local en modo liga/global
+        if self.team and self.metrics.get('posesion_equipo_promedio') is not None:
+            report_lines.append(f"Posesión propia promedio: {self.metrics['posesion_equipo_promedio']:.1f}%")
+        elif self.metrics.get('posesion_local_promedio') is not None:
+            report_lines.append(f"Posesión local promedio: {self.metrics['posesion_local_promedio']:.1f}%")
+        # Campos opcionales: solo mostrar si hay datos
+        if self.metrics.get('asistencia_promedio') is not None:
+            report_lines.append(self.format_metric('asistencia_promedio', 'Asistencia promedio'))
         if self.metrics.get('asistencia_maxima') is not None:
             report_lines.append(f"Asistencia máxima: {self.metrics['asistencia_maxima']:,} ({self.metrics.get('partido_mas_espectadores', '')})")
-        report_lines.append(self.format_metric('estadio_mas_frecuente', 'Estadio más frecuente'))
-        report_lines.append(self.format_metric('arbitro_mas_frecuente', 'Árbitro más frecuente'))
+        if self.metrics.get('estadio_mas_frecuente') is not None:
+            report_lines.append(self.format_metric('estadio_mas_frecuente', 'Estadio más frecuente'))
+        if self.metrics.get('arbitro_mas_frecuente') is not None:
+            report_lines.append(self.format_metric('arbitro_mas_frecuente', 'Árbitro más frecuente'))
 
         _tech_equipo = [
             ('tiros_equipo_promedio',        'Tiros propios promedio',               False),
@@ -1683,6 +1706,10 @@ class SportsAgent:
             over_desc = self.metrics.get('overperformance_desc')
             if over is not None:
                 report_lines.append(f"  Eficiencia ofensiva (goles/xG): {over:.2f}  →  {over_desc}")
+            def_eff = self.metrics.get('def_efficiency')
+            def_eff_desc = self.metrics.get('def_efficiency_desc')
+            if def_eff is not None:
+                report_lines.append(f"  Eficiencia defensiva (gc/xGA): {def_eff:.2f}  →  {def_eff_desc}")
 
         # Comparativa vs liga
         if self.league_comparison:
@@ -1702,12 +1729,15 @@ class SportsAgent:
             report_lines.append('Percentiles en la liga')
             report_lines.append('----------------------')
             n_eq = self.league_percentiles[0]['n_equipos']
-            report_lines.append(f'  (Posici\u00f3n relativa del equipo respecto a los {n_eq} equipos de la liga)')
-            _col_metrica = "M\u00e9trica"  # é = é
-            report_lines.append(f'  {_col_metrica:<32} {"Valor":>7}  {"Percentil":>9}  Valoraci\u00f3n')
+            report_lines.append(f'  (Posición relativa del equipo respecto a los {n_eq} equipos de la liga)')
+            _col_metrica = "Métrica"
+            report_lines.append(f'  {_col_metrica:<32} {"Valor":>7}  {"Posición":>9}  Valoración')
             report_lines.append(f'  {"-"*32} {"-"*7}  {"-"*9}  ----------')
             for p in self.league_percentiles:
                 pct = p["percentil"]
+                n_eq_p = p["n_equipos"]
+                rank_top = max(1, min(n_eq_p, round((1 - pct / 100) * n_eq_p)))
+                rank_str = f'{rank_top}.º/{n_eq_p}'
                 if pct >= 80:
                     rating = "Excelente"
                 elif pct >= 60:
@@ -1717,7 +1747,7 @@ class SportsAgent:
                 else:
                     rating = "Por debajo de la media"
                 report_lines.append(
-                    f'  {p["metrica"]:<32} {p["valor"]:>7.2f}  {pct:>8}%  {rating}'
+                    f'  {p["metrica"]:<32} {p["valor"]:>7.2f}  {rank_str:>9}  {rating}'
                 )
 
         # Rendimiento W/D/L del equipo
@@ -1738,7 +1768,13 @@ class SportsAgent:
                 f"Racha sin marcar (máx.): {rec['racha_sin_marcar_max']} partidos"
             )
             report_lines.append('')
-            show_season_col = any(r.get('season') for r in rec['tabla_resultados'])
+            # Tabla de partidos: mostrar solo los últimos 10
+            _tabla_all = rec['tabla_resultados']
+            _n_total = len(_tabla_all)
+            _tabla_display = _tabla_all[-10:] if _n_total > 10 else _tabla_all
+            if _n_total > 10:
+                report_lines.append(f"  (últimos 10 de {_n_total} partidos)")
+            show_season_col = any(r.get('season') for r in _tabla_all)
             if show_season_col:
                 report_lines.append(
                     f"  {'Temp':<6} {'Jornada':<8} {'Rival':<25} {'GF':>3} {'GC':>3} {'Local/Visit':<12} Res"
@@ -1749,7 +1785,7 @@ class SportsAgent:
                     f"  {'Jornada':<8} {'Rival':<25} {'GF':>3} {'GC':>3} {'Local/Visit':<12} Res"
                 )
                 report_lines.append(f"  {'-'*8} {'-'*25} {'-'*3} {'-'*3} {'-'*12} ---")
-            for r in rec['tabla_resultados']:
+            for r in _tabla_display:
                 jornada_str = str(r['jornada']) if r['jornada'] is not None else '-'
                 if show_season_col:
                     season_str = str(r.get('season', '-')) if r.get('season') else '-'
@@ -1763,6 +1799,34 @@ class SportsAgent:
                         f"{r['local']:<12} {r['resultado']}"
                     )
 
+            # Tendencia de la temporada: primera mitad vs segunda mitad
+            if _n_total >= 10:
+                _pts_map = {'V': 3, 'E': 1, 'D': 0}
+                _tramo_n = min(15, _n_total // 2)
+                _primera = _tabla_all[:_tramo_n]
+                _segunda = _tabla_all[-_tramo_n:]
+
+                def _tramo_stats(rows):
+                    pts = sum(_pts_map.get(r['resultado'], 0) for r in rows)
+                    pj = len(rows)
+                    gf = sum(r['gf'] for r in rows)
+                    return pts / pj, gf / pj, pts, pj
+
+                p1_ppp, p1_gpp, p1_pts, p1_pj = _tramo_stats(_primera)
+                p2_ppp, p2_gpp, p2_pts, p2_pj = _tramo_stats(_segunda)
+                if p2_ppp > p1_ppp + 0.2:
+                    trend_lbl = '⬆ mejorando'
+                elif p2_ppp < p1_ppp - 0.2:
+                    trend_lbl = '⬇ decayendo'
+                else:
+                    trend_lbl = '↔ estable'
+                report_lines.append('')
+                report_lines.append('Tendencia de la temporada')
+                report_lines.append('-------------------------')
+                report_lines.append(f'  Primeras {p1_pj} jornadas: {p1_pts} pts ({p1_ppp:.2f} pts/j) | {p1_gpp:.2f} goles/j')
+                report_lines.append(f'  Últimas   {p2_pj} jornadas: {p2_pts} pts ({p2_ppp:.2f} pts/j) | {p2_gpp:.2f} goles/j')
+                report_lines.append(f'  Tendencia: {trend_lbl}')
+
         report_lines.append('')
 
         if self.team and self.player_rankings:
@@ -1771,6 +1835,18 @@ class SportsAgent:
             if not goleadores.empty:
                 report_lines.append('Top goleadores')
                 report_lines.extend(goleadores.to_string(index=False).splitlines())
+                # Ranking en liga: comprobar si el tope del equipo está en el top 10 de la liga
+                if self.top_goleadores_liga is not None and not self.top_goleadores_liga.empty:
+                    top_eq_name = goleadores.iloc[0].get('Jugador', goleadores.iloc[0].get('player_name', ''))
+                    liga_names = [str(n).lower() for n in self.top_goleadores_liga.get('player_name', pd.Series([])).tolist()]
+                    top_eq_lower = str(top_eq_name).lower()
+                    if any(top_eq_lower in ln or ln in top_eq_lower for ln in liga_names):
+                        rank_liga = next(
+                            (i + 1 for i, ln in enumerate(liga_names) if top_eq_lower in ln or ln in top_eq_lower),
+                            None
+                        )
+                        if rank_liga is not None:
+                            report_lines.append(f'  ⭐ {top_eq_name} ocupa el puesto #{rank_liga} en el ranking de goleadores de la liga')
             else:
                 report_lines.append('Top goleadores: sin datos disponibles')
             report_lines.append('')

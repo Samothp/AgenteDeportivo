@@ -150,6 +150,21 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
             else:
                 overperformance_desc = 'rendimiento esperado'
 
+    # Eficiencia defensiva: ratio goles concedidos / xGA esperados
+    def_efficiency = None
+    def_efficiency_desc = None
+    if team and goles_en_contra is not None:
+        xga_prom = team_tech.get('xg_rival_promedio')
+        if xga_prom is not None and xga_prom > 0 and total_matches > 0:
+            total_xga = xga_prom * total_matches
+            def_efficiency = round(goles_en_contra / total_xga, 2)
+            if def_efficiency < 0.90:
+                def_efficiency_desc = 'sólida (concede menos de lo esperado)'
+            elif def_efficiency > 1.10:
+                def_efficiency_desc = 'porosa (concede más de lo esperado)'
+            else:
+                def_efficiency_desc = 'rendimiento esperado'
+
     return {
         'partidos_analizados': total_matches,
         'goles_totales': total_goals,
@@ -194,6 +209,9 @@ def compute_overall_metrics(df: pd.DataFrame, team: Optional[str] = None) -> Dic
         # Eficiencia ofensiva
         'overperformance':      overperformance,
         'overperformance_desc': overperformance_desc,
+        # Eficiencia defensiva
+        'def_efficiency':      def_efficiency,
+        'def_efficiency_desc': def_efficiency_desc,
         # Referencia de liga para comparativa
         'goles_por_equipo_promedio':   goles_por_equipo_promedio,
         **liga_tech,

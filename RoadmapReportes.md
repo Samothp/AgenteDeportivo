@@ -16,13 +16,13 @@ Prioridad dentro de cada bloque: ⭐⭐⭐ impacto alto · ⭐⭐ medio · ⭐ b
 
 ## 🏟️ Bloque 2 — Informe de Equipo (`/equipo`)
 
-- [ ] ⭐⭐⭐ **Ocultar campos vacíos**: eliminar líneas "Asistencia: No disponible" y "Árbitro: No disponible". Generan ruido visual y sensación de informe incompleto.
-- [ ] ⭐⭐⭐ **Posesión en métricas básicas**: reemplazar "Posesión local promedio" (es la media global de la liga, no del equipo) por la posesión propia del equipo, que ya se calcula en estadísticas técnicas.
-- [ ] ⭐⭐⭐ **Tendencia reciente**: añadir sección que compare el rendimiento de las primeras 15 jornadas vs las últimas 15 (puntos/partido y goles/partido por tramo). Determina si el equipo está mejorando o decayendo.
-- [ ] ⭐⭐ **Percentiles con posición ordinal**: cambiar "55% — En la media" por "9.º de 20 equipos". El percentil sin referencia numérica absoluta se lee peor.
-- [ ] ⭐⭐ **Eficiencia defensiva**: añadir `goles concedidos / xGA` paralelo al overperformance ofensivo que ya existe. Un equipo puede sobrerendir ofensivamente e infrarendir defensivamente.
-- [ ] ⭐⭐ **Comprimir tabla de partidos**: mostrar solo los últimos 10 con nota "histórico completo disponible en el informe HTML". La tabla de 30+ filas ocupa más del 50% del informe sin aportar valor analítico.
-- [ ] ⭐ **Ranking de la plantilla en la liga**: indicar si el tope goleador del equipo está en el top 10 de la liga, no solo dentro del equipo.
+- [x] ⭐⭐⭐ **Ocultar campos vacíos**: eliminar líneas "Asistencia: No disponible" y "Árbitro: No disponible". Generan ruido visual y sensación de informe incompleto.
+- [x] ⭐⭐⭐ **Posesión en métricas básicas**: reemplazar "Posesión local promedio" (es la media global de la liga, no del equipo) por la posesión propia del equipo, que ya se calcula en estadísticas técnicas.
+- [x] ⭐⭐⭐ **Tendencia reciente**: añadir sección que compare el rendimiento de las primeras 15 jornadas vs las últimas 15 (puntos/partido y goles/partido por tramo). Determina si el equipo está mejorando o decayendo.
+- [x] ⭐⭐ **Percentiles con posición ordinal**: cambiar "55% — En la media" por "9.º de 20 equipos". El percentil sin referencia numérica absoluta se lee peor.
+- [x] ⭐⭐ **Eficiencia defensiva**: añadir `goles concedidos / xGA` paralelo al overperformance ofensivo que ya existe. Un equipo puede sobrerendir ofensivamente e infrarendir defensivamente.
+- [x] ⭐⭐ **Comprimir tabla de partidos**: mostrar solo los últimos 10 con nota "histórico completo disponible en el informe HTML". La tabla de 30+ filas ocupa más del 50% del informe sin aportar valor analítico.
+- [x] ⭐ **Ranking de la plantilla en la liga**: indicar si el tope goleador del equipo está en el top 10 de la liga, no solo dentro del equipo.
 
 ---
 
