@@ -2031,10 +2031,11 @@ class SportsAgent:
 
         return ''  # fallback: ninguna rama activa
     def generate_pdf_report(self, output_path: str, image_folder: Optional[str] = None) -> str:
-        """Convierte el informe HTML a PDF usando weasyprint.
+        """Convierte el informe HTML a PDF.
 
-        Genera primero el HTML en la misma carpeta y luego lo convierte.
-        Requiere `pip install weasyprint`. En Linux: apt-get install libpango-1.0-0.
+        Intenta primero WeasyPrint (calidad alta). Si no está disponible o falla
+        por dependencias nativas (Windows/GTK), usa xhtml2pdf como fallback
+        (puro Python, sin dependencias nativas).
 
         Args:
             output_path: Ruta de salida del PDF (extensión .pdf).
@@ -2042,369 +2043,34 @@ class SportsAgent:
 
         Returns:
             Ruta del PDF generado.
-
-        Raises:
-            ImportError: Si weasyprint no está instalado.
         """
-        try:
-            from weasyprint import HTML as WeasyprintHTML
-        except ImportError:
-            raise ImportError(
-                "weasyprint no está instalado.\n"
-                "Instálalo con:  pip install weasyprint\n"
-                "En Linux puede requerir:  apt-get install libpango-1.0-0 libpangoft2-1.0-0"
-            )
         html_path = str(Path(output_path).with_suffix(".html"))
         self.generate_html_report(html_path, image_folder)
-        WeasyprintHTML(filename=html_path).write_pdf(output_path)
-        return output_path
+        html_content = Path(html_path).read_text(encoding='utf-8')
 
-        report_file = Path(output_path)
-        report_file.parent.mkdir(parents=True, exist_ok=True)
+        # Intento 1: WeasyPrint
+        try:
+            from weasyprint import HTML as WeasyprintHTML
+            WeasyprintHTML(filename=html_path).write_pdf(output_path)
+            return output_path
+        except Exception:
+            pass  # Falla por GTK en Windows → usar fallback
 
-        image_folder_path = Path(image_folder) if image_folder else report_file.parent
-        image_folder_path.mkdir(parents=True, exist_ok=True)
-
-        images = self.save_visual_report(str(image_folder_path))
-        relative_images = [Path(os.path.relpath(img, start=report_file.parent)).as_posix() for img in images if img]
-
-        html = [
-            '<!DOCTYPE html>',
-            '<html lang="es">',
-            '<head>',
-            '  <meta charset="UTF-8">',
-            '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
-            '  <title>Informe Deportivo</title>',
-            '  <style>',
-            '    body { font-family: Arial, sans-serif; margin: 24px; background: #f7f8fb; color: #222; }',
-            '    h1, h2 { color: #1f4e79; }',
-            '    .section { margin-bottom: 24px; }',
-            '    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }',
-            '    .metric { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '    table { width: 100%; border-collapse: collapse; margin-top: 12px; }',
-            '    th, td { padding: 8px 10px; border: 1px solid #d7dbe3; text-align: left; }',
-            '    th { background: #e4efff; }',
-            '    img { max-width: 100%; border-radius: 8px; margin-top: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }',
-            '  </style>',
-            '</head>',
-            '<body>',
-            '  <h1>Informe Deportivo</h1>',
-            '  <div class="section">',
-            '    <h2>Resumen general</h2>',
-            '    <div class="metrics">',
-            *([
-                f'      <div class="metric"><strong>Temporadas</strong><p>{", ".join(str(s) for s in self.seasons)}</p></div>'
-            ] if self.seasons and len(self.seasons) > 1 else (
-                [f'      <div class="metric"><strong>Temporada</strong><p>{self.season}</p></div>']
-                if self.season else []
-            )),
-            f'      <div class="metric"><strong>Partidos analizados</strong><p>{self.metrics["partidos_analizados"]}</p></div>',
-            *(
-                [
-                    f'      <div class="metric"><strong>Goles a favor</strong><p>{self.metrics["goles_a_favor"]}</p></div>',
-                    f'      <div class="metric"><strong>Goles en contra</strong><p>{self.metrics["goles_en_contra"]}</p></div>',
-                    f'      <div class="metric"><strong>Prom. a favor</strong><p>{self.metrics["goles_a_favor_promedio"]:.2f}</p></div>',
-                    f'      <div class="metric"><strong>Prom. en contra</strong><p>{self.metrics["goles_concedidos_promedio"]:.2f}</p></div>',
-                    f'      <div class="metric"><strong>Tarjetas amarillas</strong><p>{self.format_html_metric("tarjetas_amarillas_equipo")}</p></div>',
-                    f'      <div class="metric"><strong>Tarjetas rojas</strong><p>{self.format_html_metric("tarjetas_rojas_equipo")}</p></div>',
-                ] if self.metrics.get('goles_a_favor') is not None else [
-                    f'      <div class="metric"><strong>Goles totales</strong><p>{self.metrics["goles_totales"]}</p></div>',
-                    f'      <div class="metric"><strong>Goles promedio</strong><p>{self.metrics["goles_promedio_por_partido"]:.2f}</p></div>',
-                    f'      <div class="metric"><strong>Tarjetas amarillas</strong><p>{self.format_html_metric("tarjetas_amarillas")}</p></div>',
-                    f'      <div class="metric"><strong>Tarjetas rojas</strong><p>{self.format_html_metric("tarjetas_rojas")}</p></div>',
-                ]
-            ),
-        ]
-
-        if self.metrics.get('posesion_local_promedio') is not None:
-            html.append(f'      <div class="metric"><strong>Posesión local promedio</strong><p>{self.metrics["posesion_local_promedio"]:.1f}%</p></div>')
-        else:
-            html.append('      <div class="metric"><strong>Posesión local promedio</strong><p>No disponible</p></div>')
-
-        if self.metrics.get('asistencia_promedio') is not None:
-            html.append(f'      <div class="metric"><strong>Asistencia promedio</strong><p>{self.metrics["asistencia_promedio"]:,.0f}</p></div>')
-        if self.metrics.get('asistencia_maxima') is not None:
-            html.append(f'      <div class="metric"><strong>Asistencia máxima</strong><p>{self.metrics["asistencia_maxima"]:,}<br><small>{self.metrics.get("partido_mas_espectadores","")}</small></p></div>')
-        if self.metrics.get('estadio_mas_frecuente') is not None:
-            html.append(f'      <div class="metric"><strong>Estadio más frecuente</strong><p>{self.metrics["estadio_mas_frecuente"]}</p></div>')
-        if self.metrics.get('arbitro_mas_frecuente') is not None:
-            html.append(f'      <div class="metric"><strong>Árbitro más frecuente</strong><p>{self.metrics["arbitro_mas_frecuente"]}</p></div>')
-
-        # Métricas técnicas en el grid
-        _tech_html_equipo = [
-            ('tiros_equipo_promedio',          'Tiros propios (prom.)',          False),
-            ('tiros_rival_promedio',           'Tiros rival (prom.)',            False),
-            ('tiros_a_puerta_equipo_promedio', 'Tiros a puerta propios (prom.)', False),
-            ('tiros_a_puerta_rival_promedio',  'Tiros a puerta rival (prom.)',   False),
-            ('xg_equipo_promedio',             'xG propio (prom.)',             False),
-            ('xg_rival_promedio',              'xG rival (prom.)',              False),
-            ('corners_equipo_promedio',        'Corners propios (prom.)',       False),
-            ('corners_rival_promedio',         'Corners rival (prom.)',         False),
-            ('faltas_equipo_promedio',         'Faltas propias (prom.)',        False),
-            ('faltas_rival_promedio',          'Faltas rival (prom.)',          False),
-            ('paradas_equipo_promedio',        'Paradas portero propio (prom.)',False),
-            ('paradas_rival_promedio',         'Paradas portero rival (prom.)', False),
-            ('precision_pases_equipo_promedio','Precisión pases propia',        True),
-            ('precision_pases_rival_promedio', 'Precisión pases rival',         True),
-        ]
-        _tech_html_liga = [
-            ('tiros_local_promedio',              'Tiros locales (prom.)',         False),
-            ('tiros_visitante_promedio',          'Tiros visitante (prom.)',       False),
-            ('tiros_a_puerta_local_promedio',     'Tiros a puerta local (prom.)',  False),
-            ('tiros_a_puerta_visitante_promedio', 'Tiros a puerta visit. (prom.)', False),
-            ('xg_local_promedio',                'xG local promedio',             False),
-            ('xg_visitante_promedio',            'xG visitante promedio',         False),
-            ('corners_local_promedio',           'Corners local (prom.)',         False),
-            ('corners_visitante_promedio',       'Corners visitante (prom.)',     False),
-            ('faltas_local_promedio',            'Faltas local (prom.)',          False),
-            ('faltas_visitante_promedio',        'Faltas visitante (prom.)',      False),
-            ('paradas_local_promedio',           'Paradas portero local (prom.)', False),
-            ('paradas_visitante_promedio',       'Paradas portero visit.(prom.)', False),
-            ('precision_pases_local_promedio',   'Precisión pases local',         True),
-            ('precision_pases_visitante_promedio', 'Precisión pases visitante',   True),
-        ]
-        _tech_html = _tech_html_equipo if self.metrics.get('tiros_equipo_promedio') is not None else _tech_html_liga
-        for k, lbl, pct in _tech_html:
-            val = self.metrics.get(k)
-            if val is None:
-                continue
-            fmt_total = f'{val:.1f}%' if pct else f'{val:.1f}'
-            suffix = '%' if pct else ''
-            # Desglose local/visitante para métricas de perspectiva de equipo
-            split_html = ''
-            if k.endswith('_equipo_promedio'):
-                prefix_k = k[: -len('_equipo_promedio')]
-                loc = self.metrics.get(f'{prefix_k}_equipo_local_promedio')
-                vis = self.metrics.get(f'{prefix_k}_equipo_visitante_promedio')
-                if loc is not None and vis is not None:
-                    split_html = (
-                        f'<small style="color:#555;display:block;margin-top:4px">'
-                        f'Local: {loc:.1f}{suffix} &nbsp;|&nbsp; Visit.: {vis:.1f}{suffix}'
-                        f'</small>'
-                    )
-            elif k.endswith('_rival_promedio'):
-                prefix_k = k[: -len('_rival_promedio')]
-                loc = self.metrics.get(f'{prefix_k}_rival_local_promedio')
-                vis = self.metrics.get(f'{prefix_k}_rival_visitante_promedio')
-                if loc is not None and vis is not None:
-                    split_html = (
-                        f'<small style="color:#555;display:block;margin-top:4px">'
-                        f'Local rival: {loc:.1f}{suffix} &nbsp;|&nbsp; Visit. rival: {vis:.1f}{suffix}'
-                        f'</small>'
-                    )
-            html.append(f'      <div class="metric"><strong>{lbl}</strong><p>{fmt_total}{split_html}</p></div>')
-
-        # Eficiencia ofensiva xG
-        over = self.metrics.get('overperformance')
-        over_desc = self.metrics.get('overperformance_desc')
-        if over is not None:
-            color = '#27ae60' if over > 1.2 else ('#e74c3c' if over < 0.8 else '#f39c12')
-            html.append(
-                f'      <div class="metric"><strong>Eficiencia ofensiva (goles/xG)</strong>'
-                f'<p style="color:{color};font-size:1.3em;font-weight:bold">{over:.2f}</p>'
-                f'<small style="color:#555">{over_desc}</small></div>'
+        # Intento 2: xhtml2pdf (puro Python)
+        try:
+            from xhtml2pdf import pisa
+            with open(output_path, 'wb') as f:
+                result = pisa.CreatePDF(html_content, dest=f, encoding='utf-8')
+            if result.err:
+                raise RuntimeError(f'xhtml2pdf reportó errores: {result.err}')
+            return output_path
+        except ImportError:
+            raise ImportError(
+                "No se encontró ningún generador de PDF compatible.\n"
+                "Instala uno de los siguientes:\n"
+                "  pip install xhtml2pdf\n"
+                "  pip install weasyprint  (requiere GTK en Windows)"
             )
-
-        html.extend([
-            '    </div>',
-            '  </div>',
-        ])
-
-        # Sección comparativa vs liga en HTML
-        if self.league_comparison:
-            html.extend([
-                '  <div class="section">',
-                '    <h2>Comparativa vs media de La Liga</h2>',
-                '    <table>',
-                '      <thead><tr><th>Métrica</th><th>Equipo</th><th>Liga</th><th>Diferencia</th></tr></thead>',
-                '      <tbody>',
-            ])
-            for row in self.league_comparison:
-                signo = row['signo']
-                diff = row['diferencia']
-                color = '#27ae60' if diff >= 0 else '#e74c3c'
-                html.append(
-                    f'        <tr>'
-                    f'<td>{row["metrica"]}</td>'
-                    f'<td>{row["equipo"]}</td>'
-                    f'<td>{row["liga"]}</td>'
-                    f'<td style="color:{color};font-weight:bold">{signo}{diff}</td>'
-                    f'</tr>'
-                )
-            html.extend(['      </tbody>', '    </table>', '  </div>'])
-
-        # Sección Percentiles de liga en HTML
-        if self.league_percentiles:
-            n_eq = self.league_percentiles[0]['n_equipos']
-            html.extend([
-                '  <div class="section">',
-                f'    <h2>Percentiles en la liga <small style="color:#666;font-size:0.6em">({n_eq} equipos)</small></h2>',
-                '    <table>',
-                '      <thead><tr><th>Métrica</th><th>Valor</th><th>Percentil</th><th>Valoración</th></tr></thead>',
-                '      <tbody>',
-            ])
-            for p in self.league_percentiles:
-                pct = p['percentil']
-                if pct >= 80:
-                    bar_color = '#27ae60'
-                    rating = 'Excelente'
-                elif pct >= 60:
-                    bar_color = '#2e86de'
-                    rating = 'Por encima de la media'
-                elif pct >= 40:
-                    bar_color = '#f39c12'
-                    rating = 'En la media'
-                else:
-                    bar_color = '#e74c3c'
-                    rating = 'Por debajo de la media'
-                bar_html = (
-                    f'<div style="background:#eee;border-radius:4px;height:10px;width:120px;display:inline-block;vertical-align:middle">'
-                    f'<div style="background:{bar_color};width:{pct}%;height:100%;border-radius:4px"></div></div>'
-                    f' <span style="color:{bar_color};font-weight:bold">{pct}%</span>'
-                )
-                html.append(
-                    f'        <tr>'
-                    f'<td>{p["metrica"]}</td>'
-                    f'<td>{p["valor"]:.2f}</td>'
-                    f'<td>{bar_html}</td>'
-                    f'<td style="color:{bar_color}">{rating}</td>'
-                    f'</tr>'
-                )
-            html.extend(['      </tbody>', '    </table>', '  </div>'])
-
-        # Sección Rendimiento W/D/L en HTML
-        if self.team_record:
-            rec = self.team_record
-            badge_colors = {'V': '#27ae60', 'E': '#f39c12', 'D': '#e74c3c'}
-            racha_badges = ''
-            for r_char in rec['racha_actual']:
-                color = badge_colors.get(r_char, '#888')
-                racha_badges += (
-                    f'<span style="display:inline-block;width:28px;height:28px;line-height:28px;'
-                    f'text-align:center;border-radius:50%;background:{color};color:white;'
-                    f'font-weight:bold;margin:2px">{r_char}</span>'
-                )
-            res_bg = {'V': '#d4edda', 'E': '#fff3cd', 'D': '#f8d7da'}
-            html.extend([
-                '  <div class="section">',
-                '    <h2>Rendimiento del equipo</h2>',
-                '    <div class="metrics">',
-                f'      <div class="metric"><strong>Victorias</strong><p style="color:#27ae60;font-size:1.4em;font-weight:bold">{rec["victorias"]}</p></div>',
-                f'      <div class="metric"><strong>Empates</strong><p style="color:#f39c12;font-size:1.4em;font-weight:bold">{rec["empates"]}</p></div>',
-                f'      <div class="metric"><strong>Derrotas</strong><p style="color:#e74c3c;font-size:1.4em;font-weight:bold">{rec["derrotas"]}</p></div>',
-                f'      <div class="metric"><strong>Puntos</strong><p style="font-size:1.4em;font-weight:bold">{rec["puntos"]}</p></div>',
-                '    </div>',
-                f'    <p><strong>Racha últimos 5:</strong> {racha_badges}</p>'
-                f'    <p>'
-                f'      <strong>Racha sin perder (máx.):</strong> {rec["racha_sin_perder_max"]} partidos &nbsp;&nbsp;|&nbsp;&nbsp;'
-                f'      <strong>Racha goleadora (máx.):</strong> {rec["racha_goleadora_max"]} partidos &nbsp;&nbsp;|&nbsp;&nbsp;'
-                f'      <strong>Racha sin marcar (máx.):</strong> {rec["racha_sin_marcar_max"]} partidos'
-                f'    </p>',
-                '    <table>',
-            ])
-            show_season_col = any(r.get('season') for r in rec['tabla_resultados'])
-            thead_cols = '<th>Temporada</th>' if show_season_col else ''
-            html.extend([
-                f'      <thead><tr>{thead_cols}<th>Jornada</th><th>Rival</th><th>GF</th><th>GC</th><th>Local/Visitante</th><th>Resultado</th></tr></thead>',
-                '      <tbody>',
-            ])
-            for r in rec['tabla_resultados']:
-                jornada_str = str(r['jornada']) if r['jornada'] is not None else '-'
-                bg = res_bg.get(r['resultado'], 'white')
-                season_td = f'<td>{r.get("season", "-")}</td>' if show_season_col else ''
-                html.append(
-                    f'        <tr style="background:{bg}">'
-                    f'{season_td}'
-                    f'<td>{jornada_str}</td>'
-                    f'<td>{r["rival"]}</td>'
-                    f'<td>{r["gf"]}</td>'
-                    f'<td>{r["gc"]}</td>'
-                    f'<td>{r["local"]}</td>'
-                    f'<td><strong>{r["resultado"]}</strong></td>'
-                    f'</tr>'
-                )
-            html.extend(['      </tbody>', '    </table>', '  </div>'])
-
-        if self.team and self.player_rankings:
-            goleadores = self.player_rankings.get('goleadores', pd.DataFrame())
-            asistentes = self.player_rankings.get('asistentes', pd.DataFrame())
-            html.extend(['  <div class="section">', '    <h2>Top goleadores</h2>'])
-            if not goleadores.empty:
-                html.append(goleadores.to_html(index=False, classes='dataframe', border=0))
-            else:
-                html.append('    <p>Sin datos disponibles.</p>')
-            html.extend(['  </div>', '  <div class="section">', '    <h2>Top asistentes</h2>'])
-            if not asistentes.empty:
-                html.append(asistentes.to_html(index=False, classes='dataframe', border=0))
-            else:
-                html.append('    <p>Sin datos disponibles.</p>')
-            html.append('  </div>')
-        else:
-            html.extend([
-                '  <div class="section">',
-                '    <h2>Equipos con más goles</h2>',
-                self.top_scorers.to_html(index=False, classes='dataframe', border=0),
-                '  </div>',
-                '  <div class="section">',
-                '    <h2>Equipos con menos goles concedidos</h2>',
-                self.top_defenders.to_html(index=False, classes='dataframe', border=0),
-                '  </div>',
-            ])
-        html.extend([
-            '  <div class="section">',
-            '    <h2>Partidos destacados</h2>',
-        ])
-
-        highlights_cols = ['date', 'local_team', 'visitante_team', 'goles_local', 'goles_visitante', 'goles_totales']
-        if 'jornada' in self.highlights.columns:
-            highlights_cols.insert(0, 'jornada')
-        if 'estadio' in self.highlights.columns:
-            highlights_cols.append('estadio')
-        html.append(self.highlights[highlights_cols].to_html(index=False, classes='dataframe', border=0))
-
-        # Sección de vídeos destacados
-        if 'video_highlights' in self.highlights.columns:
-            videos = self.highlights[['local_team', 'visitante_team', 'video_highlights']].dropna(subset=['video_highlights'])
-            if not videos.empty:
-                html.append('  <div class="section">')
-                html.append('    <h2>Vídeos destacados</h2>')
-                for _, row in videos.iterrows():
-                    html.append(f'    <p><a href="{row["video_highlights"]}" target="_blank">{row["local_team"]} vs {row["visitante_team"]}</a></p>')
-                html.append('  </div>')
-
-        html.extend([
-            '  </div>',
-        ])
-
-        html.extend([
-            '  <div class="section">',
-            '    <h2>Gráficos</h2>',
-        ])
-
-        for image_name in relative_images:
-            html.append(f'    <img src="{image_name}" alt="{image_name}">')
-
-        conclusions_html = self._generate_conclusions_html()
-        if conclusions_html:
-            html.append(conclusions_html)
-
-        interseason = self._generate_interseason_narrative()
-        if interseason:
-            html.append('  <h2>Evolución intertemporada</h2>')
-            html.append('  <div style="background:white;border-radius:8px;padding:16px 20px;'
-                        'box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:24px;">')
-            html.append('  <pre style="font-family:monospace;font-size:0.88em;margin:0;">')
-            html.append('\n'.join(interseason))
-            html.append('  </pre></div>')
-
-        html.extend([
-          '  </div>',
-          '</body>',
-          '</html>',
-        ])
-
-        report_file.write_text('\n'.join(html), encoding='utf-8')
-        return str(report_file)
 
     def save_visual_report(self, output_folder: str = 'reports') -> List[str]:
         if self.data is None:
