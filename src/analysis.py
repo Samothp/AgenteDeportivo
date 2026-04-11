@@ -699,18 +699,27 @@ def compute_standings(df: pd.DataFrame, up_to_jornada: Optional[int] = None) -> 
     return df_out.reset_index(drop=True)
 
 
-def compute_matchday_summary(df_jornada: pd.DataFrame, df_all: pd.DataFrame, jornada: int) -> Dict:
+def compute_matchday_summary(
+    df_jornada: pd.DataFrame,
+    df_all: pd.DataFrame,
+    jornada: int,
+    scorers_df: Optional[pd.DataFrame] = None,
+) -> Dict:
     """Genera el resumen completo de una jornada concreta.
 
     Args:
-        df_jornada: Partidos filtrados para la jornada indicada.
-        df_all: Todos los partidos de la temporada (para clasificación acumulada).
-        jornada: Número de jornada.
+        df_jornada:  Partidos filtrados para la jornada indicada.
+        df_all:      Todos los partidos de la temporada (para clasificación acumulada).
+        jornada:     Número de jornada.
+        scorers_df:  DataFrame de goleadores (scorer_loader) con columna jornada.
+                     Si se proporciona, se añaden los goleadores a cada partido.
 
     Returns:
-        Dict con claves: jornada, num_partidos, results, total_goals, avg_goals,
-        total_yellow, total_red, avg_possession_local, avg_possession_visitante,
-        most_exciting, xg_surprise, standings.
+        Dict con claves: jornada, num_partidos, results (con 'scorers' y 'muda'),
+        total_goals, avg_goals, total_yellow, total_red,
+        avg_possession_local, avg_possession_visitante,
+        most_exciting, xg_surprise (compat), xg_surprises (top 3),
+        destacados, partidos_muda, standings, standings_trimmed.
     """
     results = []
     sort_data = df_jornada.sort_values('local_team') if 'local_team' in df_jornada.columns else df_jornada
@@ -730,6 +739,9 @@ def compute_matchday_summary(df_jornada: pd.DataFrame, df_all: pd.DataFrame, jor
             'visitante':       row['visitante_team'],
             'resultado':       res,
             'goles_totales':   gl + gv,
+            'id_event':        row.get('id_event'),
+            'scorers':         [],
+            'muda':            (gl == 0 or gv == 0),
         })
 
     total_goals = sum(r['goles_totales'] for r in results)
@@ -757,8 +769,29 @@ def compute_matchday_summary(df_jornada: pd.DataFrame, df_all: pd.DataFrame, jor
         avg_possession_local     = round(float(df_jornada['posesion_local'].mean()), 1)
         avg_possession_visitante = round(float(df_jornada['posesion_visitante'].mean()), 1)
 
-    # Sorpresa de la jornada: partido donde el resultado contradice más al xG esperado
-    xg_surprise = None
+    # Goleadores por partido
+    if scorers_df is not None and not scorers_df.empty:
+        jornada_scorers = scorers_df[
+            (scorers_df['jornada'] == jornada) &
+            (scorers_df['goal_type'] != '_fetched')
+        ]
+        if not jornada_scorers.empty:
+            scorer_by_event: Dict[str, list] = {}
+            for _, sc in jornada_scorers.iterrows():
+                mid = str(sc['match_id'])
+                scorer_by_event.setdefault(mid, []).append({
+                    'player_name': sc.get('player_name', ''),
+                    'team':        sc.get('team', ''),
+                    'minute':      sc.get('minute', ''),
+                    'goal_type':   sc.get('goal_type', 'goal'),
+                })
+            for r in results:
+                eid = str(int(float(r['id_event']))) if r['id_event'] is not None else None
+                if eid and eid in scorer_by_event:
+                    r['scorers'] = scorer_by_event[eid]
+
+    # Sorpresas de la jornada (top 3): partidos donde el resultado contradice más al xG
+    xg_surprises: list = []
     if 'xg_local' in df_jornada.columns and df_jornada['xg_local'].notna().any():
         xg_cols = ['local_team', 'visitante_team', 'goles_local', 'goles_visitante', 'xg_local', 'xg_visitante']
         xg_data = df_jornada[xg_cols].dropna(subset=['xg_local', 'xg_visitante']).copy()
@@ -774,18 +807,52 @@ def compute_matchday_summary(df_jornada: pd.DataFrame, df_all: pd.DataFrame, jor
             surprised = xg_data[xg_data['xg_winner'] != xg_data['real_winner']].copy()
             if not surprised.empty:
                 surprised['margin'] = (surprised['xg_local'] - surprised['xg_visitante']).abs()
-                row_s = surprised.sort_values('margin', ascending=False).iloc[0]
-                xg_surprise = {
-                    'local':           row_s['local_team'],
-                    'visitante':       row_s['visitante_team'],
-                    'goles_local':     int(row_s['goles_local']),
-                    'goles_visitante': int(row_s['goles_visitante']),
-                    'xg_local':        round(float(row_s['xg_local']), 2),
-                    'xg_visitante':    round(float(row_s['xg_visitante']), 2),
-                }
+                for _, row_s in surprised.sort_values('margin', ascending=False).head(3).iterrows():
+                    xg_surprises.append({
+                        'local':           row_s['local_team'],
+                        'visitante':       row_s['visitante_team'],
+                        'goles_local':     int(row_s['goles_local']),
+                        'goles_visitante': int(row_s['goles_visitante']),
+                        'xg_local':        round(float(row_s['xg_local']), 2),
+                        'xg_visitante':    round(float(row_s['xg_visitante']), 2),
+                    })
+    xg_surprise = xg_surprises[0] if xg_surprises else None  # retrocompat
+
+    # Destacados de la jornada (mejor posesión, más tiros, más paradas)
+    destacados: Dict = {}
+    for (col_l, col_v, team_l, team_v, key, fmt) in [
+        ('posesion_local',  'posesion_visitante',  'local_team', 'visitante_team', 'equipo_mayor_posesion', 'f'),
+        ('shots_local',     'shots_visitante',      'local_team', 'visitante_team', 'equipo_mas_tiros',      'i'),
+        ('paradas_local',   'paradas_visitante',    'local_team', 'visitante_team', 'portero_mas_paradas',   'i'),
+    ]:
+        if col_l in df_jornada.columns and df_jornada[col_l].notna().any():
+            best_val = -1.0
+            best_entry = None
+            for _, row in df_jornada.iterrows():
+                for tcol, vcol in [(team_l, col_l), (team_v, col_v)]:
+                    v = row.get(vcol)
+                    if v is not None and not pd.isna(v) and float(v) > best_val:
+                        best_val = float(v)
+                        best_entry = (row[tcol], int(best_val) if fmt == 'i' else round(best_val, 1))
+            if best_entry:
+                destacados[key] = {'equipo': best_entry[0], 'valor': best_entry[1]}
+
+    # Partidos con portería a cero o sin goles (muda)
+    partidos_muda = [r for r in results if r['muda']]
 
     # Clasificación acumulada hasta esta jornada
     standings = compute_standings(df_all, up_to_jornada=jornada)
+
+    # Tabla recortada: top 5 + zona de descenso (3 últimos), con separador None entre ambas
+    standings_trimmed: list = []
+    if not standings.empty:
+        n_teams = len(standings)
+        if n_teams <= 8:
+            standings_trimmed = standings.to_dict('records')
+        else:
+            top5 = standings.head(5).to_dict('records')
+            bot3 = standings.tail(3).to_dict('records')
+            standings_trimmed = top5 + [None] + bot3
 
     return {
         'jornada':                  jornada,
@@ -799,7 +866,11 @@ def compute_matchday_summary(df_jornada: pd.DataFrame, df_all: pd.DataFrame, jor
         'avg_possession_visitante': avg_possession_visitante,
         'most_exciting':            most_exciting,
         'xg_surprise':              xg_surprise,
+        'xg_surprises':             xg_surprises,
+        'destacados':               destacados,
+        'partidos_muda':            partidos_muda,
         'standings':                standings,
+        'standings_trimmed':        standings_trimmed,
     }
 
 

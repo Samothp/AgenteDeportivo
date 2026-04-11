@@ -28,11 +28,11 @@ Prioridad dentro de cada bloque: ⭐⭐⭐ impacto alto · ⭐⭐ medio · ⭐ b
 
 ## 📅 Bloque 3 — Informe de Jornada (`/jornada`)
 
-- [ ] ⭐⭐⭐ **Goleadores de la jornada**: sección con quién marcó en cada partido. Es la información más buscada inmediatamente después de una jornada. Requiere datos de jugadores por partido (ver Bloque 6).
-- [ ] ⭐⭐⭐ **Recortar la clasificación**: en lugar de los 20 equipos completos (ya disponibles en `/tabla`), mostrar solo top 5 + zona de descenso (3 últimos) con texto "clasificación completa: `/tabla 2014 2025`". Reduce la longitud a la mitad.
-- [ ] ⭐⭐ **Sorpresas ampliadas**: mostrar hasta 3 resultados sorpresivos (mayor delta entre resultado real y xG esperado), no solo 1. Un solo caso puede ser trivial.
-- [ ] ⭐⭐ **Destacados de la jornada**: añadir mini-sección con equipo de mayor posesión, más tiros, y portero con más paradas. Sin necesidad de datos extra, con los agregados por partido ya existentes.
-- [ ] ⭐ **Partido muda (0-0 o sin goles de un lado)**: destacar si se da el caso, con contexto (ej. "cuarto 0-0 consecutivo del equipo").
+- [x] ⭐⭐⭐ **Goleadores de la jornada**: goleadores integrados en la tabla de resultados via `scorer_loader`. Cada partido muestra quién marcó, el minuto y el tipo (normal/penalti/pp). Requería Bloque 6 (scorer_loader).
+- [x] ⭐⭐⭐ **Recortar la clasificación**: se muestran top 5 + zona de descenso (3 últimos) con separador `···` y nota hacia `/tabla`. Reduce la longitud del informe a la mitad.
+- [x] ⭐⭐ **Sorpresas ampliadas**: hasta 3 resultados sorpresivos (mayor delta resultado real vs xG), no solo 1.
+- [x] ⭐⭐ **Destacados de la jornada**: sección con equipo de mayor posesión, más tiros y portero con más paradas. Datos directos del dataset enriquecido.
+- [x] ⭐ **Partido muda**: badge "sin goles" en la fila del equipo que no marcó (0-X o X-0).
 
 ---
 

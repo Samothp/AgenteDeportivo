@@ -27,6 +27,7 @@ from .analysis import (
 from .config import AgentConfig
 from .data_loader import load_match_data
 from .player_loader import load_player_stats
+from .scorer_loader import load_scorers
 from .thresholds import (
     FORM_STREAK_THRESHOLD,
     HIGH_SCORING_THRESHOLD,
@@ -248,7 +249,19 @@ class SportsAgent:
         # Modo Jornada: filtrar por número de jornada y generar resumen
         if self.matchday is not None:
             self.filter_by_matchday()
-            self.matchday_summary = compute_matchday_summary(self.data, self.full_data if self.full_data is not None else self.data, self.matchday)
+            _scorers_df = load_scorers(
+                competition_id=self.competition_id or 2014,
+                season=self.season or '2025-2026',
+                df_matches=self.full_data if self.full_data is not None else self.data,
+                fetch_real=self.fetch_real,
+                verbose=self.fetch_real,
+            )
+            self.matchday_summary = compute_matchday_summary(
+                self.data,
+                self.full_data if self.full_data is not None else self.data,
+                self.matchday,
+                scorers_df=_scorers_df,
+            )
             self.metrics = compute_overall_metrics(self.data)
             self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
             self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
@@ -1106,10 +1119,14 @@ class SportsAgent:
         lines.append('----------')
         for r in s['results']:
             label = res_label.get(r['resultado'], '')
+            muda_flag = ' 🔇' if r.get('muda') else ''
             lines.append(
                 f"  {r['local']:<22}  {r['goles_local']:>2} - {r['goles_visitante']:<2}"
-                f"  {r['visitante']:<22}  ({label})"
+                f"  {r['visitante']:<22}  ({label}){muda_flag}"
             )
+            for sc in r.get('scorers', []):
+                type_tag = ' (P)' if sc['goal_type'] == 'goal_penalty' else (' (PP)' if sc['goal_type'] == 'own_goal' else '')
+                lines.append(f"      ⚽ {sc['player_name']} {sc['minute']}'{type_tag}  [{sc['team']}]")
         lines.append('')
 
         lines.append('Estadísticas de la jornada')
@@ -1125,6 +1142,22 @@ class SportsAgent:
             lines.append(f"  Posesión media visitante: {s['avg_possession_visitante']:.1f}%")
         lines.append('')
 
+        # Destacados de la jornada
+        dest = s.get('destacados', {})
+        if dest:
+            lines.append('Destacados de la jornada')
+            lines.append('------------------------')
+            if 'equipo_mayor_posesion' in dest:
+                d = dest['equipo_mayor_posesion']
+                lines.append(f"  Mayor posesión:  {d['equipo']} ({d['valor']}%)")
+            if 'equipo_mas_tiros' in dest:
+                d = dest['equipo_mas_tiros']
+                lines.append(f"  Más tiros:       {d['equipo']} ({d['valor']} tiros)")
+            if 'portero_mas_paradas' in dest:
+                d = dest['portero_mas_paradas']
+                lines.append(f"  Más paradas:     {d['equipo']} ({d['valor']} paradas)")
+            lines.append('')
+
         if s['most_exciting']:
             m = s['most_exciting']
             lines.append('Partido más espectacular')
@@ -1135,22 +1168,36 @@ class SportsAgent:
             )
             lines.append('')
 
-        if s['xg_surprise']:
-            sx = s['xg_surprise']
-            lines.append('Sorpresa de la jornada (resultado vs xG esperado)')
-            lines.append('-------------------------------------------------')
-            lines.append(
-                f"  {sx['local']} {sx['goles_local']} - {sx['goles_visitante']} {sx['visitante']}"
-            )
-            lines.append(
-                f"  xG: {sx['local'][:15]} {sx['xg_local']} | {sx['xg_visitante']} {sx['visitante'][:15]}"
-            )
+        xg_surprises = s.get('xg_surprises', [])
+        if xg_surprises:
+            lines.append('Sorpresas de la jornada (resultado vs xG esperado)')
+            lines.append('--------------------------------------------------')
+            for i, sx in enumerate(xg_surprises, 1):
+                lines.append(
+                    f"  {i}. {sx['local']} {sx['goles_local']} - {sx['goles_visitante']} {sx['visitante']}"
+                )
+                lines.append(
+                    f"     xG esperado: {sx['local'][:15]} {sx['xg_local']} | {sx['xg_visitante']} {sx['visitante'][:15]}"
+                )
             lines.append('')
 
-        if not s['standings'].empty:
-            lines.append(f"Clasificación tras la jornada {s['jornada']}")
-            lines.append('-' * 40)
-            lines.extend(s['standings'].to_string(index=False).splitlines())
+        # Tabla recortada: top 5 + zona de descenso
+        standings_trimmed = s.get('standings_trimmed', [])
+        if standings_trimmed:
+            lines.append(f"Clasificación (top 5 + descenso) — tras jornada {s['jornada']}")
+            lines.append('-' * 52)
+            header = f"  {'Pos':>3}  {'Equipo':<22} {'PJ':>3} {'PTS':>4} {'DIF':>4}"
+            lines.append(header)
+            for row in standings_trimmed:
+                if row is None:
+                    lines.append('   ...')
+                else:
+                    lines.append(
+                        f"  {row['Pos']:>3}. {row['Equipo']:<22} {row['PJ']:>3} {row['PTS']:>4} {row['DIF']:>+4}"
+                    )
+            total_teams = len(s['standings'])
+            if total_teams > 8:
+                lines.append(f"  (clasificación completa con {total_teams} equipos disponible en /tabla)")
             lines.append('')
 
         report_text = '\n'.join(lines)
@@ -1177,7 +1224,6 @@ class SportsAgent:
         res_bg    = {'L': '#d4edda', 'E': '#fff3cd', 'V': '#f8d7da'}
         res_label = {'L': 'Victoria local', 'E': 'Empate', 'V': 'Victoria visitante'}
 
-        # Enriquecer resultados con badge y color de fondo
         enriched_results = []
         for r in s['results']:
             enriched_results.append({
@@ -1185,11 +1231,6 @@ class SportsAgent:
                 'bg':    res_bg.get(r['resultado'], 'white'),
                 'label': res_label.get(r['resultado'], ''),
             })
-
-        standings_html = (
-            s['standings'].to_html(index=False, classes='dataframe', border=0)
-            if not s['standings'].empty else ''
-        )
 
         context = {
             'jornada':                  s['jornada'],
@@ -1203,8 +1244,11 @@ class SportsAgent:
             'avg_possession_visitante': s['avg_possession_visitante'],
             'results':                  enriched_results,
             'most_exciting':            s['most_exciting'],
-            'xg_surprise':              s['xg_surprise'],
-            'standings_html':           standings_html,
+            'xg_surprises':             s.get('xg_surprises', []),
+            'destacados':               s.get('destacados', {}),
+            'partidos_muda':            s.get('partidos_muda', []),
+            'standings_trimmed':        s.get('standings_trimmed', []),
+            'total_teams':              len(s['standings']) if not s['standings'].empty else 0,
             'images':                   relative_images,
         }
         report_file.write_text(self._render_template('matchday.html.j2', context), encoding='utf-8')

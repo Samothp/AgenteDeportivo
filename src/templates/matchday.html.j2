@@ -6,8 +6,17 @@
     .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
     .metric { background: white; padding: 16px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
     .score { font-size: 1.2em; font-weight: bold; text-align: center; }
+    .scorers { font-size: 0.82em; color: #555; padding-left: 12px; }
+    .scorer-row { margin: 2px 0; }
+    .goal-penalty { color: #d97706; }
+    .own-goal { color: #dc2626; }
+    .muda-badge { font-size: 0.75em; background: #f3f4f6; color: #374151; padding: 2px 6px; border-radius: 4px; }
+    .destacados-grid { display: flex; gap: 16px; flex-wrap: wrap; }
+    .destacado-card { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 10px 14px; border-radius: 6px; min-width: 180px; }
+    .surprise-row { background: #fef9c3; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; }
+    .standings-table td, .standings-table th { padding: 4px 10px; }
+    .sep-row td { text-align: center; color: #999; font-style: italic; }
     th, td { text-align: left; }
-    th { text-align: left; }
 {% endblock %}
 
 {% block content %}
@@ -17,6 +26,7 @@
      &nbsp; <strong>Partidos disputados:</strong> {{ num_partidos }}</p>
   {% endif %}
 
+  {# ── Estadísticas generales ── #}
   <div class="section">
     <h2>Estadísticas de la jornada</h2>
     <div class="metrics-grid">
@@ -41,6 +51,37 @@
     </div>
   </div>
 
+  {# ── Destacados ── #}
+  {% if destacados %}
+  <div class="section">
+    <h2>Destacados de la jornada</h2>
+    <div class="destacados-grid">
+      {% if destacados.equipo_mayor_posesion %}
+      <div class="destacado-card">
+        <strong>Mayor posesión</strong><br>
+        {{ destacados.equipo_mayor_posesion.equipo }}<br>
+        <span style="font-size:1.3em;font-weight:bold">{{ destacados.equipo_mayor_posesion.valor }}%</span>
+      </div>
+      {% endif %}
+      {% if destacados.equipo_mas_tiros %}
+      <div class="destacado-card">
+        <strong>Más tiros</strong><br>
+        {{ destacados.equipo_mas_tiros.equipo }}<br>
+        <span style="font-size:1.3em;font-weight:bold">{{ destacados.equipo_mas_tiros.valor }} tiros</span>
+      </div>
+      {% endif %}
+      {% if destacados.portero_mas_paradas %}
+      <div class="destacado-card">
+        <strong>Más paradas</strong><br>
+        {{ destacados.portero_mas_paradas.equipo }}<br>
+        <span style="font-size:1.3em;font-weight:bold">{{ destacados.portero_mas_paradas.valor }} paradas</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Resultados con goleadores ── #}
   <div class="section">
     <h2>Resultados</h2>
     <table>
@@ -48,9 +89,39 @@
       <tbody>
       {% for r in results %}
         <tr style="background:{{ r.bg }}">
-          <td><strong>{{ r.local }}</strong></td>
+          <td>
+            <strong>{{ r.local }}</strong>
+            {% if r.muda and r.goles_local == 0 %}<span class="muda-badge">sin goles</span>{% endif %}
+            {% set local_scorers = r.scorers | selectattr('team', 'equalto', r.local) | list %}
+            {% if local_scorers %}
+            <div class="scorers">
+              {% for sc in local_scorers %}
+              <div class="scorer-row {% if sc.goal_type == 'goal_penalty' %}goal-penalty{% elif sc.goal_type == 'own_goal' %}own-goal{% endif %}">
+                ⚽ {{ sc.player_name }}
+                {% if sc.minute %}<em>{{ sc.minute }}'</em>{% endif %}
+                {% if sc.goal_type == 'goal_penalty' %}<small>(pen.)</small>{% elif sc.goal_type == 'own_goal' %}<small>(pp)</small>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
           <td class="score">{{ r.goles_local }} - {{ r.goles_visitante }}</td>
-          <td><strong>{{ r.visitante }}</strong></td>
+          <td>
+            <strong>{{ r.visitante }}</strong>
+            {% if r.muda and r.goles_visitante == 0 %}<span class="muda-badge">sin goles</span>{% endif %}
+            {% set visit_scorers = r.scorers | selectattr('team', 'equalto', r.visitante) | list %}
+            {% if visit_scorers %}
+            <div class="scorers">
+              {% for sc in visit_scorers %}
+              <div class="scorer-row {% if sc.goal_type == 'goal_penalty' %}goal-penalty{% elif sc.goal_type == 'own_goal' %}own-goal{% endif %}">
+                ⚽ {{ sc.player_name }}
+                {% if sc.minute %}<em>{{ sc.minute }}'</em>{% endif %}
+                {% if sc.goal_type == 'goal_penalty' %}<small>(pen.)</small>{% elif sc.goal_type == 'own_goal' %}<small>(pp)</small>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
           <td>{{ r.label }}</td>
         </tr>
       {% endfor %}
@@ -58,7 +129,8 @@
     </table>
   </div>
 
-  {% if most_exciting or xg_surprise %}
+  {# ── Datos destacados ── #}
+  {% if most_exciting or xg_surprises %}
   <div class="section">
     <h2>Datos destacados</h2>
     {% if most_exciting %}
@@ -69,26 +141,49 @@
       <em>({{ most_exciting.goles_totales }} goles)</em>
     </p>
     {% endif %}
-    {% if xg_surprise %}
-    <p><strong>Sorpresa de la jornada (resultado vs xG):</strong>
-      {{ xg_surprise.local }}
-      <strong>{{ xg_surprise.goles_local }} - {{ xg_surprise.goles_visitante }}</strong>
-      {{ xg_surprise.visitante }} &mdash;
-      xG esperado: {{ xg_surprise.local[:15] }}
-      <em>{{ xg_surprise.xg_local }}</em> - <em>{{ xg_surprise.xg_visitante }}</em>
-      {{ xg_surprise.visitante[:15] }}
+    {% if xg_surprises %}
+    <p><strong>Sorpresas de la jornada</strong> (resultado vs xG esperado):</p>
+    {% for sx in xg_surprises %}
+    <div class="surprise-row">
+      {{ sx.local }} <strong>{{ sx.goles_local }} - {{ sx.goles_visitante }}</strong> {{ sx.visitante }}
+      &mdash; xG: {{ sx.local[:20] }} <em>{{ sx.xg_local }}</em> vs <em>{{ sx.xg_visitante }}</em> {{ sx.visitante[:20] }}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ── Clasificación recortada ── #}
+  {% if standings_trimmed %}
+  <div class="section">
+    <h2>Clasificación tras la jornada {{ jornada }}</h2>
+    <table class="standings-table">
+      <thead><tr><th>Pos</th><th>Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>DIF</th><th>PTS</th></tr></thead>
+      <tbody>
+      {% for row in standings_trimmed %}
+        {% if row is none %}
+        <tr class="sep-row"><td colspan="10">· · ·</td></tr>
+        {% else %}
+        <tr>
+          <td>{{ row.Pos }}</td><td><strong>{{ row.Equipo }}</strong></td>
+          <td>{{ row.PJ }}</td><td>{{ row.G }}</td><td>{{ row.E }}</td><td>{{ row.P }}</td>
+          <td>{{ row.GF }}</td><td>{{ row.GC }}</td>
+          <td>{% if row.DIF > 0 %}+{% endif %}{{ row.DIF }}</td>
+          <td><strong>{{ row.PTS }}</strong></td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if total_teams > 8 %}
+    <p style="font-size:0.85em;color:#666;margin-top:6px">
+      Clasificación completa ({{ total_teams }} equipos) disponible con <code>/tabla</code>.
     </p>
     {% endif %}
   </div>
   {% endif %}
 
-  {% if standings_html %}
-  <div class="section">
-    <h2>Clasificación tras la jornada {{ jornada }}</h2>
-    {{ standings_html | safe }}
-  </div>
-  {% endif %}
-
+  {# ── Gráficos ── #}
   {% if images %}
   <div class="section">
     <h2>Gráficos</h2>
