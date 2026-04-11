@@ -929,6 +929,25 @@ def _display_mode_results(payload: dict) -> None:
                     st.caption(f"{visit_name} (como visitante)")
                     _show_table([{"Métrica": k, "Valor": f"{v:.2f}" if isinstance(v, float) else v} for k, v in sv.items()])
             st.markdown("---")
+            # Análisis narrativo
+            from src.agent import _build_preview_analysis
+            _analysis = _build_preview_analysis(
+                local_name, visit_name,
+                pr.get("lambda_local", 0), pr.get("lambda_visit", 0),
+                pr.get("prob_local", 0), pr.get("prob_empate", 0), pr.get("prob_visit", 0),
+                pr.get("stats_local", {}), pr.get("stats_visit", {}),
+                pr.get("forma_local", ""), pr.get("pts5_local", 0),
+                pr.get("forma_visit", ""), pr.get("pts5_visit", 0),
+                pr.get("h2h_balance", {}),
+                pr.get("top_scores", []),
+                pr.get("penalty_local", 0), pr.get("penalty_visit", 0),
+                pr.get("bajas_local") or [], pr.get("bajas_visit") or [],
+            )
+            if _analysis:
+                st.subheader("📝 Análisis")
+                for _para in _analysis:
+                    st.markdown(f"- {_para}")
+            st.markdown("---")
             st.caption(
                 "⚠️ *Previsión estadística basada en modelo Poisson con datos históricos. "
                 "No constituye asesoramiento de apuestas. Los resultados reales pueden diferir significativamente.*"

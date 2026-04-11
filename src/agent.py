@@ -71,6 +71,108 @@ from .visualizer import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Funciones auxiliares de análisis narrativo (usadas por SportsAgent y app.py)
+# ---------------------------------------------------------------------------
+
+def _build_preview_analysis(
+    local: str,
+    visitante: str,
+    lam_l: float,
+    lam_v: float,
+    prob_l: float,
+    prob_e: float,
+    prob_v: float,
+    stats_l: dict,
+    stats_v: dict,
+    forma_l: str,
+    pts5_l: int,
+    forma_v: str,
+    pts5_v: int,
+    h2h_bal: dict,
+    top_scores: list,
+    penalty_l: float,
+    penalty_v: float,
+    bajas_l: list,
+    bajas_v: list,
+) -> list:
+    """Genera párrafos de análisis narrativo para el informe Preview."""
+    paragraphs = []
+
+    # Ventaja inicial
+    diff = prob_l - prob_v
+    if diff >= 15:
+        paragraphs.append(f"El modelo otorga una ventaja clara a {local} como local ({prob_l:.1f} % vs {prob_v:.1f} %).")
+    elif diff >= 5:
+        paragraphs.append(f"El modelo favorece ligeramente a {local} ({prob_l:.1f} % vs {prob_v:.1f} %), aunque el partido se presenta abierto.")
+    elif diff <= -15:
+        paragraphs.append(f"A pesar de jugar en casa, {local} parte como claro desfavorecido según el modelo ({prob_l:.1f} % vs {prob_v:.1f} %).")
+    elif diff <= -5:
+        paragraphs.append(f"El modelo apunta a {visitante} como favorito incluso fuera de casa ({prob_v:.1f} % vs {prob_l:.1f} %).")
+    else:
+        paragraphs.append(f"Las probabilidades reflejan un partido muy igualado: {local} {prob_l:.1f} %, empate {prob_e:.1f} %, {visitante} {prob_v:.1f} %.")
+
+    # Estadísticas xG
+    xgf_l = stats_l.get('xgf_promedio', 0)
+    xgc_l = stats_l.get('xgc_promedio', 0)
+    xgf_v = stats_v.get('xgf_promedio', 0)
+    xgc_v = stats_v.get('xgc_promedio', 0)
+    atk_parts = []
+    if xgf_l > xgf_v + 0.1:
+        atk_parts.append(f"{local} genera más ocasiones (xGF {xgf_l:.2f} vs {xgf_v:.2f})")
+    elif xgf_v > xgf_l + 0.1:
+        atk_parts.append(f"{visitante} es más generador de xG ({xgf_v:.2f} vs {xgf_l:.2f})")
+    if xgc_l < xgc_v - 0.1:
+        atk_parts.append(f"{local} concede menos xGC en casa ({xgc_l:.2f} vs {xgc_v:.2f})")
+    elif xgc_v < xgc_l - 0.1:
+        atk_parts.append(f"{visitante} es más sólido defensivamente fuera ({xgc_v:.2f} vs {xgc_l:.2f})")
+    if atk_parts:
+        paragraphs.append("Estadísticas xG de temporada: " + "; ".join(atk_parts) + ".")
+
+    # Forma reciente
+    if pts5_l > pts5_v + 2:
+        paragraphs.append(f"{local} llega en mejor forma reciente ({pts5_l}/15 pts vs {pts5_v}/15), lo que refuerza el pronóstico local.")
+    elif pts5_v > pts5_l + 2:
+        paragraphs.append(f"{visitante} llega con mayor inercia positiva ({pts5_v}/15 pts vs {pts5_l}/15), factor relevante pese a jugar fuera.")
+    else:
+        paragraphs.append(f"Ambos equipos llegan con forma similar ({local} {pts5_l}/15 pts, {visitante} {pts5_v}/15 pts).")
+
+    # H2H
+    wl = h2h_bal.get('victorias_local', 0)
+    we = h2h_bal.get('empates', 0)
+    wv = h2h_bal.get('victorias_visitante', 0)
+    total_h2h = wl + we + wv
+    if total_h2h == 0:
+        paragraphs.append("No hay enfrentamientos directos registrados en la DB de esta temporada.")
+    elif wl > wv:
+        n = f"{total_h2h} partido{'s' if total_h2h > 1 else ''}"
+        paragraphs.append(f"El historial directo disponible favorece a {local} ({wl}V {we}E {wv}D en {n}).")
+    elif wv > wl:
+        n = f"{total_h2h} partido{'s' if total_h2h > 1 else ''}"
+        paragraphs.append(f"En los enfrentamientos directos disponibles, {visitante} lleva la mejor parte ({wv}V {we}E {wl}D en {n}).")
+    else:
+        n = f"{total_h2h} partido{'s' if total_h2h > 1 else ''}"
+        paragraphs.append(f"El historial directo disponible está equilibrado ({wl}V {we}E {wv}D en {n}).")
+
+    # Marcador más probable
+    if top_scores:
+        best = top_scores[0]
+        gl, gv, pb = best['goles_local'], best['goles_visit'], best['prob']
+        res_label = f"victoria de {local}" if gl > gv else ("empate" if gl == gv else f"victoria de {visitante}")
+        paragraphs.append(f"El marcador individual más probable según Poisson es el {gl}-{gv} ({res_label}, {pb:.1f} %).")
+
+    # Bajas
+    if bajas_l or bajas_v:
+        baja_parts = []
+        if bajas_l:
+            baja_parts.append(f"baja de {', '.join(bajas_l)} en {local} (−{penalty_l:.2f} λ)")
+        if bajas_v:
+            baja_parts.append(f"baja de {', '.join(bajas_v)} en {visitante} (−{penalty_v:.2f} λ)")
+        paragraphs.append("Con las bajas introducidas: " + "; ".join(baja_parts) + ". Esto puede acercar las probabilidades al empate.")
+
+    return paragraphs
+
+
 class SportsAgent:
     # 12.1 — Entorno Jinja2 compartido por todas las instancias
     _jinja_env: Optional[Environment] = None
@@ -790,8 +892,24 @@ class SportsAgent:
                     f'  {s["goles_local"]}-{s["goles_visit"]}  ({s["prob"]:.1f}%)'
                 )
 
+        # ── Análisis narrativo ────────────────────────────────────────────────
+        import textwrap as _tw
+        analysis_paragraphs = _build_preview_analysis(
+            local, visitante, lam_l, lam_v,
+            prob_l, prob_e, prob_v,
+            stats_l, stats_v,
+            forma_l, pts5_l, forma_v, pts5_v,
+            h2h_bal, top_scores,
+            p.get('penalty_local', 0), p.get('penalty_visit', 0),
+            bajas_l, bajas_v,
+        )
+        if analysis_paragraphs:
+            lines += ['', '── ANÁLISIS ────────────────────────────────────────']
+            for para in analysis_paragraphs:
+                wrapped = _tw.fill(para, width=52, initial_indent='  ', subsequent_indent='  ')
+                lines += [wrapped, '']
+
         lines += [
-            '',
             sep,
             '  ⚠️  Previsión estadística basada en rendimiento histórico.',
             '  No incluye bajas no declaradas, táctica ni estado anímico.',
