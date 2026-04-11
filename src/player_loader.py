@@ -45,7 +45,16 @@ _TSDB_BASE = f"https://www.thesportsdb.com/api/v1/json/{_TSDB_API_KEY}"
 
 _ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 _DATA_DIR = Path(__file__).parent.parent / "data"
-_ESPN_STAT_FIELDS = ("totalGoals", "goalAssists", "yellowCards", "redCards", "appearances", "shotsOnTarget")
+_ESPN_STAT_FIELDS = (
+    "totalGoals",
+    "goalAssists",
+    "yellowCards",
+    "redCards",
+    "appearances",
+    "shotsOnTarget",
+    "totalShots",       # tiros totales (a puerta + fuera + bloqueados)
+    "minutesPlayed",   # minutos jugados en la temporada
+)
 
 # Campos del roster ESPN que capturamos adicionalmente (perfil físico/biográfico)
 _ESPN_PROFILE_FIELDS = (
@@ -142,6 +151,9 @@ def _fetch_roster(team_id: int, league_slug: str, team_name: str) -> list[dict]:
 
         goals = stat_values.get("totalGoals", 0)
         assists = stat_values.get("goalAssists", 0)
+        shots_on_target = stat_values.get("shotsOnTarget", 0)
+        shots_total = stat_values.get("totalShots", 0)
+        minutes_played = stat_values.get("minutesPlayed", 0)
 
         # Posición completa (ej. 'Centre-Forward') vs abbreviation (ej. 'CF')
         pos_block = a.get("position") or {}
@@ -157,7 +169,9 @@ def _fetch_roster(team_id: int, league_slug: str, team_name: str) -> list[dict]:
             "assists":        int(assists),
             "yellow_cards":   int(stat_values.get("yellowCards", 0)),
             "red_cards":      int(stat_values.get("redCards", 0)),
-            "shots_on_target":int(stat_values.get("shotsOnTarget", 0)),
+            "shots_on_target":int(shots_on_target),
+            "shots_total":    int(shots_total),
+            "minutes_played": int(minutes_played),
             "goals_assists":  int(goals + assists),
             # Perfil físico/biográfico (ESPN)
             "height_cm":      _inches_to_cm(a.get("height")),
