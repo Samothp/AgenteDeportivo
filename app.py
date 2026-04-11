@@ -193,7 +193,7 @@ except Exception:
     pass
 
 # ---------------------------------------------------------------------------
-MODES = ["Liga", "Equipo", "Jornada", "Partido", "Jugador", "Compare"]
+MODES = ["Liga", "Equipo", "Jornada", "Partido", "Jugador", "Compare", "Preview"]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -860,6 +860,79 @@ def _display_mode_results(payload: dict) -> None:
             _show_table(c.get("h2h", []), "🤝 Enfrentamientos directos (H2H)")
             _show_table(c.get("stats_team1", []), f"📊 Stats {c.get('team1', 'Equipo 1')}")
             _show_table(c.get("stats_team2", []), f"📊 Stats {c.get('team2', 'Equipo 2')}")
+    elif modo == "preview":
+        pr = payload.get("preview_result", {})
+        if pr:
+            local_name = pr.get("local", "Local")
+            visit_name = pr.get("visitante", "Visitante")
+            st.subheader(f"🔮 Previsión: {local_name} vs {visit_name}")
+            # Probabilidades Poisson
+            col_l, col_e, col_v = st.columns(3)
+            col_l.metric(f"Victoria {local_name}",  f"{pr.get('prob_local',  0)*100:.1f} %")
+            col_e.metric("Empate",                  f"{pr.get('prob_empate', 0)*100:.1f} %")
+            col_v.metric(f"Victoria {visit_name}",  f"{pr.get('prob_visit',  0)*100:.1f} %")
+            # λ esperados
+            st.markdown("---")
+            lc1, lc2 = st.columns(2)
+            lc1.metric(f"λ goles esperados {local_name}", f"{pr.get('lambda_local', 0):.2f}")
+            lc2.metric(f"λ goles esperados {visit_name}", f"{pr.get('lambda_visit', 0):.2f}")
+            # Bajas aplicadas
+            bl = pr.get("bajas_local") or []
+            bv = pr.get("bajas_visit") or []
+            if bl or bv:
+                st.markdown("---")
+                if bl:
+                    st.warning(f"🔴 Bajas {local_name}: {', '.join(bl)}  (penalización λ: −{pr.get('penalty_local', 0):.2f})")
+                if bv:
+                    st.warning(f"🔴 Bajas {visit_name}: {', '.join(bv)}  (penalización λ: −{pr.get('penalty_visit', 0):.2f})")
+            # Resultados más probables
+            top = pr.get("top_scores", [])
+            if top:
+                st.markdown("---")
+                st.subheader("📊 Resultados más probables")
+                _show_table(
+                    [{"Marcador": f"{r['g_local']}-{r['g_visit']}", "Probabilidad": f"{r['prob']*100:.2f} %"} for r in top],
+                )
+            # Forma reciente
+            st.markdown("---")
+            fl, fv = st.columns(2)
+            with fl:
+                forma_l = " ".join(pr.get("forma_local", []))
+                st.metric(f"Forma {local_name} (últimos 5)", forma_l or "—")
+                st.caption(f"Puntos últimos 5: {pr.get('pts5_local', '?')}")
+            with fv:
+                forma_v = " ".join(pr.get("forma_visit", []))
+                st.metric(f"Forma {visit_name} (últimos 5)", forma_v or "—")
+                st.caption(f"Puntos últimos 5: {pr.get('pts5_visit', '?')}")
+            # H2H
+            h2h = pr.get("h2h_matches", [])
+            if h2h:
+                st.markdown("---")
+                h2h_bal = pr.get("h2h_balance", {})
+                st.subheader(
+                    f"🤝 H2H — {h2h_bal.get('local_wins', 0)}V "
+                    f"{h2h_bal.get('draws', 0)}E "
+                    f"{h2h_bal.get('visit_wins', 0)}D"
+                )
+                _show_table(h2h, "Últimos enfrentamientos directos")
+            # Estadísticas de temporada
+            sl = pr.get("stats_local", {})
+            sv = pr.get("stats_visit", {})
+            if sl or sv:
+                st.markdown("---")
+                st.subheader("📈 Estadísticas de temporada")
+                sc1, sc2 = st.columns(2)
+                with sc1:
+                    st.caption(f"{local_name} (como local)")
+                    _show_table([{"Métrica": k, "Valor": f"{v:.2f}" if isinstance(v, float) else v} for k, v in sl.items()])
+                with sc2:
+                    st.caption(f"{visit_name} (como visitante)")
+                    _show_table([{"Métrica": k, "Valor": f"{v:.2f}" if isinstance(v, float) else v} for k, v in sv.items()])
+            st.markdown("---")
+            st.caption(
+                "⚠️ *Previsión estadística basada en modelo Poisson con datos históricos. "
+                "No constituye asesoramiento de apuestas. Los resultados reales pueden diferir significativamente.*"
+            )
 
 
 def _display_charts(image_paths: list) -> None:
@@ -1018,7 +1091,7 @@ def _tab_run_and_display(mode: str, extra_kw: dict) -> None:
 # Tabs de modos
 # ---------------------------------------------------------------------------
 _teams = _list_teams(competition, season)
-tab_liga, tab_equipo, tab_jornada, tab_partido, tab_jugador, tab_compare = st.tabs(MODES)
+tab_liga, tab_equipo, tab_jornada, tab_partido, tab_jugador, tab_compare, tab_preview = st.tabs(MODES)
 
 with tab_liga:
     _liga_kw: dict = {}
@@ -1094,3 +1167,31 @@ with tab_compare:
     except Exception:
         pass
     _tab_run_and_display("Compare", {"compare": (_cmp_t1, _cmp_t2)})
+
+with tab_preview:
+    if _teams:
+        _prv_local  = st.selectbox("Equipo local",     _teams, index=0,                   key="preview_local")
+        _prv_visit  = st.selectbox("Equipo visitante", _teams, index=min(1, len(_teams)-1), key="preview_visit")
+    else:
+        _prv_local = st.text_input("Equipo local",     key="preview_local_text")
+        _prv_visit = st.text_input("Equipo visitante", key="preview_visit_text")
+    _prv_bl = st.text_input(
+        "Bajas equipo local (separadas por coma)",
+        placeholder="e.g. Muriqi, Copete",
+        key="preview_bl",
+    )
+    _prv_bv = st.text_input(
+        "Bajas equipo visitante (separadas por coma)",
+        placeholder="e.g. Álvaro García",
+        key="preview_bv",
+    )
+    _prv_bajas_l = [b.strip() for b in _prv_bl.split(",") if b.strip()] or None
+    _prv_bajas_v = [b.strip() for b in _prv_bv.split(",") if b.strip()] or None
+    _tab_run_and_display(
+        "Preview",
+        {
+            "preview_teams": (_prv_local, _prv_visit),
+            "bajas_local": _prv_bajas_l,
+            "bajas_visit": _prv_bajas_v,
+        },
+    )

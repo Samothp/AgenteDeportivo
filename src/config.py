@@ -33,6 +33,11 @@ class AgentConfig:
     player: Optional[str] = None
     compare: Optional[Tuple[str, str]] = None
 
+    # Preview de partido
+    preview_teams: Optional[Tuple[str, str]] = None
+    bajas_local: Optional[List[str]] = None
+    bajas_visit: Optional[List[str]] = None
+
     # Opciones de presentación
     top_n: int = TOP_N_DEFAULT
     no_charts: bool = False

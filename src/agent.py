@@ -172,6 +172,10 @@ class SportsAgent:
         self.compare: Optional[tuple] = config.compare  # (team1, team2) para modo --compare
         self.compare_data: dict = {}  # resultado de compute_compare()
         self.top_goleadores_liga: Optional[pd.DataFrame] = None  # top goleadores de toda la liga (modo equipo)
+        self.preview_teams: Optional[tuple] = config.preview_teams  # (local, visitante) para modo Preview
+        self.bajas_local: Optional[list] = config.bajas_local or []
+        self.bajas_visit: Optional[list] = config.bajas_visit or []
+        self.preview_result: dict = {}  # resultado de compute_match_preview()
 
     def load_data(self):
         if self.seasons and len(self.seasons) > 1:
@@ -229,6 +233,21 @@ class SportsAgent:
     def analyze(self):
         if self.data is None:
             raise ValueError('Datos no cargados. Ejecute load_data() primero.')
+
+        # Modo Preview: previsión de un partido entre dos equipos
+        if self.preview_teams is not None:
+            from .analysis import compute_match_preview
+            local, visitante = self.preview_teams
+            self.preview_result = compute_match_preview(
+                self.data, local, visitante,
+                bajas_local=self.bajas_local,
+                bajas_visit=self.bajas_visit,
+            )
+            self.metrics = {'partidos_analizados': len(self.data)}
+            self.top_scorers    = top_scoring_teams(self.data, n=self.top_n)
+            self.top_defenders  = top_defensive_teams(self.data, n=self.top_n)
+            self.highlights     = match_highlights(self.data, n=self.top_n)
+            return self.metrics
 
         # Modo Compare: --compare TEAM1 TEAM2
         if self.compare is not None:
@@ -689,6 +708,101 @@ class SportsAgent:
 
         lines.append('')
         return lines
+
+    def _generate_preview_report(self, output_path: Optional[str] = None) -> str:
+        """Informe de texto para el modo Preview (previsión de partido)."""
+        p = self.preview_result
+        if not p:
+            return 'Sin datos de preview disponibles.'
+
+        local     = p.get('local', '?')
+        visitante = p.get('visitante', '?')
+        lam_l     = p.get('lambda_local', 0)
+        lam_v     = p.get('lambda_visit', 0)
+        prob_l    = p.get('prob_local',  0)
+        prob_e    = p.get('prob_empate', 0)
+        prob_v    = p.get('prob_visit',  0)
+        bajas_l   = p.get('bajas_local', [])
+        bajas_v   = p.get('bajas_visit', [])
+        stats_l   = p.get('stats_local', {})
+        stats_v   = p.get('stats_visit', {})
+        forma_l   = p.get('forma_local', '')
+        forma_v   = p.get('forma_visit', '')
+        pts5_l    = p.get('pts5_local', 0)
+        pts5_v    = p.get('pts5_visit', 0)
+        h2h       = p.get('h2h_matches', [])
+        h2h_bal   = p.get('h2h_balance', {})
+        top_scores = p.get('top_scores', [])
+
+        sep = '─' * 52
+        lines = [
+            sep,
+            f'  PREVISIÓN: {local} vs {visitante}',
+            sep,
+            '',
+            '── ESTADÍSTICAS DE LA TEMPORADA ────────────────────',
+            f'{'':32s} {"LOCAL":>10s}  {"VISITANTE":>10s}',
+            f'  {"Récord":<30s} {stats_l.get("record",""):>10s}  {stats_v.get("record",""):>10s}',
+            f'  {"Puntos":<30s} {stats_l.get("puntos",0):>10d}  {stats_v.get("puntos",0):>10d}',
+            f'  {"GF promedio":<30s} {stats_l.get("gf_promedio",0):>10.2f}  {stats_v.get("gf_promedio",0):>10.2f}',
+            f'  {"GC promedio":<30s} {stats_l.get("gc_promedio",0):>10.2f}  {stats_v.get("gc_promedio",0):>10.2f}',
+            f'  {"xGF promedio":<30s} {stats_l.get("xgf_promedio",0):>10.2f}  {stats_v.get("xgf_promedio",0):>10.2f}',
+            f'  {"xGC promedio":<30s} {stats_l.get("xgc_promedio",0):>10.2f}  {stats_v.get("xgc_promedio",0):>10.2f}',
+            '',
+            '── FORMA RECIENTE (últimos 5) ──────────────────────',
+            f'  {local:<28s}  {forma_l}  ({pts5_l}/15 pts)',
+            f'  {visitante:<28s}  {forma_v}  ({pts5_v}/15 pts)',
+        ]
+
+        if bajas_l or bajas_v:
+            lines += ['', '── BAJAS CONOCIDAS ─────────────────────────────────']
+            if bajas_l:
+                lines.append(f'  {local}: {", ".join(bajas_l)}')
+            if bajas_v:
+                lines.append(f'  {visitante}: {", ".join(bajas_v)}')
+
+        if h2h:
+            lines += ['', '── HISTORIAL DIRECTO (H2H) ─────────────────────────']
+            for m in h2h:
+                lines.append(
+                    f'  {m["fecha"]}  {m["local"]:<22s} {m["goles_local"]}-{m["goles_visit"]}  {m["visitante"]}'
+                )
+            wl = h2h_bal.get('victorias_local', 0)
+            we = h2h_bal.get('empates', 0)
+            wv = h2h_bal.get('victorias_visitante', 0)
+            lines.append(f'  Balance: {local} {wl}  Empates {we}  {visitante} {wv}')
+
+        lines += [
+            '',
+            '── MODELO POISSON ──────────────────────────────────',
+            f'  λ {local:<28s} {lam_l:.2f} goles/partido esperados',
+            f'  λ {visitante:<28s} {lam_v:.2f} goles/partido esperados',
+            '',
+            f'  Victoria {local:<21s} {prob_l:>5.1f}%',
+            f'  Empate{"":26s} {prob_e:>5.1f}%',
+            f'  Victoria {visitante:<21s} {prob_v:>5.1f}%',
+        ]
+
+        if top_scores:
+            lines += ['', '── RESULTADOS MÁS PROBABLES ────────────────────────']
+            for s in top_scores[:5]:
+                lines.append(
+                    f'  {s["goles_local"]}-{s["goles_visit"]}  ({s["prob"]:.1f}%)'
+                )
+
+        lines += [
+            '',
+            sep,
+            '  ⚠️  Previsión estadística basada en rendimiento histórico.',
+            '  No incluye bajas no declaradas, táctica ni estado anímico.',
+            sep,
+        ]
+
+        report = '\n'.join(lines)
+        if output_path:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(output_path).write_text(report, encoding='utf-8')
+        return report
 
     def _generate_compare_report(self, output_path: Optional[str] = None) -> str:
         """Informe de texto para el modo Compare (dos equipos)."""
@@ -1609,6 +1723,9 @@ class SportsAgent:
         if self.top_scorers is None or self.top_defenders is None or self.highlights is None:
             raise ValueError('Los resultados del análisis no están disponibles. Ejecute analyze() antes de generar el informe.')
 
+        if self.preview_teams is not None and self.preview_result:
+            return self._generate_preview_report(output_path)
+
         if self.match_id is not None and self.match_detail:
             return self._generate_match_report(output_path)
 
@@ -1959,7 +2076,9 @@ class SportsAgent:
             return obj
 
         # Modo
-        if self.match_id is not None and self.match_detail:
+        if self.preview_teams is not None and self.preview_result:
+            modo = 'preview'
+        elif self.match_id is not None and self.match_detail:
             modo = 'partido'
         elif self.matchday is not None and self.matchday_summary:
             modo = 'jornada'
@@ -1980,6 +2099,9 @@ class SportsAgent:
             'top_defenders':     _df_to_list(self.top_defenders),
             'highlights':        _df_to_list(self.highlights),
         }
+
+        if self.preview_result:
+            payload['preview_result'] = _clean(self.preview_result)
 
         if self.liga_summary:
             ls = {k: v for k, v in self.liga_summary.items()}

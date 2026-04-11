@@ -1716,3 +1716,223 @@ def compute_player_profile(
         'thumb_local':              thumb_local,
         'cutout_local':             cutout_local,
     }
+
+
+# ---------------------------------------------------------------------------
+# Preview de partido — modelo Poisson + bajas manuales
+# ---------------------------------------------------------------------------
+
+def _poisson_pmf(lam: float, k: int) -> float:
+    """P(X=k) para una distribución de Poisson con parámetro lam."""
+    import math
+    if lam <= 0:
+        return 1.0 if k == 0 else 0.0
+    return math.exp(-lam) * (lam ** k) / math.factorial(k)
+
+
+def compute_match_preview(
+    df: pd.DataFrame,
+    local: str,
+    visitante: str,
+    bajas_local: Optional[List[str]] = None,
+    bajas_visit: Optional[List[str]] = None,
+    max_goals: int = 6,
+) -> Dict:
+    """Genera una previsión estadística del partido usando un modelo de Poisson.
+
+    Calcula λ para cada equipo combinando su rendimiento ofensivo (xGF) con el
+    rendimiento defensivo del rival (xGC), separando partidos en casa / fuera.
+    Aplica un descuento por bajas manuales introducidas por el usuario.
+
+    Args:
+        df:          DataFrame con los partidos de la temporada.
+        local:       Nombre del equipo local (coincidencia parcial, insensible a mayúsculas).
+        visitante:   Nombre del equipo visitante.
+        bajas_local: Lista de jugadores bajos del equipo local.
+        bajas_visit: Lista de jugadores bajos del equipo visitante.
+        max_goals:   Máximo de goles por equipo a considerar en la distribución Poisson.
+
+    Returns:
+        Dict con stats, λ esperadas, probabilidades y contexto de forma.
+    """
+    bajas_local = [b.strip() for b in (bajas_local or []) if b.strip()]
+    bajas_visit = [b.strip() for b in (bajas_visit or []) if b.strip()]
+
+    def _find_team(name: str) -> str:
+        """Devuelve el nombre exacto del equipo tal como aparece en el DataFrame."""
+        n = name.strip().lower()
+        candidates = set(df['local_team'].tolist() + df['visitante_team'].tolist())
+        for c in candidates:
+            if n in str(c).lower():
+                return c
+        return name  # fallback: usar tal cual
+
+    local_exact    = _find_team(local)
+    visitante_exact = _find_team(visitante)
+
+    # ── Partidos como local / visitante ─────────────────────────────────────
+    df_local_home  = df[df['local_team'] == local_exact]
+    df_local_away  = df[df['visitante_team'] == local_exact]
+    df_visit_home  = df[df['local_team'] == visitante_exact]
+    df_visit_away  = df[df['visitante_team'] == visitante_exact]
+
+    def _safe_mean(series: pd.Series) -> Optional[float]:
+        s = series.dropna()
+        return float(s.mean()) if len(s) > 0 else None
+
+    def _team_overall(team_exact: str):
+        """Stats globales del equipo (todos los partidos)."""
+        rows = []
+        for _, r in df[(df['local_team'] == team_exact) | (df['visitante_team'] == team_exact)].iterrows():
+            is_home = r['local_team'] == team_exact
+            gf  = r['goles_local']      if is_home else r['goles_visitante']
+            gc  = r['goles_visitante']  if is_home else r['goles_local']
+            xgf = r.get('xg_local')     if is_home else r.get('xg_visitante')
+            xgc = r.get('xg_visitante') if is_home else r.get('xg_local')
+            res = 'V' if gf > gc else ('E' if gf == gc else 'D')
+            rows.append({'gf': gf, 'gc': gc, 'xgf': xgf, 'xgc': xgc,
+                         'res': res, 'is_home': is_home})
+        return pd.DataFrame(rows)
+
+    m_local  = _team_overall(local_exact)
+    m_visit  = _team_overall(visitante_exact)
+
+    # xGF/xGC como local
+    xgf_local_home = _safe_mean(pd.to_numeric(df_local_home['xg_local'],     errors='coerce')) \
+                     or _safe_mean(pd.to_numeric(m_local['xgf'], errors='coerce')) or 1.2
+    xgc_local_home = _safe_mean(pd.to_numeric(df_local_home['xg_visitante'], errors='coerce')) \
+                     or _safe_mean(pd.to_numeric(m_local['xgc'], errors='coerce')) or 1.2
+
+    # xGF/xGC como visitante
+    xgf_visit_away = _safe_mean(pd.to_numeric(df_visit_away['xg_visitante'], errors='coerce')) \
+                     or _safe_mean(pd.to_numeric(m_visit['xgf'], errors='coerce')) or 1.2
+    xgc_visit_away = _safe_mean(pd.to_numeric(df_visit_away['xg_local'],     errors='coerce')) \
+                     or _safe_mean(pd.to_numeric(m_visit['xgc'], errors='coerce')) or 1.2
+
+    # λ modelo mixto: media del ataque propio y la defensa del rival
+    lambda_local   = (xgf_local_home + xgc_visit_away) / 2
+    lambda_visit   = (xgf_visit_away + xgc_local_home) / 2
+
+    # ── Penalización por bajas ───────────────────────────────────────────────
+    PENALTY_PER_BAJA = 0.10
+    MAX_PENALTY      = 0.30
+    penalty_local = min(len(bajas_local) * PENALTY_PER_BAJA, MAX_PENALTY)
+    penalty_visit = min(len(bajas_visit) * PENALTY_PER_BAJA, MAX_PENALTY)
+    lambda_local  = max(lambda_local  - penalty_local,  0.3)
+    lambda_visit  = max(lambda_visit  - penalty_visit, 0.3)
+
+    # ── Distribución Poisson ─────────────────────────────────────────────────
+    prob_local_win = 0.0
+    prob_draw      = 0.0
+    prob_visit_win = 0.0
+    scores: List[Dict] = []
+
+    for g_l in range(max_goals + 1):
+        for g_v in range(max_goals + 1):
+            p = _poisson_pmf(lambda_local, g_l) * _poisson_pmf(lambda_visit, g_v)
+            scores.append({'goles_local': g_l, 'goles_visit': g_v, 'prob': round(p * 100, 2)})
+            if g_l > g_v:
+                prob_local_win += p
+            elif g_l == g_v:
+                prob_draw      += p
+            else:
+                prob_visit_win += p
+
+    # Resultado más probable (marcador individual)
+    scores.sort(key=lambda x: x['prob'], reverse=True)
+    top_scores = scores[:5]
+
+    # ── Forma reciente ───────────────────────────────────────────────────────
+    def _form(t_df: pd.DataFrame, n: int = 5) -> tuple[str, int]:
+        resultados = t_df['res'].tail(n).tolist()
+        pts = sum(3 if r == 'V' else (1 if r == 'E' else 0) for r in resultados)
+        return ' '.join(resultados), pts
+
+    forma_local_str,  pts5_local  = _form(m_local)
+    forma_visit_str,  pts5_visit  = _form(m_visit)
+
+    # ── H2H ─────────────────────────────────────────────────────────────────
+    mask_h2h = (
+        ((df['local_team'] == local_exact)    & (df['visitante_team'] == visitante_exact)) |
+        ((df['local_team'] == visitante_exact) & (df['visitante_team'] == local_exact))
+    )
+    h2h_df = df[mask_h2h].sort_values('date', ascending=False).head(5)
+    h2h_matches: List[Dict] = []
+    h2h_w_local = h2h_w_visit = h2h_draws = 0
+    for _, r in h2h_df.iterrows():
+        gl = int(r['goles_local']); gv = int(r['goles_visitante'])
+        es_local = r['local_team'] == local_exact
+        gf_l = gl if es_local else gv
+        gf_v = gv if es_local else gl
+        res_local = 'V' if gf_l > gf_v else ('E' if gf_l == gf_v else 'D')
+        if res_local == 'V':   h2h_w_local += 1
+        elif res_local == 'E': h2h_draws   += 1
+        else:                  h2h_w_visit += 1
+        h2h_matches.append({
+            'fecha':    str(r['date'])[:10],
+            'local':    r['local_team'],
+            'visitante': r['visitante_team'],
+            'goles_local': gl,
+            'goles_visit': gv,
+        })
+
+    # ── Estadísticas resumen ─────────────────────────────────────────────────
+    n_local = len(m_local)
+    n_visit = len(m_visit)
+    v_l = int((m_local['res']=='V').sum())
+    e_l = int((m_local['res']=='E').sum())
+    d_l = int((m_local['res']=='D').sum())
+    v_v = int((m_visit['res']=='V').sum())
+    e_v = int((m_visit['res']=='E').sum())
+    d_v = int((m_visit['res']=='D').sum())
+
+    stats_local = {
+        'partidos': n_local,
+        'record': f"{v_l}V {e_l}E {d_l}D",
+        'puntos': v_l * 3 + e_l,
+        'gf_promedio': round(float(m_local['gf'].mean()), 2) if n_local else 0,
+        'gc_promedio': round(float(m_local['gc'].mean()), 2) if n_local else 0,
+        'xgf_promedio': round(float(pd.to_numeric(m_local['xgf'], errors='coerce').mean()), 2) if n_local else 0,
+        'xgc_promedio': round(float(pd.to_numeric(m_local['xgc'], errors='coerce').mean()), 2) if n_local else 0,
+        'xgf_como_local': round(xgf_local_home, 2),
+        'xgc_como_local': round(xgc_local_home, 2),
+    }
+    stats_visit = {
+        'partidos': n_visit,
+        'record': f"{v_v}V {e_v}E {d_v}D",
+        'puntos': v_v * 3 + e_v,
+        'gf_promedio': round(float(m_visit['gf'].mean()), 2) if n_visit else 0,
+        'gc_promedio': round(float(m_visit['gc'].mean()), 2) if n_visit else 0,
+        'xgf_promedio': round(float(pd.to_numeric(m_visit['xgf'], errors='coerce').mean()), 2) if n_visit else 0,
+        'xgc_promedio': round(float(pd.to_numeric(m_visit['xgc'], errors='coerce').mean()), 2) if n_visit else 0,
+        'xgf_como_visit': round(xgf_visit_away, 2),
+        'xgc_como_visit': round(xgc_visit_away, 2),
+    }
+
+    return {
+        'local':          local_exact,
+        'visitante':      visitante_exact,
+        'bajas_local':    bajas_local,
+        'bajas_visit':    bajas_visit,
+        'lambda_local':   round(lambda_local,  2),
+        'lambda_visit':   round(lambda_visit,  2),
+        'prob_local':     round(prob_local_win * 100, 1),
+        'prob_empate':    round(prob_draw      * 100, 1),
+        'prob_visit':     round(prob_visit_win * 100, 1),
+        'top_scores':     top_scores,
+        'stats_local':    stats_local,
+        'stats_visit':    stats_visit,
+        'forma_local':    forma_local_str,
+        'pts5_local':     pts5_local,
+        'forma_visit':    forma_visit_str,
+        'pts5_visit':     pts5_visit,
+        'h2h_matches':    h2h_matches,
+        'h2h_balance':    {
+            'victorias_local':    h2h_w_local,
+            'empates':            h2h_draws,
+            'victorias_visitante': h2h_w_visit,
+        },
+        'penalty_local':  round(penalty_local, 2),
+        'penalty_visit':  round(penalty_visit, 2),
+    }
+

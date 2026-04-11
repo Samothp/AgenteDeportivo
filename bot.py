@@ -819,6 +819,87 @@ async def cmd_compare(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 # ---------------------------------------------------------------------------
+# Preview — /preview
+# ---------------------------------------------------------------------------
+
+@_require_not_maintenance
+@_require_group_member
+@_cooldown(30)
+async def cmd_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/preview <comp> <temp> <local> | <visitante> [--bl baja1,baja2] [--bv baja1,baja2]"""
+    result = _parse_base(context.args)
+    if isinstance(result, str):
+        await update.message.reply_text(result, parse_mode="Markdown")
+        return
+    competition, season = result
+
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "❌ Uso:\n"
+            f"`/preview 2014 {_SEASON_EXAMPLE} Mallorca | Rayo Vallecano`\n\n"
+            "Bajas opcionales:\n"
+            f"`/preview 2014 {_SEASON_EXAMPLE} Mallorca | Rayo --bl Muriqi --bv ÁlvaroGarcía`",
+            parse_mode="Markdown",
+        )
+        return
+
+    # Reconstruir el resto de los args y parsear
+    rest_args = list(context.args[2:])
+
+    # Extraer --bl y --bv si están presentes
+    bajas_l: list[str] = []
+    bajas_v: list[str] = []
+    for flag, target in [("--bl", bajas_l), ("--bv", bajas_v)]:
+        if flag in rest_args:
+            idx = rest_args.index(flag)
+            if idx + 1 < len(rest_args):
+                target.extend([b.strip() for b in rest_args[idx + 1].split(",") if b.strip()])
+                rest_args.pop(idx + 1)
+            rest_args.pop(idx)
+
+    rest = " ".join(rest_args)
+    if "|" not in rest:
+        await update.message.reply_text(
+            "❌ Separa los dos equipos con `|`. Ejemplo:\n"
+            f"`/preview 2014 {_SEASON_EXAMPLE} Mallorca | Rayo Vallecano`",
+            parse_mode="Markdown",
+        )
+        return
+
+    parts  = rest.split("|", 1)
+    local  = parts[0].strip()
+    visit  = parts[1].strip()
+    if not local or not visit:
+        await update.message.reply_text("❌ Los nombres de ambos equipos no pueden estar vacíos.")
+        return
+
+    msg_bajas = ""
+    if bajas_l:
+        msg_bajas += f"\n  Bajas {local}: {', '.join(bajas_l)}"
+    if bajas_v:
+        msg_bajas += f"\n  Bajas {visit}: {', '.join(bajas_v)}"
+
+    await update.message.reply_text(
+        f"⏳ Generando previsión: *{local}* vs *{visit}*{msg_bajas}",
+        parse_mode="Markdown",
+    )
+    _log_usage(
+        update.effective_user.id if update.effective_user else None,
+        "preview",
+        comp=competition,
+        season=season,
+    )
+    async with _TypingAction(update, context):
+        text = await asyncio.to_thread(
+            _run_agent_text, competition, season,
+            preview_teams=(local, visit),
+            bajas_local=bajas_l or None,
+            bajas_visit=bajas_v or None,
+        )
+    await _send_paged(update, text)
+
+
+# ---------------------------------------------------------------------------
 # RoadmapBotTelegram #7 — /jugador
 # ---------------------------------------------------------------------------
 
@@ -1184,6 +1265,22 @@ _AYUDA_CMDS: dict[str, str] = {
         "*Ejemplos:*\n"
         f"`/compare 2014 {_SEASON_EXAMPLE} Real Madrid | Barcelona`\n"
         f"`/compare 2021 {_SEASON_EXAMPLE} Arsenal | Chelsea`"
+    ),
+    "preview": (
+        "📋 *Comando:* `/preview`\n\n"
+        "*Sintaxis:*\n"
+        "`/preview <competition\\_id> <temporada> <local> | <visitante>`\n\n"
+        "Con bajas opcionales:\n"
+        "`/preview ... <local> | <visitante> --bl jugador1,jugador2 --bv jugador3`\n\n"
+        "*Parámetros:*\n"
+        "  • `competition_id` — ID numérico de la competición\n"
+        "  • `temporada` — Año de inicio de la temporada\n"
+        "  • `local` y `visitante` — Nombres de equipo separados por `|`\n"
+        "  • `--bl` — Bajas del equipo local (separadas por coma)\n"
+        "  • `--bv` — Bajas del equipo visitante (separadas por coma)\n\n"
+        "*Ejemplos:*\n"
+        f"`/preview 2014 {_SEASON_EXAMPLE} Mallorca | Rayo Vallecano`\n"
+        f"`/preview 2014 {_SEASON_EXAMPLE} Mallorca | Rayo Vallecano --bl Muriqi,Copete --bv Álvaro García`"
     ),
     "equipos": (
         "📋 *Comando:* `/equipos`\n\n"
@@ -1551,6 +1648,7 @@ def main() -> None:
     application.add_handler(CommandHandler("equipo", cmd_equipo))
     application.add_handler(CommandHandler("jornada", cmd_jornada))
     application.add_handler(CommandHandler("compare", cmd_compare))
+    application.add_handler(CommandHandler("preview", cmd_preview))
 
     # 10.1 — PDF
     application.add_handler(CommandHandler("pdf", cmd_pdf))
