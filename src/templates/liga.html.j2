@@ -187,7 +187,14 @@
 
   {# Top goleadores individuales #}
   {% if top_goleadores_individuales %}
-  <h2>Top goleadores individuales</h2>
+  <h2>Top goleadores individuales
+    {% if top_goleadores_n_equipos and top_goleadores_n_equipos < total_teams %}
+      <small style="color:#e67e22;font-size:0.6em">
+        ⚠️ Datos de {{ top_goleadores_n_equipos }} de {{ total_teams }} equipos.
+        Usa <code>--fetch-real --team EQUIPO</code> para completar la liga.
+      </small>
+    {% endif %}
+  </h2>
   <table>
     <thead>
       <tr><th>#</th><th class="left">Jugador</th><th class="left">Equipo</th><th>Goles</th><th>Asistencias</th></tr>

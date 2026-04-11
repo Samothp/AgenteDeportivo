@@ -26,7 +26,7 @@ from .analysis import (
 )
 from .config import AgentConfig
 from .data_loader import load_match_data
-from .player_loader import load_player_stats, _players_csv_path
+from .player_loader import load_player_stats, _players_csv_path, load_all_player_stats
 from .scorer_loader import load_scorers, player_goal_streak
 from .thresholds import (
     FORM_STREAK_THRESHOLD,
@@ -109,12 +109,10 @@ class SportsAgent:
     def _get_team_badges_for_report(self, clf_rows: list, report_file: Path) -> dict:
         """Devuelve dict {equipo: ruta_relativa_badge} para los equipos de la clasificación.
 
-        Solo usa la caché local (no hace llamadas a la API) para no ralentizar
-        la generación del informe. Los escudos deben haberse descargado previamente
-        con image_fetcher.get_team_assets() o prefetch_league_assets().
+        Intenta descargar escudos que falten (solo si la imagen no existe localmente).
         """
         try:
-            from .image_fetcher import get_cached_team_meta
+            from .image_fetcher import get_cached_team_meta, get_team_assets
         except ImportError:
             return {}
 
@@ -126,6 +124,13 @@ class SportsAgent:
                 continue
             meta = get_cached_team_meta(team, cid)
             badge_local = meta.get("badge_local")
+            # Si no hay badge descargada, intentar descargarla ahora
+            if not badge_local or not Path(badge_local).exists():
+                try:
+                    meta = get_team_assets(team, cid, download=True, delay=0.4)
+                    badge_local = meta.get("badge_local")
+                except Exception:
+                    badge_local = None
             if badge_local:
                 rel = self._rel_image(badge_local, report_file)
                 if rel:
@@ -330,24 +335,22 @@ class SportsAgent:
         # Modo Liga: sin equipo ni jornada → panorama completo de la temporada
         if not self.team:
             self.liga_summary = compute_liga_summary(self.data)
-            # Top goleadores individuales desde CSV de jugadores (si existe)
+            # Top goleadores individuales desde todos los CSVs de jugadores disponibles
             _comp_id = self.competition_id or 2014
             _season  = self.season or '2025-2026'
-            _csv = _players_csv_path(_comp_id, _season)
-            if _csv.exists():
-                try:
-                    _df_all = pd.read_csv(_csv)
-                    if not _df_all.empty and 'goals' in _df_all.columns:
-                        _cols = [c for c in ['player_name', 'team', 'goals', 'assists'] if c in _df_all.columns]
-                        self.liga_summary['top_goleadores_individuales'] = (
-                            _df_all[_df_all.get('appearances', pd.Series([1] * len(_df_all))) > 0]
-                            .sort_values('goals', ascending=False)
-                            .head(10)[_cols]
-                            .reset_index(drop=True)
-                            .to_dict(orient='records')
-                        )
-                except Exception:
-                    pass
+            _df_all = load_all_player_stats(_comp_id, _season)
+            if not _df_all.empty and 'goals' in _df_all.columns:
+                _cols = [c for c in ['player_name', 'team', 'goals', 'assists'] if c in _df_all.columns]
+                _with_apps = _df_all[_df_all.get('appearances', pd.Series([1] * len(_df_all))) > 0] if 'appearances' in _df_all.columns else _df_all
+                n_teams = _df_all['team'].nunique() if 'team' in _df_all.columns else 0
+                self.liga_summary['top_goleadores_individuales'] = (
+                    _with_apps
+                    .sort_values('goals', ascending=False)
+                    .head(10)[_cols]
+                    .reset_index(drop=True)
+                    .to_dict(orient='records')
+                )
+                self.liga_summary['top_goleadores_n_equipos'] = int(n_teams)
             self.metrics = compute_overall_metrics(self.data)
             self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
             self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
@@ -1105,6 +1108,7 @@ class SportsAgent:
             'team_badges':         self._get_team_badges_for_report(clf_rows, report_file),
             'forma_ranking':       s.get('forma_ranking'),
             'top_goleadores_individuales': s.get('top_goleadores_individuales'),
+            'top_goleadores_n_equipos': s.get('top_goleadores_n_equipos', 0),
         }
         content = self._render_template('liga.html.j2', context)
         report_file.write_text(content, encoding='utf-8')
@@ -2308,21 +2312,27 @@ class SportsAgent:
         report_folder.mkdir(parents=True, exist_ok=True)
 
         # 10.3 — Caché de gráficos por hash de datos
+        # La caché almacena hash + lista exacta de archivos para evitar devolver
+        # PNGs de un modo anterior (ej. temporal_evolution.png de modo equipo).
+        import json as _json
         _h = _df_hash(self.data)
         _cache_marker = report_folder / ".chart_cache"
         if _cache_marker.exists():
             try:
-                if _cache_marker.read_text(encoding="utf-8").strip() == _h:
-                    cached_pngs = sorted(p for p in report_folder.iterdir() if p.suffix == ".png")
-                    if cached_pngs:
-                        return [str(p) for p in cached_pngs]
-            except OSError:
+                _cached = _json.loads(_cache_marker.read_text(encoding="utf-8"))
+                if _cached.get("hash") == _h:
+                    _cached_paths = [report_folder / f for f in _cached.get("files", [])]
+                    _existing = [str(p) for p in _cached_paths if p.exists()]
+                    if _existing:
+                        return _existing
+            except (OSError, ValueError, KeyError):
                 pass
 
         def _save(paths: List[str]) -> List[str]:
-            """Escribe el marcador de caché y devuelve las rutas."""
+            """Escribe el marcador de caché con hash + lista de archivos."""
             try:
-                _cache_marker.write_text(_h, encoding="utf-8")
+                _cache_data = {"hash": _h, "files": [Path(p).name for p in paths]}
+                _cache_marker.write_text(_json.dumps(_cache_data), encoding="utf-8")
             except OSError:
                 pass
             return paths

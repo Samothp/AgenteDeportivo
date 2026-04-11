@@ -86,6 +86,59 @@ def _players_csv_path(competition_id: int, season: str) -> Path:
     return _DATA_DIR / f"players_{competition_id}_{year}-{year + 1}.csv"
 
 
+def _slugify_team(team: str) -> str:
+    """Convierte el nombre del equipo a slug para usar en nombre de archivo."""
+    import re
+    return re.sub(r'[^a-z0-9]+', '_', team.lower()).strip('_')
+
+
+def _players_team_csv_path(competition_id: int, season: str, team: str) -> Path:
+    """Ruta al CSV de jugadores de un equipo concreto (distinción del combinado)."""
+    year = _season_to_year(season)
+    slug = _slugify_team(team)
+    return _DATA_DIR / f"players_{competition_id}_{year}-{year + 1}_{slug}.csv"
+
+
+def load_all_player_stats(competition_id: int = 2014, season: str = "2025-2026") -> pd.DataFrame:
+    """Devuelve el DataFrame combinado de todos los equipos descargados.
+
+    Fusiona:
+      1. Todos los CSVs por equipo (players_{comp}_{season}_{team}.csv)
+      2. El CSV combinado general si existe y aporta equipos adicionales.
+
+    Útil para el ranking de goleadores en el informe de liga.
+    """
+    year = _season_to_year(season)
+    pattern = f"players_{competition_id}_{year}-{year + 1}_*.csv"
+    team_csvs = list(_DATA_DIR.glob(pattern))
+    frames: list[pd.DataFrame] = []
+    for p in team_csvs:
+        try:
+            df = pd.read_csv(p)
+            if not df.empty:
+                frames.append(df)
+        except Exception:
+            pass
+    # Añadir el combinado general si contiene equipos no cubiertos por los per-team
+    combined_path = _players_csv_path(competition_id, season)
+    if combined_path.exists():
+        try:
+            combined = pd.read_csv(combined_path)
+            if not combined.empty:
+                if frames:
+                    known_teams = set(pd.concat(frames, ignore_index=True)['team'].dropna().unique())
+                    extra = combined[~combined['team'].isin(known_teams)]
+                    if not extra.empty:
+                        frames.append(extra)
+                else:
+                    frames.append(combined)
+        except Exception:
+            pass
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True).drop_duplicates(subset=['player_name', 'team', 'season'])
+
+
 def _get_espn_league(competition_id: int) -> str:
     slug = _ESPN_LEAGUE.get(competition_id)
     if not slug:
@@ -363,9 +416,7 @@ def fetch_player_stats(
         df["competition_id"] = competition_id
         if with_images:
             df = _enrich_with_tsdb_images(df, team_name, verbose=verbose)
-        csv_path = _players_csv_path(competition_id, season)
-        csv_path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(csv_path, index=False)
+        _save_player_df(df, team_name, competition_id, season)
         return df
 
     if verbose:
@@ -385,14 +436,36 @@ def fetch_player_stats(
     if with_images:
         df = _enrich_with_tsdb_images(df, team_name, verbose=verbose)
 
-    csv_path = _players_csv_path(competition_id, season)
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(csv_path, index=False)
+    _save_player_df(df, team_name, competition_id, season)
 
     if verbose:
-        print(f"  {len(df)} jugadores guardados en {csv_path.name}")
+        print(f"  {len(df)} jugadores guardados en {_players_team_csv_path(competition_id, season, team_name).name}")
 
     return df
+
+
+def _save_player_df(df: pd.DataFrame, team_name: str, competition_id: int, season: str) -> None:
+    """Guarda los datos de jugadores en CSV por equipo y fusiona en el CSV combinado."""
+    # CSV por equipo (siempre se sobreescribe con los datos más recientes)
+    team_csv = _players_team_csv_path(competition_id, season, team_name)
+    team_csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(team_csv, index=False)
+
+    # CSV combinado: eliminar filas del equipo actual y añadir las nuevas
+    combined_csv = _players_csv_path(competition_id, season)
+    if combined_csv.exists():
+        try:
+            existing = pd.read_csv(combined_csv)
+            # Eliminar filas del equipo actual (comparación insensible a mayúsculas)
+            mask = existing['team'].str.lower() == team_name.lower() if 'team' in existing.columns else pd.Series(False, index=existing.index)
+            existing = existing[~mask]
+            merged = pd.concat([existing, df], ignore_index=True)
+        except Exception:
+            merged = df
+    else:
+        merged = df
+    combined_csv.parent.mkdir(parents=True, exist_ok=True)
+    merged.to_csv(combined_csv, index=False)
 
 
 def load_player_stats(
