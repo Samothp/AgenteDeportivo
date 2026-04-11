@@ -6,11 +6,11 @@ Prioridad dentro de cada bloque: ⭐⭐⭐ impacto alto · ⭐⭐ medio · ⭐ b
 
 ## 🏆 Bloque 1 — Informe de Liga (`/liga`)
 
-- [ ] ⭐⭐⭐ **Equipos en forma / en caída**: sección con top 3 equipos según racha de las últimas 5 jornadas (mejores y peores). Es la pregunta más frecuente del seguidor casual.
-- [ ] ⭐⭐⭐ **Top 10 goleadores individuales**: añadir desde `player_loader` al final del informe. Actualmente solo aparecen equipos; los goleadores son el dato más buscado de cualquier liga.
-- [ ] ⭐⭐ **Rendimiento local/visitante mejorado**: añadir columnas `W%_L` y `W%_V` (% de partidos ganados) junto a los puntos. Los puntos solos sin el total de partidos no son comparables entre equipos.
-- [ ] ⭐⭐ **Conclusiones interpretativas**: reescribir para que aporten juicio, no repitan datos (ej. "Athletic está 9 puntos por encima de su xPts real: sobrerendimiento sostenido"). Actualmente son 5 bullets que duplican lo que ya está arriba.
-- [ ] ⭐ **Leyenda de `Efic.` (antes `Over%`)**: añadir una línea explicativa al pie de la tabla técnica. El término es opaco para un lector no técnico.
+- [x] ⭐⭐⭐ **Equipos en forma / en caída**: sección con top 3 equipos según racha de las últimas 5 jornadas (mejores y peores). Es la pregunta más frecuente del seguidor casual.
+- [x] ⭐⭐⭐ **Top 10 goleadores individuales**: añadir desde `player_loader` al final del informe. Actualmente solo aparecen equipos; los goleadores son el dato más buscado de cualquier liga.
+- [x] ⭐⭐ **Rendimiento local/visitante mejorado**: añadir columnas `W%_L` y `W%_V` (% de partidos ganados) junto a los puntos. Los puntos solos sin el total de partidos no son comparables entre equipos.
+- [x] ⭐⭐ **Conclusiones interpretativas**: reescribir para que aporten juicio, no repitan datos (ej. "Barcelona sobrerendimiendo: +16.3 pts sobre su xPts"). Ahora nombran equipos concretos, deltas xPts y racha de forma.
+- [x] ⭐ **Leyenda de `Efic.` (antes `Over%`)**: añadir una línea explicativa al pie de la tabla técnica. El término es opaco para un lector no técnico.
 
 ---
 

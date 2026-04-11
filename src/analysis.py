@@ -1223,10 +1223,20 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
     clasificacion = compute_standings(df)
 
     # Forma reciente de cada equipo (últimas 5 jornadas)
+    forma_ranking = None
     if not clasificacion.empty and 'jornada' in df.columns:
         clasificacion['Forma'] = clasificacion['Equipo'].apply(
             lambda t: compute_team_form(df, t, last_n=5)
         )
+        # Puntuación numérica de forma: 🟢=3, ⚪=1, 🔴=0
+        def _forma_score(s: str) -> int:
+            return sum(3 if c == '🟢' else (1 if c == '⚪' else 0) for c in s.split())
+        clasificacion['FormaScore'] = clasificacion['Forma'].apply(_forma_score)
+        clf_by_form = clasificacion.sort_values('FormaScore', ascending=False).reset_index(drop=True)
+        forma_ranking = {
+            'en_racha': clf_by_form.head(3)[['Equipo', 'Forma', 'FormaScore']].to_dict(orient='records'),
+            'en_caida': clf_by_form.tail(3).iloc[::-1][['Equipo', 'Forma', 'FormaScore']].to_dict(orient='records'),
+        }
 
     # Estadísticas técnicas por equipo (promedio de columnas disponibles)
     num_cols = {
@@ -1385,6 +1395,7 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
         'records':              records,
         'home_away':            home_away,
         'xpts_standings':       xpts_standings,
+        'forma_ranking':        forma_ranking,
     }
 
 

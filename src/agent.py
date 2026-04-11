@@ -330,6 +330,24 @@ class SportsAgent:
         # Modo Liga: sin equipo ni jornada → panorama completo de la temporada
         if not self.team:
             self.liga_summary = compute_liga_summary(self.data)
+            # Top goleadores individuales desde CSV de jugadores (si existe)
+            _comp_id = self.competition_id or 2014
+            _season  = self.season or '2025-2026'
+            _csv = _players_csv_path(_comp_id, _season)
+            if _csv.exists():
+                try:
+                    _df_all = pd.read_csv(_csv)
+                    if not _df_all.empty and 'goals' in _df_all.columns:
+                        _cols = [c for c in ['player_name', 'team', 'goals', 'assists'] if c in _df_all.columns]
+                        self.liga_summary['top_goleadores_individuales'] = (
+                            _df_all[_df_all.get('appearances', pd.Series([1] * len(_df_all))) > 0]
+                            .sort_values('goals', ascending=False)
+                            .head(10)[_cols]
+                            .reset_index(drop=True)
+                            .to_dict(orient='records')
+                        )
+                except Exception:
+                    pass
             self.metrics = compute_overall_metrics(self.data)
             self.top_scorers = top_scoring_teams(self.data, n=self.top_n)
             self.top_defenders = top_defensive_teams(self.data, n=self.top_n)
@@ -485,14 +503,20 @@ class SportsAgent:
                 lider = clf.iloc[0]
                 escolta = clf.iloc[1] if len(clf) > 1 else None
                 dif_pts = int(lider['PTS']) - (int(escolta['PTS']) if escolta is not None else 0)
-                lines.append(f'  🏆 Líder: {lider["Equipo"]} con {int(lider["PTS"])} puntos'
-                              + (f', {dif_pts} por encima del segundo.' if escolta is not None else '.'))
+                if escolta is not None:
+                    lines.append(
+                        f'  🏆 Líder: {lider["Equipo"]} con {int(lider["PTS"])} pts, '
+                        f'{dif_pts} {"punto" if dif_pts == 1 else "puntos"} por encima de {escolta["Equipo"]}.'
+                    )
+                else:
+                    lines.append(f'  🏆 Líder: {lider["Equipo"]} con {int(lider["PTS"])} puntos.')
 
                 # Equipos en zona de riesgo de descenso
                 n = len(clf)
                 if n >= MIN_MATCHES_PERCENTILE:
-                    descenso = clf.tail(3)['Equipo'].tolist()
-                    lines.append(f'  ⚠️  Zona de descenso: {", ".join(descenso)}.')
+                    zona_desc = clf.tail(3)[['Equipo', 'PTS']].to_dict(orient='records')
+                    desc_str = ', '.join(f'{r["Equipo"]} ({int(r["PTS"])} pts)' for r in zona_desc)
+                    lines.append(f'  ⚠️  Zona de descenso: {desc_str}.')
 
             # Máximos goleadores (equipos)
             r = s.get('records', {})
@@ -503,6 +527,34 @@ class SportsAgent:
             if r.get('equipo_mejor_racha') and r.get('mejor_racha_victorias', 0) >= 5:
                 lines.append(f'  🔥 Mejor racha de la temporada: {r["equipo_mejor_racha"]} '
                               f'con {r["mejor_racha_victorias"]} victorias consecutivas.')
+
+            # Forma reciente (top 1 en racha y top 1 en caída)
+            frk = s.get('forma_ranking')
+            if frk:
+                if frk.get('en_racha'):
+                    best = frk['en_racha'][0]
+                    lines.append(f'  🔥 Mejor forma reciente: {best["Equipo"]} ({best["Forma"]}).')
+                if frk.get('en_caida'):
+                    worst = frk['en_caida'][0]
+                    lines.append(f'  📉 Peor forma reciente: {worst["Equipo"]} ({worst["Forma"]}).')
+
+            # xPts: overperformer y underperformer
+            xpts_obj = s.get('xpts_standings')
+            if xpts_obj is not None and not xpts_obj.empty:
+                max_row = xpts_obj.loc[xpts_obj['Diff'].idxmax()]
+                min_row = xpts_obj.loc[xpts_obj['Diff'].idxmin()]
+                if float(max_row['Diff']) >= 3:
+                    lines.append(
+                        f'  📈 {max_row["Equipo"]} sobrerendimiendo: '
+                        f'+{float(max_row["Diff"]):.1f} pts sobre su xPts '
+                        f'({float(max_row["xPts"]):.1f} esperados, {int(max_row["PTS"])} reales).'
+                    )
+                if float(min_row['Diff']) <= -3:
+                    lines.append(
+                        f'  📉 {min_row["Equipo"]} infrarendimiendo: '
+                        f'{float(min_row["Diff"]):.1f} pts respecto a su xPts '
+                        f'({float(min_row["xPts"]):.1f} esperados, {int(min_row["PTS"])} reales).'
+                    )
 
             # Goles por partido
             gpp = s.get('goles_promedio')
@@ -842,6 +894,21 @@ class SportsAgent:
             lines.append(f'  Mayor asistencia:         {pa["local"]} vs {pa["visitante"]} — {pa["espectadores"]:,} espectadores ({pa["estadio"]})')
         lines.append('')
 
+        # Equipos en forma / en caída (últimas 5 jornadas)
+        frk = s.get('forma_ranking')
+        if frk:
+            lines.append('Forma reciente (últimas 5 jornadas)')
+            lines.append('------------------------------------')
+            if frk.get('en_racha'):
+                lines.append('  En racha:')
+                for item in frk['en_racha']:
+                    lines.append(f'    🔥 {item["Equipo"]:<25} {item["Forma"]}  ({item["FormaScore"]} pts)')
+            if frk.get('en_caida'):
+                lines.append('  En caída:')
+                for item in frk['en_caida']:
+                    lines.append(f'    📉 {item["Equipo"]:<25} {item["Forma"]}  ({item["FormaScore"]} pts)')
+            lines.append('')
+
         # Clasificación
         lines.append('Clasificación')
         lines.append('-------------')
@@ -884,6 +951,7 @@ class SportsAgent:
             pos  = f'{row["Pos%"]:.1f}' if pd.notna(row.get('Pos%')) and row.get('Pos%') is not None else '-'
             tirs = f'{row["Tiros"]:.1f}' if pd.notna(row.get('Tiros')) and row.get('Tiros') is not None else '-'
             lines.append(f'  {row["Equipo"]:<25} {int(row["GF"]):>4} {int(row["GC"]):>4} {xg:>5} {over:>6} {pos:>5} {tirs:>6}')
+        lines.append('  * Over% = Goles reales / xG esperados. >1.0: convierte más de lo esperado. <1.0: infraconvierte.')
         lines.append('')
 
         # Clasificación por puntos esperados (xPts)
@@ -902,16 +970,31 @@ class SportsAgent:
                 )
             lines.append('')
 
+        # Top goleadores individuales (si disponible)
+        top_ind = s.get('top_goleadores_individuales')
+        if top_ind:
+            lines.append('Top goleadores individuales')
+            lines.append('---------------------------')
+            lines.append(f'  {"#":>3}  {"Jugador":<28} {"Equipo":<25} {"Goles":>6} {"Asist":>6}')
+            lines.append(f'  {"--":>3}  {"-"*28} {"-"*25} {"-----":>6} {"-----":>6}')
+            for i, p in enumerate(top_ind, 1):
+                asist = p.get('assists', '-')
+                lines.append(f'  {i:>3}.  {p["player_name"]:<28} {p.get("team","-"):<25} {int(p["goals"]):>6} {int(asist) if asist != "-" else "-":>6}')
+            lines.append('')
+
         # Rendimiento local/visitante
         lines.append('Rendimiento local vs visitante')
         lines.append('------------------------------')
         ha = s['home_away']
-        lines.append(f'  {"Equipo":<25} {"PJ_L":>5} {"Pts_L":>6}  {"PJ_V":>5} {"Pts_V":>6}')
-        lines.append(f'  {"-"*25} {"----":>5} {"-----":>6}  {"----":>5} {"-----":>6}')
+        lines.append(f'  {"Equipo":<25} {"PJ_L":>5} {"W%_L":>5} {"Pts_L":>6}  {"PJ_V":>5} {"W%_V":>5} {"Pts_V":>6}')
+        lines.append(f'  {"-"*25} {"----":>5} {"----":>5} {"-----":>6}  {"----":>5} {"----":>5} {"-----":>6}')
         for _, row in ha.iterrows():
+            pj_l = int(row['PJ_L']); pj_v = int(row['PJ_V'])
+            w_pct_l = f'{int(row["W_L"])/pj_l*100:.0f}%' if pj_l > 0 else '-'
+            w_pct_v = f'{int(row["W_V"])/pj_v*100:.0f}%' if pj_v > 0 else '-'
             lines.append(
-                f'  {row["Equipo"]:<25} {int(row["PJ_L"]):>5} {int(row["Pts_L"]):>6}'
-                f'  {int(row["PJ_V"]):>5} {int(row["Pts_V"]):>6}'
+                f'  {row["Equipo"]:<25} {pj_l:>5} {w_pct_l:>5} {int(row["Pts_L"]):>6}'
+                f'  {pj_v:>5} {w_pct_v:>5} {int(row["Pts_V"]):>6}'
             )
 
         # 5.1 Conclusiones automáticas (modo liga)
@@ -973,8 +1056,20 @@ class SportsAgent:
         xpts_obj = s.get('xpts_standings')
         xpts_rows = xpts_obj.to_dict(orient='records') if (xpts_obj is not None and not xpts_obj.empty) else []
 
-        # Preparar home/away
-        ha_rows = s['home_away'].to_dict(orient='records')
+        # Preparar home/away con W%_L y W%_V
+        ha_rows = []
+        for _, row in s['home_away'].iterrows():
+            pj_l = int(row['PJ_L']); pj_v = int(row['PJ_V'])
+            w_l  = int(row.get('W_L', 0)); w_v = int(row.get('W_V', 0))
+            ha_rows.append({
+                'Equipo': row['Equipo'],
+                'PJ_L':   pj_l, 'W_L': w_l, 'E_L': int(row.get('E_L', 0)), 'D_L': int(row.get('D_L', 0)),
+                'Pts_L':  int(row['Pts_L']),
+                'W_pct_L': f'{w_l/pj_l*100:.0f}%' if pj_l > 0 else '-',
+                'PJ_V':   pj_v, 'W_V': w_v, 'E_V': int(row.get('E_V', 0)), 'D_V': int(row.get('D_V', 0)),
+                'Pts_V':  int(row['Pts_V']),
+                'W_pct_V': f'{w_v/pj_v*100:.0f}%' if pj_v > 0 else '-',
+            })
 
         # Conclusiones e intertemporada (HTML y texto plano)
         conclusions_html = self._generate_conclusions_html()
@@ -1008,6 +1103,8 @@ class SportsAgent:
             'conclusions_html':    conclusions_html,
             'interseason':         interseason_text,
             'team_badges':         self._get_team_badges_for_report(clf_rows, report_file),
+            'forma_ranking':       s.get('forma_ranking'),
+            'top_goleadores_individuales': s.get('top_goleadores_individuales'),
         }
         content = self._render_template('liga.html.j2', context)
         report_file.write_text(content, encoding='utf-8')
