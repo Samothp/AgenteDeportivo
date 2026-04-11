@@ -48,10 +48,10 @@ Prioridad dentro de cada bloque: ⭐⭐⭐ impacto alto · ⭐⭐ medio · ⭐ b
 
 ## ⚽ Bloque 5 — Ficha de Partido (`/partido`)
 
-- [ ] ⭐⭐⭐ **Historial H2H**: añadir últimos 3-5 enfrentamientos directos entre ambos equipos disponibles en el dataset. La lógica ya existe en `compute_compare`; solo hay que reutilizarla.
-- [ ] ⭐⭐ **Contexto de tabla en el momento del partido**: mostrar la posición en la clasificación de ambos equipos en la jornada en que se jugó el partido.
-- [ ] ⭐⭐ **Análisis interpretativo real**: reemplazar el texto automático ("X dominó la posesión, el xG respaldó el resultado") por interpretación del delta entre lo esperado y lo ocurrido. Ej: "a pesar de igualar el xG, Girona no convirtió sus ocasiones — problema de finalización, no de juego".
-- [ ] ⭐ **Tarjetas e incidencias destacadas**: mencionar si hubo expulsados y en qué minuto (si el dato está disponible), dado el impacto que tienen en el resultado.
+- [x] ⭐⭐⭐ **Historial H2H**: últimos 3-5 enfrentamientos directos entre ambos equipos desde el dataset. `compute_match_detail` ahora retorna `h2h_matches` y `h2h_summary`. Visible en texto y HTML.
+- [x] ⭐⭐ **Contexto de tabla en el momento del partido**: posición en la clasificación de ambos equipos en la jornada previa al partido (ya existía; activo en texto y HTML).
+- [x] ⭐⭐ **Análisis interpretativo real**: narrativa reescrita con análisis delta xG vs resultado real. 5 casos: victoria merecida, vittoria contra xG, infrarendimiento ofensivo, empate equilibrado, empate injusto. Portero decisivo si paradas ≥ 6.
+- [x] ⭐ **Tarjetas e incidencias destacadas**: la narrativa arranca con `🟥 Incidencias: X terminó con N expulsado(s)` si hay tarjetas rojas.
 
 ---
 

@@ -16,6 +16,14 @@
     .adv-visit { background: #fde8e8; }
     .narrativa { background: white; padding: 16px; border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08); font-style: italic; line-height: 1.6; }
+    .h2h-summary { display: flex; gap: 20px; justify-content: center; margin-bottom: 12px; }
+    .h2h-badge { padding: 6px 18px; border-radius: 20px; font-weight: bold; font-size: 0.95em; }
+    .h2h-local { background: #d4edfa; }
+    .h2h-draw  { background: #f5f5f5; }
+    .h2h-visit { background: #fde8e8; }
+    .h2h-result-w { color: #27ae60; font-weight: bold; }
+    .h2h-result-d { color: #888; }
+    .h2h-result-l { color: #e74c3c; }
 {% endblock %}
 
 {% block content %}
@@ -87,6 +95,43 @@
     <h2>Análisis del partido</h2>
     <p class="narrativa">{{ narrativa }}</p>
   </div>
+
+  {% if h2h_matches %}
+  <div class="section">
+    <h2>Historial H2H — últimos {{ h2h_matches|length }} enfrentamientos</h2>
+    <div class="h2h-summary">
+      <span class="h2h-badge h2h-local">{{ local }}: {{ h2h_summary.wins_local }}V</span>
+      <span class="h2h-badge h2h-draw">Empates: {{ h2h_summary.draws }}</span>
+      <span class="h2h-badge h2h-visit">{{ visitante }}: {{ h2h_summary.wins_visitante }}V</span>
+    </div>
+    <table>
+      <thead><tr><th>Temp.</th><th>J</th><th>Local</th><th>GF</th><th>GC</th><th>Visitante</th></tr></thead>
+      <tbody>
+      {% for h in h2h_matches %}
+        {% set is_home_local = local.lower() in h.local.lower() %}
+        {% set gl_h = h.goles_local %}
+        {% set gv_h = h.goles_visitante %}
+        {% if is_home_local %}
+          {% set g1 = gl_h %}{% set g2 = gv_h %}
+        {% else %}
+          {% set g1 = gv_h %}{% set g2 = gl_h %}
+        {% endif %}
+        {% if g1 > g2 %}{% set res_class = 'h2h-result-w' %}
+        {% elif g1 < g2 %}{% set res_class = 'h2h-result-l' %}
+        {% else %}{% set res_class = 'h2h-result-d' %}{% endif %}
+        <tr class="{{ res_class }}">
+          <td>{{ h.season }}</td>
+          <td>{{ h.jornada if h.jornada else '-' }}</td>
+          <td{% if is_home_local %} class="adv-local"{% endif %}>{{ h.local }}</td>
+          <td>{{ h.goles_local }}</td>
+          <td>{{ h.goles_visitante }}</td>
+          <td{% if not is_home_local %} class="adv-visit"{% endif %}>{{ h.visitante }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 
   {% if video_highlights %}
   <div class="section">

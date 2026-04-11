@@ -995,51 +995,162 @@ def compute_match_detail(df: pd.DataFrame, match_id: int) -> Dict:
             advantage = 'equal'
         stats.append({'stat': label, 'local': vl_disp, 'visitante': vv_disp, 'ventaja': advantage})
 
-    # Análisis narrativo automático
+    # Análisis narrativo interpretativo (delta xG vs resultado real)
     frases = []
+
+    # Tarjetas rojas / incidencias
+    rojas_l = _int('rojas_local')
+    rojas_v = _int('rojas_visitante')
+    incidencias = []
+    if rojas_l and rojas_l > 0:
+        incidencias.append(f'{local} terminó con {rojas_l} expulsado{"s" if rojas_l > 1 else ""}')
+    if rojas_v and rojas_v > 0:
+        incidencias.append(f'{visitante} terminó con {rojas_v} expulsado{"s" if rojas_v > 1 else ""}')
+    if incidencias:
+        frases.append('🟥 Incidencias: ' + '; '.join(incidencias) + '.')
+
+    # Posesión
     pos_l = _float('posesion_local')
     pos_v = _float('posesion_visitante')
-    if pos_l is not None:
+    if pos_l is not None and pos_v is not None:
         dom = local if pos_l >= 50 else visitante
         frases.append(f'{dom} dominó la posesión ({pos_l:.0f}% vs {pos_v:.0f}%).')
 
+    # Análisis xG — interpretación del delta entre lo esperado y lo ocurrido
     xg_l = _float('xg_local')
     xg_v = _float('xg_visitante')
     if xg_l is not None and xg_v is not None:
-        if gl > gv and xg_l < xg_v:
-            frases.append(
-                f'{local} ganó pese a generar menos peligro según el xG'
-                f' ({xg_l} vs {xg_v}), una victoria algo sorprendente.'
-            )
-        elif gl < gv and xg_l > xg_v:
-            frases.append(
-                f'{visitante} ganó pese a generar menos peligro según el xG'
-                f' ({xg_v} vs {xg_l}), un resultado inesperado.'
-            )
+        delta_l = round(float(xg_l) - gl, 1)   # positivo → infrarendimiento ofensivo
+        delta_v = round(float(xg_v) - gv, 1)
+        # Quién dominó en xG
+        xg_favor = local if float(xg_l) >= float(xg_v) else visitante
+
+        if gl > gv:
+            # Local ganó
+            if float(xg_v) > float(xg_l):
+                # Ganó el equipo con menos xG
+                frases.append(
+                    f'{local} ganó ({gl}-{gv}) a pesar de generar menos peligro según el xG '
+                    f'({xg_l} vs {xg_v}) — victoria basada en eficacia finalizadora, no en dominio del juego.'
+                )
+            elif delta_l > 1.5:
+                frases.append(
+                    f'{local} ganó ({gl}-{gv}) sin aprovechar todo su potencial: '
+                    f'generó {xg_l} xG pero solo convirtió {gl} — '
+                    f'podría haber sido más abultado.'
+                )
+            else:
+                frases.append(
+                    f'Victoria merecida de {local} ({gl}-{gv}): su dominio en xG ({xg_l} vs {xg_v}) '
+                    f'quedó reflejado en el resultado.'
+                )
+        elif gl < gv:
+            # Visitante ganó
+            if float(xg_l) > float(xg_v):
+                frases.append(
+                    f'{visitante} se llevó los tres puntos ({gl}-{gv}) pese a que {local} '
+                    f'generó más peligro ({xg_l} xG vs {xg_v}) — '
+                    f'{local} desaprovechó sus ocasiones y {visitante} fue letal.'
+                )
+            elif delta_v > 1.5:
+                frases.append(
+                    f'{visitante} ganó ({gl}-{gv}) sin explotar del todo el xG generado ({xg_v}): '
+                    f'el marcador pudo ser más amplio.'
+                )
+            else:
+                frases.append(
+                    f'Victoria solvente de {visitante} ({gl}-{gv}): '
+                    f'su superioridad en xG ({xg_v} vs {xg_l}) se tradujo en puntos.'
+                )
         else:
-            frases.append(
-                f'El xG respaldó el resultado: {local} {xg_l} — {xg_v} {visitante}.'
-            )
+            # Empate
+            xg_diff = abs(float(xg_l) - float(xg_v))
+            if xg_diff >= 0.8:
+                frases.append(
+                    f'Empate ({gl}-{gv}) que beneficia a {visitante if xg_favor == local else local}: '
+                    f'{xg_favor} dominó en xG ({xg_l} vs {xg_v}) pero no fue capaz de convertir su superioridad en goles.'
+                )
+            else:
+                frases.append(
+                    f'Empate equilibrado ({gl}-{gv}): el xG fue parejo ({xg_l} vs {xg_v}), '
+                    f'el resultado refleja fielmente el partido.'
+                )
 
-    shots_l = _int('shots_on_target_local')
-    shots_v = _int('shots_on_target_visitante')
-    if shots_l is not None and shots_v is not None:
-        if shots_l > shots_v:
-            frases.append(f'{local} fue más peligroso con {shots_l} tiros a puerta frente a {shots_v}.')
-        elif shots_v > shots_l:
-            frases.append(f'{visitante} fue más incisivo con {shots_v} tiros a puerta frente a {shots_l}.')
-
-    par_l = _int('paradas_local')
-    par_v = _int('paradas_visitante')
-    if par_l is not None and par_l >= 6:
-        frases.append(f'El portero de {local} realizó {par_l} paradas clave.')
-    if par_v is not None and par_v >= 6:
-        frases.append(f'El portero de {visitante} realizó {par_v} paradas clave.')
-
-    if not frases:
-        frases.append('Partido sin datos técnicos suficientes para el análisis narrativo.')
+        # Eficiencia ofensiva adicional (portero decisivo si paradas altas)
+        par_l = _int('paradas_local')
+        par_v = _int('paradas_visitante')
+        if par_v is not None and par_v >= 6 and gl < gv:
+            frases.append(f'El portero de {visitante} fue determinante con {par_v} paradas.')
+        elif par_l is not None and par_l >= 6 and gl > gv:
+            frases.append(f'El portero de {local} fue clave con {par_l} paradas.')
+        elif par_l is not None and par_l >= 6:
+            frases.append(f'El portero de {local} realizó {par_l} paradas destacadas.')
+        elif par_v is not None and par_v >= 6:
+            frases.append(f'El portero de {visitante} realizó {par_v} paradas destacadas.')
+    else:
+        # Sin xG: narrativa básica por posesión y tiros
+        shots_l = _int('shots_on_target_local')
+        shots_v = _int('shots_on_target_visitante')
+        if shots_l is not None and shots_v is not None:
+            if shots_l > shots_v:
+                frases.append(f'{local} fue más peligroso con {shots_l} tiros a puerta frente a {shots_v}.')
+            elif shots_v > shots_l:
+                frases.append(f'{visitante} fue más incisivo con {shots_v} tiros a puerta frente a {shots_l}.')
+        if not frases:
+            frases.append('Partido sin datos técnicos suficientes para el análisis narrativo.')
 
     narrativa = ' '.join(frases)
+
+    # H2H: últimos 5 enfrentamientos directos entre ambos equipos (excluido el partido actual)
+    local_lower = local.lower()
+    visit_lower = visitante.lower()
+    h2h_df = df[
+        (
+            (df['local_team'].str.lower().str.contains(local_lower, na=False, regex=False)) &
+            (df['visitante_team'].str.lower().str.contains(visit_lower, na=False, regex=False))
+        ) | (
+            (df['local_team'].str.lower().str.contains(visit_lower, na=False, regex=False)) &
+            (df['visitante_team'].str.lower().str.contains(local_lower, na=False, regex=False))
+        )
+    ].copy()
+    # Excluir el partido actual
+    h2h_df = h2h_df[h2h_df['id_event'] != match_id]
+    # Ordenar por fecha descendente y tomar 5
+    if 'date' in h2h_df.columns:
+        h2h_df = h2h_df.sort_values('date', ascending=False)
+    h2h_matches: List[Dict] = []
+    for _, h_row in h2h_df.head(5).iterrows():
+        hl = str(h_row.get('local_team', '-'))
+        hv = str(h_row.get('visitante_team', '-'))
+        hgl = int(h_row.get('goles_local', 0) or 0)
+        hgv = int(h_row.get('goles_visitante', 0) or 0)
+        h2h_matches.append({
+            'season':   str(h_row.get('season', '-')),
+            'jornada':  h_row.get('jornada'),
+            'local':    hl,
+            'visitante': hv,
+            'goles_local': hgl,
+            'goles_visitante': hgv,
+            'fecha':    str(h_row.get('date', '-'))[:10],
+        })
+
+    # Resumen H2H: desde perspectiva del equipo local del partido actual
+    h2h_summary: Dict = {}
+    if h2h_matches:
+        wins_local = draws = wins_visit = gf_l = gc_l = 0
+        for h in h2h_matches:
+            is_home = h['local'].lower().find(local_lower) >= 0
+            gl_h = h['goles_local'] if is_home else h['goles_visitante']
+            gv_h = h['goles_visitante'] if is_home else h['goles_local']
+            gf_l += gl_h; gc_l += gv_h
+            if gl_h > gv_h:   wins_local += 1
+            elif gl_h == gv_h: draws += 1
+            else:              wins_visit += 1
+        h2h_summary = {
+            'pj': len(h2h_matches), 'wins_local': wins_local,
+            'draws': draws, 'wins_visitante': wins_visit,
+            'gf': gf_l, 'gc': gc_l,
+        }
 
     # Contexto en la liga (posición antes del partido = clasificación hasta jornada - 1)
     jornada_num = _int('jornada')
@@ -1082,6 +1193,8 @@ def compute_match_detail(df: pd.DataFrame, match_id: int) -> Dict:
         'narrativa':         narrativa,
         'contexto_local':    contexto_local,
         'contexto_visitante': contexto_visitante,
+        'h2h_matches':       h2h_matches,
+        'h2h_summary':       h2h_summary,
     }
 
 

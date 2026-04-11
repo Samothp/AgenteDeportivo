@@ -1189,6 +1189,33 @@ class SportsAgent:
         lines.append(f'  {m["narrativa"]}')
         lines.append('')
 
+        # H2H historial
+        h2h = m.get('h2h_matches', [])
+        h2h_sum = m.get('h2h_summary', {})
+        if h2h:
+            lines.append(f'Historial H2H — últimos {len(h2h)} enfrentamientos directos')
+            lines.append('-------------------------------------------------------')
+            local_name = m['local']
+            visit_name = m['visitante']
+            wins_l = h2h_sum.get('wins_local', 0)
+            draws  = h2h_sum.get('draws', 0)
+            wins_v = h2h_sum.get('wins_visitante', 0)
+            lines.append(
+                f'  {local_name}: {wins_l}V  |  Empates: {draws}  |  {visit_name}: {wins_v}V'
+            )
+            lines.append('')
+            lines.append(
+                f"  {'Temp':<9} {'J':>3}  {'Local':<22} {'GF':>3} {'GC':>3}  Visitante"
+            )
+            lines.append(f"  {'-'*9} {'-'*3}  {'-'*22} {'-'*3} {'-'*3}  {'-'*20}")
+            for h in h2h:
+                j_str = str(h['jornada']) if h['jornada'] is not None else '-'
+                lines.append(
+                    f"  {str(h['season']):<9} {j_str:>3}  {str(h['local']):<22} "
+                    f"{h['goles_local']:>3} {h['goles_visitante']:>3}  {h['visitante']}"
+                )
+            lines.append('')
+
         if m.get('video_highlights'):
             lines.append(f'Highlights: {m["video_highlights"]}')
 
@@ -1244,6 +1271,8 @@ class SportsAgent:
             'narrativa':        m['narrativa'],
             'video_highlights': m.get('video_highlights'),
             'images':           relative_images,
+            'h2h_matches':      m.get('h2h_matches', []),
+            'h2h_summary':      m.get('h2h_summary', {}),
         }
         report_file.write_text(self._render_template('match.html.j2', context), encoding='utf-8')
         return str(report_file)
