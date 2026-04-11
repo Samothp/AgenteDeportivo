@@ -843,7 +843,7 @@ class SportsAgent:
             sep,
             '',
             '── ESTADÍSTICAS DE LA TEMPORADA ────────────────────',
-            f'{'':32s} {"LOCAL":>10s}  {"VISITANTE":>10s}',
+            f'{"":32s} {"LOCAL":>10s}  {"VISITANTE":>10s}',
             f'  {"Récord":<30s} {stats_l.get("record",""):>10s}  {stats_v.get("record",""):>10s}',
             f'  {"Puntos":<30s} {stats_l.get("puntos",0):>10d}  {stats_v.get("puntos",0):>10d}',
             f'  {"GF promedio":<30s} {stats_l.get("gf_promedio",0):>10.2f}  {stats_v.get("gf_promedio",0):>10.2f}',
