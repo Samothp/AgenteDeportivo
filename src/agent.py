@@ -26,8 +26,8 @@ from .analysis import (
 )
 from .config import AgentConfig
 from .data_loader import load_match_data
-from .player_loader import load_player_stats
-from .scorer_loader import load_scorers
+from .player_loader import load_player_stats, _players_csv_path
+from .scorer_loader import load_scorers, player_goal_streak
 from .thresholds import (
     FORM_STREAK_THRESHOLD,
     HIGH_SCORING_THRESHOLD,
@@ -281,15 +281,44 @@ class SportsAgent:
 
         # Modo Jugador: --team + --player
         if self.team and self.player:
+            comp_id = self.competition_id or 2014
+            season  = self.season or '2025-2026'
             df_players = load_player_stats(
                 self.team,
-                competition_id=self.competition_id or 2014,
-                season=self.season or '2025-2026',
+                competition_id=comp_id,
+                season=season,
                 fetch_real=self.fetch_real,
                 verbose=self.fetch_real,
             )
             self.player_rankings_raw = df_players
-            self.player_profile = compute_player_profile(df_players, self.player, top_n=self.top_n)
+
+            # Carga df de toda la liga para ranking global (CSV acumulado)
+            df_league: Optional[pd.DataFrame] = None
+            _csv = _players_csv_path(comp_id, season)
+            if _csv.exists():
+                _all = pd.read_csv(_csv)
+                if not _all.empty and 'appearances' in _all.columns:
+                    df_league = _all[_all['appearances'] > 0].copy()
+
+            # Carga goleadores para racha
+            _scorers = load_scorers(
+                competition_id=comp_id,
+                season=season,
+                df_matches=self.data,
+                fetch_real=False,
+                verbose=False,
+            )
+            self.player_profile = compute_player_profile(
+                df_players, self.player, top_n=self.top_n, df_league=df_league,
+            )
+            # Añadir racha goleadora al perfil
+            if self.player_profile.get('found') and not _scorers.empty:
+                self.player_profile['racha'] = player_goal_streak(
+                    _scorers, self.player_profile['player_name'], self.data,
+                )
+            else:
+                self.player_profile['racha'] = None
+
             self.player_rankings = compute_player_rankings(df_players)
             self.filter_by_team()
             self.metrics = compute_overall_metrics(self.data, team=self.team)
@@ -1276,10 +1305,16 @@ class SportsAgent:
         lines.append('Estadísticas de temporada')
         lines.append('-------------------------')
         lines.append(f'  Partidos jugados:     {p["appearances"]}')
+        if p.get('minutes_played'):
+            lines.append(f'  Minutos jugados:      {p["minutes_played"]}')
         lines.append(f'  Goles:                {p["goals"]}')
         lines.append(f'  Asistencias:          {p["assists"]}')
         lines.append(f'  Goles + Asistencias:  {p["ga"]}')
         lines.append(f'  Tiros a puerta:       {p["shots_on_target"]}')
+        if p.get('shots_total'):
+            lines.append(f'  Tiros totales:        {p["shots_total"]}')
+        if p.get('precision_tiro') is not None:
+            lines.append(f'  Precisión de tiro:    {p["precision_tiro"]:.1f}%')
         lines.append(f'  Tarjetas amarillas:   {p["yellow_cards"]}')
         lines.append(f'  Tarjetas rojas:       {p["red_cards"]}')
         lines.append('')
@@ -1291,13 +1326,50 @@ class SportsAgent:
         lines.append(f'  G+A/PJ:               {p["ga_por_partido"]:.3f}')
         lines.append(f'  % partidos con gol:   {p["pct_partidos_con_gol"]:.1f}%')
         lines.append(f'  % partidos con G+A:   {p["pct_partidos_con_ga"]:.1f}%')
+        _min_label = 'reales' if p.get('minutos_reales') else 'estimados'
+        lines.append(f'  Goles/90 min ({_min_label}): {p["goles_90"]:.2f}')
+        lines.append(f'  G+A/90 min ({_min_label}):   {p["ga_90"]:.2f}')
         lines.append('')
+
+        # Racha goleadora
+        racha = p.get('racha')
+        if racha:
+            lines.append('Racha goleadora')
+            lines.append('---------------')
+            lines.append(f'  Racha actual sin marcar: {racha["sin_marcar"]} partido(s)')
+            lines.append(f'  Racha actual marcando:   {racha["racha_actual"]} partido(s) consecutivos')
+            lines.append(f'  Racha máxima (temporada): {racha["racha_max"]} partido(s) consecutivos')
+            lines.append(f'  Total goles en el dataset: {racha["total_goles"]}')
+            lines.append('')
 
         lines.append('Ranking en el equipo')
         lines.append('--------------------')
-        lines.append(f'  Pos. goleadores:      #{p["ranking_goles"]}')
-        lines.append(f'  Pos. asistentes:      #{p["ranking_asistencias"]}')
+        n_eq = p.get('n_equipo_jugadores', '?')
+        lines.append(f'  Pos. goleadores:      #{p["ranking_goles"]} de {n_eq} jugadores')
+        lines.append(f'  Pos. asistentes:      #{p["ranking_asistencias"]} de {n_eq} jugadores')
         lines.append('')
+
+        # Ranking en la liga
+        if p.get('ranking_liga_goles') is not None:
+            n_lig = p.get('n_liga_jugadores', '?')
+            lines.append('Ranking en la liga')
+            lines.append('------------------')
+            lines.append(f'  Goleadores liga:      #{p["ranking_liga_goles"]} de {n_lig} jugadores')
+            if p.get('ranking_liga_asistencias') is not None:
+                lines.append(f'  Asistentes liga:      #{p["ranking_liga_asistencias"]} de {n_lig} jugadores')
+            lines.append('')
+
+        # Nota contextual por posición
+        grupo = p.get('posicion_grupo', '')
+        if grupo in ('defensa', 'portero'):
+            lines.append(f'  ℹ Nota: para {grupo}s, goles y asistencias son métricas secundarias.')
+            lines.append('    El rendimiento real depende de recuperaciones, intercepciones y duelos,')
+            lines.append('    datos no disponibles en la fuente actual (ESPN/TheSportsDB).')
+            lines.append('')
+        elif grupo == 'centrocampista':
+            lines.append('  ℹ Nota: para centrocampistas, considerar también asistencias de progresión')
+            lines.append('    y participación en juego (no disponibles en la fuente actual).')
+            lines.append('')
 
         top_g = p.get('compañeros_goleadores')
         if top_g is not None and not top_g.empty:
@@ -1343,12 +1415,16 @@ class SportsAgent:
             'team':                     p['team'],
             'position':                 p['position'],
             'position_full':            p.get('position_full', ''),
+            'posicion_grupo':           p.get('posicion_grupo', ''),
             'season':                   p['season'],
             'appearances':              p['appearances'],
             'goals':                    p['goals'],
             'assists':                  p['assists'],
             'ga':                       p['ga'],
             'shots_on_target':          p['shots_on_target'],
+            'shots_total':              p.get('shots_total', 0),
+            'minutes_played':           p.get('minutes_played', 0),
+            'precision_tiro':           p.get('precision_tiro'),
             'yellow_cards':             p['yellow_cards'],
             'red_cards':                p['red_cards'],
             'goles_por_partido':        p['goles_por_partido'],
@@ -1356,8 +1432,17 @@ class SportsAgent:
             'ga_por_partido':           p['ga_por_partido'],
             'pct_partidos_con_gol':     p['pct_partidos_con_gol'],
             'pct_partidos_con_ga':      p['pct_partidos_con_ga'],
+            'goles_90':                 p['goles_90'],
+            'asistencias_90':           p['asistencias_90'],
+            'ga_90':                    p['ga_90'],
+            'minutos_reales':           p.get('minutos_reales'),
             'ranking_goles':            p['ranking_goles'],
             'ranking_asistencias':      p['ranking_asistencias'],
+            'n_equipo_jugadores':       p.get('n_equipo_jugadores', '?'),
+            'ranking_liga_goles':       p.get('ranking_liga_goles'),
+            'ranking_liga_asistencias': p.get('ranking_liga_asistencias'),
+            'n_liga_jugadores':         p.get('n_liga_jugadores'),
+            'racha':                    p.get('racha'),
             # Perfil físico/biográfico
             'nationality':              p.get('nationality', ''),
             'age':                      p.get('age', ''),

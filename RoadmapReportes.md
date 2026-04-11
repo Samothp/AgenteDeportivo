@@ -38,11 +38,11 @@ Prioridad dentro de cada bloque: ⭐⭐⭐ impacto alto · ⭐⭐ medio · ⭐ b
 
 ## 👤 Bloque 4 — Informe de Jugador (`/jugador`)
 
-- [ ] ⭐⭐⭐ **Posición en el ranking de la liga**: indicar si el jugador está en el top goleadores/asistentes de toda la competición, no solo de su equipo. Es el dato de contexto más relevante.
-- [ ] ⭐⭐⭐ **Racha de marcador**: sección con el número de partidos consecutivos marcando (o sin marcar). Para saber si está en forma o en sequía.
-- [ ] ⭐⭐ **Ranking con total de jugadores**: cambiar "#1 goleadores" por "#1 de 18 jugadores con datos". Sin el denominador el puesto no da información.
-- [ ] ⭐⭐ **Precisión de tiro**: añadir `tiros a puerta / tiros totales` (si disponible). Para un delantero es tan relevante como el número de goles.
-- [ ] ⭐ **Métricas adaptadas por posición**: para defensas y centrocampistas, advertir que goles/asistencias no son métricas representativas y priorizar las que apliquen (recuperaciones, pases progresivos — sujeto a disponibilidad de datos).
+- [x] ⭐⭐⭐ **Posición en el ranking de la liga**: se carga el CSV completo de jugadores (todos los equipos ya descargados) y se calcula el ranking global de goles y asistencias. Muestra `#N de M jugadores con datos`.
+- [x] ⭐⭐⭐ **Racha de marcador**: integrado vía `player_goal_streak()` de `scorer_loader`. Muestra racha actual marcando, racha máxima de la temporada y partidos en sequía.
+- [x] ⭐⭐ **Ranking con total de jugadores**: denominador añadido tanto en ranking de equipo (`#1 de 18`) como en liga (`#5 de 312`).
+- [x] ⭐⭐ **Precisión de tiro**: `shots_on_target / shots_total * 100`. Activo si ESPN devuelve `totalShots` (Bloque 6). KPI visible en HTML y en texto.
+- [x] ⭐ **Métricas adaptadas por posición**: nota contextual para defensas/porteros/centrocampistas indicando que goles/asistencias son métricas secundarias para su posición.
 
 ---
 

@@ -7,6 +7,12 @@
     .kpi .val { font-size: 2em; }
     .rank-badge { display: inline-block; background: #e4efff; border-radius: 20px;
       padding: 3px 14px; font-weight: bold; color: #1f4e79; margin: 4px; }
+    .rank-liga { background: #fef9c3; color: #854d0e; }
+    .racha-card { background: #f0fdf4; border-left: 4px solid #16a34a; padding: 12px 16px;
+      border-radius: 6px; margin-bottom: 12px; }
+    .racha-sin { background: #fef2f2; border-left-color: #dc2626; }
+    .pos-note { background: #f8fafc; border-left: 4px solid #94a3b8; padding: 10px 14px;
+      border-radius: 6px; font-size: 0.88em; color: #475569; }
     .charts { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
 {% endblock %}
 
@@ -33,16 +39,55 @@
     </div>
   </div>
 
+  {# ── KPIs principales ── #}
   <div class="kpi-grid">
     <div class="kpi"><div class="val">{{ appearances }}</div><div class="lbl">PJ</div></div>
+    {% if minutes_played %}<div class="kpi"><div class="val">{{ minutes_played }}</div><div class="lbl">Minutos</div></div>{% endif %}
     <div class="kpi"><div class="val">{{ goals }}</div><div class="lbl">Goles</div></div>
     <div class="kpi"><div class="val">{{ assists }}</div><div class="lbl">Asistencias</div></div>
     <div class="kpi"><div class="val">{{ ga }}</div><div class="lbl">G+A</div></div>
     <div class="kpi"><div class="val">{{ shots_on_target }}</div><div class="lbl">Tiros a puerta</div></div>
+    {% if shots_total %}<div class="kpi"><div class="val">{{ shots_total }}</div><div class="lbl">Tiros totales</div></div>{% endif %}
+    {% if precision_tiro is not none %}<div class="kpi"><div class="val">{{ "%.0f"|format(precision_tiro) }}%</div><div class="lbl">Precisión tiro</div></div>{% endif %}
     <div class="kpi"><div class="val">{{ yellow_cards }}</div><div class="lbl">Amarillas</div></div>
     <div class="kpi"><div class="val">{{ red_cards }}</div><div class="lbl">Rojas</div></div>
   </div>
 
+  {# ── Ranking en la liga ── #}
+  {% if ranking_liga_goles is not none %}
+  <div class="section">
+    <h2>Posición en la liga</h2>
+    <p>
+      <span class="rank-badge rank-liga">⭐ #{{ ranking_liga_goles }} goleador liga</span>
+      {% if ranking_liga_asistencias is not none %}
+      <span class="rank-badge rank-liga">⭐ #{{ ranking_liga_asistencias }} asistente liga</span>
+      {% endif %}
+      {% if n_liga_jugadores %}<small style="color:#666">(de {{ n_liga_jugadores }} jugadores con datos)</small>{% endif %}
+    </p>
+  </div>
+  {% endif %}
+
+  {# ── Racha goleadora ── #}
+  {% if racha %}
+  <div class="section">
+    <h2>Racha goleadora</h2>
+    {% if racha.racha_actual > 0 %}
+    <div class="racha-card">
+      <strong>En racha:</strong> {{ racha.racha_actual }} partido(s) consecutivos marcando
+      &nbsp;·&nbsp; Máxima racha: {{ racha.racha_max }}
+      &nbsp;·&nbsp; Total goles registrados: {{ racha.total_goles }}
+    </div>
+    {% else %}
+    <div class="racha-card racha-sin">
+      <strong>Sequía:</strong> {{ racha.sin_marcar }} partido(s) sin marcar
+      &nbsp;·&nbsp; Máxima racha marcando: {{ racha.racha_max }}
+      &nbsp;·&nbsp; Total goles registrados: {{ racha.total_goles }}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ── Rendimiento por partido y per-90 ── #}
   <h2>Rendimiento por partido</h2>
   <div class="kpi-grid">
     <div class="kpi"><div class="val">{{ "%.2f"|format(goles_por_partido) }}</div><div class="lbl">Goles/PJ</div></div>
@@ -50,13 +95,33 @@
     <div class="kpi"><div class="val">{{ "%.2f"|format(ga_por_partido) }}</div><div class="lbl">G+A/PJ</div></div>
     <div class="kpi"><div class="val">{{ "%.0f"|format(pct_partidos_con_gol) }}%</div><div class="lbl">% con gol</div></div>
     <div class="kpi"><div class="val">{{ "%.0f"|format(pct_partidos_con_ga) }}%</div><div class="lbl">% con G+A</div></div>
+    <div class="kpi"><div class="val">{{ "%.2f"|format(goles_90) }}</div>
+      <div class="lbl">Goles/90{% if minutos_reales %} <small>(real)</small>{% endif %}</div></div>
+    <div class="kpi"><div class="val">{{ "%.2f"|format(ga_90) }}</div>
+      <div class="lbl">G+A/90{% if minutos_reales %} <small>(real)</small>{% endif %}</div></div>
   </div>
 
+  {# ── Ranking en el equipo ── #}
   <h2>Ranking en el equipo</h2>
   <p>
     <span class="rank-badge">#{{ ranking_goles }} goleador</span>
     <span class="rank-badge">#{{ ranking_asistencias }} asistente</span>
+    {% if n_equipo_jugadores %}<small style="color:#666">(de {{ n_equipo_jugadores }} jugadores)</small>{% endif %}
   </p>
+
+  {# ── Nota contextual por posición ── #}
+  {% if posicion_grupo in ['defensa', 'portero', 'centrocampista'] %}
+  <div class="pos-note">
+    {% if posicion_grupo == 'defensa' or posicion_grupo == 'portero' %}
+    ℹ Para {{ posicion_grupo }}s, goles y asistencias son métricas secundarias.
+    El rendimiento real depende de recuperaciones, intercepciones y duelos aéreos,
+    datos no disponibles en la fuente actual (ESPN/TheSportsDB).
+    {% elif posicion_grupo == 'centrocampista' %}
+    ℹ Para centrocampistas, complementar con participación en juego y pases progresivos
+    (no disponibles en la fuente actual). G+A/90 es la métrica más relevante disponible.
+    {% endif %}
+  </div>
+  {% endif %}
 
   {% if top_goleadores_html %}
   <h2>Top 5 goleadores del equipo</h2>

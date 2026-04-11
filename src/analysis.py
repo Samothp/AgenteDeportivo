@@ -1388,25 +1388,36 @@ def compute_liga_summary(df: pd.DataFrame) -> Dict:
     }
 
 
-def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: int = 5) -> Dict:
+def compute_player_profile(
+    df_players: pd.DataFrame,
+    player_name: str,
+    top_n: int = 5,
+    df_league: Optional[pd.DataFrame] = None,
+) -> Dict:
     """Perfil de rendimiento individual de un jugador.
 
     Busca al jugador por nombre (insensible a mayúsculas, coincidencia parcial).
     Devuelve sus stats de temporada, ratios calculados y posición en el ranking
     del equipo (goleadores y asistentes).
 
+    Args:
+        df_league: DataFrame con jugadores de TODA la liga (para ranking global).
+                   Si se omite, el ranking de liga no se calcula.
+
     Returns:
         Dict con:
           found (bool), player_name, team, position, season,
-          appearances, goals, assists, ga, shots_on_target,
+          appearances, goals, assists, ga, shots_on_target, shots_total,
+          minutes_played, precision_tiro,
           yellow_cards, red_cards,
           goles_por_partido, asistencias_por_partido, ga_por_partido,
-          ranking_goles (int, posición dentro del equipo),
-          ranking_asistencias (int),
-          compañeros_goleadores (DataFrame top 5 del equipo),
-          compañeros_asistentes (DataFrame top 5 del equipo),
-          pct_partidos_con_gol (float),
-          pct_partidos_con_ga (float),
+          goles_90, asistencias_90, ga_90, sot_90 (per-90 reales),
+          ranking_goles, ranking_asistencias (posición en el equipo),
+          n_equipo_jugadores (total con datos en el equipo),
+          ranking_liga_goles, ranking_liga_asistencias, n_liga_jugadores,
+          posicion_grupo ('delantero'|'centrocampista'|'defensa'|'portero'),
+          compañeros_goleadores, compañeros_asistentes,
+          pct_partidos_con_gol, pct_partidos_con_ga,
     """
     if df_players.empty:
         return {'found': False}
@@ -1424,11 +1435,18 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
     assists    = int(row.get('assists', 0))
     ga         = int(row.get('goals_assists', goals + assists))
     sot        = int(row.get('shots_on_target', 0))
+    shots_total   = int(row.get('shots_total', 0) or 0)
+    minutes_played = int(row.get('minutes_played', 0) or 0)
     yellows    = int(row.get('yellow_cards', 0))
     reds       = int(row.get('red_cards', 0))
     team       = str(row.get('team', '-'))
     position   = str(row.get('position', '-'))
     season     = str(row.get('season', '-'))
+
+    # Precisión de tiro
+    precision_tiro: Optional[float] = None
+    if shots_total > 0:
+        precision_tiro = round(sot / shots_total * 100, 1)
 
     # Nuevos campos de perfil físico/biográfico (ESPN + TheSportsDB)
     position_full = str(row.get('position_full', '') or '')
@@ -1447,25 +1465,47 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
     pct_gol   = round(goals / pj * 100, 1) if pj > 0 else 0.0
     pct_ga    = round(ga / pj * 100, 1) if pj > 0 else 0.0
 
-    # Stats per-90 (asumiendo ~90 min por aparición, mejor estimación sin datos de minutos)
+    # Stats per-90 con minutos reales si disponibles, si no aproximación por PJ
+    _min_real = minutes_played if minutes_played > 0 else pj * 90
     _min_est  = pj * 90
-    goles_90  = round(goals   / _min_est * 90, 2) if _min_est > 0 else 0.0
-    asist_90  = round(assists / _min_est * 90, 2) if _min_est > 0 else 0.0
-    ga_90     = round(ga      / _min_est * 90, 2) if _min_est > 0 else 0.0
-    sot_90    = round(sot     / _min_est * 90, 2) if _min_est > 0 else 0.0
+    goles_90  = round(goals   / _min_real * 90, 2) if _min_real > 0 else 0.0
+    asist_90  = round(assists / _min_real * 90, 2) if _min_real > 0 else 0.0
+    ga_90     = round(ga      / _min_real * 90, 2) if _min_real > 0 else 0.0
+    sot_90    = round(sot     / _min_real * 90, 2) if _min_real > 0 else 0.0
+
+    # Grupo de posición para notas contextuales
+    _POS_GRUPO = {
+        'F': 'delantero', 'FW': 'delantero', 'CF': 'delantero', 'LW': 'delantero', 'RW': 'delantero',
+        'M': 'centrocampista', 'MF': 'centrocampista', 'CM': 'centrocampista',
+        'AM': 'centrocampista', 'DM': 'centrocampista',
+        'D': 'defensa', 'DF': 'defensa', 'CB': 'defensa', 'LB': 'defensa', 'RB': 'defensa',
+        'G': 'portero', 'GK': 'portero',
+    }
+    posicion_grupo = _POS_GRUPO.get(str(position).strip().upper(), 'jugador')
 
     # Rankings dentro del equipo (mismo equipo, sin contar al propio jugador primero)
     df_team = df_players[df_players['team'] == team].copy()
+    n_equipo_jugadores = int((df_team['appearances'] > 0).sum())
 
-    def _rank(df: pd.DataFrame, col: str, val: int) -> int:
+    def _rank(df: pd.DataFrame, col: str) -> int:
         ranked = df.sort_values(col, ascending=False).reset_index(drop=True)
         for i, r in ranked.iterrows():
             if r['player_name'] == row['player_name']:
                 return int(i) + 1
         return -1
 
-    ranking_goles     = _rank(df_team, 'goals', goals)
-    ranking_asistencias = _rank(df_team, 'assists', assists)
+    ranking_goles       = _rank(df_team, 'goals')
+    ranking_asistencias = _rank(df_team, 'assists')
+
+    # Rankings en la liga (si se proporciona df_league con datos de todos los equipos)
+    ranking_liga_goles       = None
+    ranking_liga_asistencias = None
+    n_liga_jugadores         = None
+    if df_league is not None and not df_league.empty:
+        df_lig = df_league[df_league['appearances'] > 0]
+        n_liga_jugadores = len(df_lig)
+        ranking_liga_goles       = _rank(df_lig, 'goals')
+        ranking_liga_asistencias = _rank(df_lig, 'assists')
 
     def _translate_pos(pos: str) -> str:
         return _POS_ES.get(str(pos).strip().upper(), str(pos))
@@ -1489,12 +1529,16 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
         'team':                     team,
         'position':                 _translate_pos(position),
         'position_full':            position_full,
+        'posicion_grupo':           posicion_grupo,
         'season':                   season,
         'appearances':              pj,
         'goals':                    goals,
         'assists':                  assists,
         'ga':                       ga,
         'shots_on_target':          sot,
+        'shots_total':              shots_total,
+        'minutes_played':           minutes_played,
+        'precision_tiro':           precision_tiro,
         'yellow_cards':             yellows,
         'red_cards':                reds,
         'goles_por_partido':        goles_pp,
@@ -1502,14 +1546,21 @@ def compute_player_profile(df_players: pd.DataFrame, player_name: str, top_n: in
         'ga_por_partido':           ga_pp,
         'pct_partidos_con_gol':     pct_gol,
         'pct_partidos_con_ga':      pct_ga,
-        # Per-90 (estimado sobre minutos_estimados = appearances * 90)
+        # Per-90 (reales si minutes_played > 0, estimados si no)
+        'minutos_reales':           minutes_played if minutes_played > 0 else None,
         'minutos_estimados':        _min_est,
         'goles_90':                 goles_90,
         'asistencias_90':           asist_90,
         'ga_90':                    ga_90,
         'sot_90':                   sot_90,
+        # Ranking equipo con denominador
         'ranking_goles':            ranking_goles,
         'ranking_asistencias':      ranking_asistencias,
+        'n_equipo_jugadores':       n_equipo_jugadores,
+        # Ranking liga
+        'ranking_liga_goles':       ranking_liga_goles,
+        'ranking_liga_asistencias': ranking_liga_asistencias,
+        'n_liga_jugadores':         n_liga_jugadores,
         'compañeros_goleadores':    compañeros_goleadores,
         'compañeros_asistentes':    compañeros_asistentes,
         # Perfil físico/biográfico
