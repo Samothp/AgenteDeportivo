@@ -1079,8 +1079,9 @@ async def cmd_goleadores(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 @_require_not_maintenance
 @_require_group_member
+@_cooldown(30)
 async def cmd_partido(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/partido <comp> <temp> <match_id> — Detalle de un partido por su ID."""
+    """/partido <comp> <temp> <match_id> — Ficha completa de un partido por su ID."""
     result = _parse_base(context.args)
     if isinstance(result, str):
         await update.message.reply_text(result, parse_mode="Markdown")
@@ -1090,7 +1091,7 @@ async def cmd_partido(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if len(context.args) < 3:
         await update.message.reply_text(
             "❌ Indica el ID del partido. Ejemplo:\n"
-            f"`/partido 2014 {_SEASON_EXAMPLE} 1234`",
+            f"`/partido 2014 {_SEASON_EXAMPLE} 2279399`",
             parse_mode="Markdown",
         )
         return
@@ -1109,47 +1110,13 @@ async def cmd_partido(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         match_id=match_id,
     )
 
-    from src.data_loader import get_db_path, load_match_data
+    await update.message.reply_text(f"⏳ Generando ficha del partido {match_id}...")
 
-    db_path = get_db_path(competition, season)
-    if not db_path.exists():
-        await update.message.reply_text(
-            f"⚠️ No hay DB local para competition={competition} season={season}."
+    async with _TypingAction(update, context):
+        text = await asyncio.to_thread(
+            _run_agent_text, competition, season, match_id=match_id
         )
-        return
-
-    try:
-        df = load_match_data(str(db_path), fetch_real=False, competition_id=competition, season=season)
-        id_col = "match_id" if "match_id" in df.columns else ("id" if "id" in df.columns else None)
-        if id_col is None:
-            await update.message.reply_text("⚠️ Los datos no contienen columna de ID de partido.")
-            return
-
-        row_df = df[df[id_col] == match_id]
-        if row_df.empty:
-            await update.message.reply_text(f"⚠️ No se encontró el partido con ID `{match_id}`.", parse_mode="Markdown")
-            return
-
-        row = row_df.iloc[0]
-        home = row.get("equipo_local", row.get("home_team", "Local"))
-        away = row.get("equipo_visitante", row.get("away_team", "Visitante"))
-        gh = row.get("goles_local", row.get("home_goals", "?"))
-        ga = row.get("goles_visitante", row.get("away_goals", "?"))
-        date = row.get("fecha", row.get("date", ""))
-        jornada = row.get("jornada", row.get("matchday", ""))
-        date_str = f"📅 {date}" if date else ""
-        jornada_str = f"  · Jornada {jornada}" if jornada else ""
-
-        comp_name = COMPETITION_NAMES.get(competition, str(competition))
-        text = (
-            f"⚽ *{home}* {gh} – {ga} *{away}*\n"
-            f"{comp_name} {season}{jornada_str}\n"
-            f"{date_str}"
-        )
-        await update.message.reply_text(text.strip(), parse_mode="Markdown")
-    except Exception as exc:
-        logger.error("Error en /partido: %s", exc, exc_info=True)
-        await update.message.reply_text("❌ Error al consultar el partido.")
+    await _send_paged(update, text)
 
 
 # 9.3 — /ayuda contextual
