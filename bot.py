@@ -1162,25 +1162,59 @@ async def cmd_goleadores(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 @_require_group_member
 @_cooldown(30)
 async def cmd_partido(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """/partido <comp> <temp> <match_id> — Ficha completa de un partido por su ID."""
+    """/partido <comp> <temp> <jornada> <local> | <visitante> — Ficha completa de un partido."""
     result = _parse_base(context.args)
     if isinstance(result, str):
         await update.message.reply_text(result, parse_mode="Markdown")
         return
     competition, season = result
 
-    if len(context.args) < 3:
+    if len(context.args) < 4:
         await update.message.reply_text(
-            "❌ Indica el ID del partido. Ejemplo:\n"
-            f"`/partido 2014 {_SEASON_EXAMPLE} 2279399`",
+            "❌ Indica la jornada y los equipos. Ejemplo:\n"
+            f"`/partido 2014 {_SEASON_EXAMPLE} 28 Real Madrid | Barcelona`",
             parse_mode="Markdown",
         )
         return
 
+    # args[2] debe ser la jornada (número)
     try:
-        match_id = int(context.args[2])
+        jornada = int(context.args[2])
     except ValueError:
-        await update.message.reply_text("❌ El ID de partido debe ser un número entero.")
+        await update.message.reply_text(
+            "❌ El tercer argumento debe ser el número de jornada. Ejemplo:\n"
+            f"`/partido 2014 {_SEASON_EXAMPLE} 28 Real Madrid | Barcelona`",
+            parse_mode="Markdown",
+        )
+        return
+
+    # El resto forma "Local | Visitante"
+    rest = " ".join(context.args[3:])
+    if "|" not in rest:
+        await update.message.reply_text(
+            "❌ Separa los equipos con `|`. Ejemplo:\n"
+            f"`/partido 2014 {_SEASON_EXAMPLE} 28 Real Madrid | Barcelona`",
+            parse_mode="Markdown",
+        )
+        return
+
+    parts = rest.split("|", 1)
+    equipo_local = parts[0].strip()
+    equipo_visitante = parts[1].strip()
+    if not equipo_local or not equipo_visitante:
+        await update.message.reply_text("❌ Los nombres de ambos equipos no pueden estar vacíos.")
+        return
+
+    # Resolver match_id
+    from src.data_loader import lookup_match_id as _lookup_mid
+    match_id = await asyncio.to_thread(_lookup_mid, competition, season, jornada, equipo_local, equipo_visitante)
+    if match_id is None:
+        await update.message.reply_text(
+            f"⚠️ No se encontró ningún partido en la jornada *{jornada}* entre "
+            f"*{equipo_local}* (local) y *{equipo_visitante}* (visitante).\n\n"
+            "Comprueba los nombres de los equipos y la jornada.",
+            parse_mode="Markdown",
+        )
         return
 
     _log_usage(
@@ -1191,7 +1225,10 @@ async def cmd_partido(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         match_id=match_id,
     )
 
-    await update.message.reply_text(f"⏳ Generando ficha del partido {match_id}...")
+    await update.message.reply_text(
+        f"⏳ Generando ficha del partido J{jornada}: *{equipo_local}* vs *{equipo_visitante}*...",
+        parse_mode="Markdown",
+    )
 
     async with _TypingAction(update, context):
         text = await asyncio.to_thread(
@@ -1210,6 +1247,7 @@ _AYUDA_GENERAL = (
     "  `/ayuda tabla`\n"
     "  `/ayuda ultima`\n"
     "  `/ayuda jornada`\n"
+    "  `/ayuda partido`\n"
     "  `/ayuda compare`\n"
     "  `/ayuda temporadas`\n"
     "  `/ayuda equipos`\n"
@@ -1253,6 +1291,19 @@ _AYUDA_CMDS: dict[str, str] = {
         "*Ejemplos:*\n"
         f"`/jornada 2014 {_SEASON_EXAMPLE} 15` — Jornada 15 de La Liga {_SEASON_LABEL}\n"
         f"`/jornada 2021 {str(int(_SEASON_EXAMPLE)-1)} 1` — Primera jornada Premier {str(int(_SEASON_EXAMPLE)-1)[-2:]}/{_SEASON_EXAMPLE[-2:]}"
+    ),
+    "partido": (
+        "📋 *Comando:* `/partido`\n\n"
+        "*Sintaxis:*\n"
+        "`/partido <competition\\_id> <temporada> <jornada> <local> | <visitante>`\n\n"
+        "*Parámetros:*\n"
+        "  • `competition_id` — ID numérico de la competición\n"
+        "  • `temporada` — Año de inicio de la temporada\n"
+        "  • `jornada` — Número de jornada (entero positivo)\n"
+        "  • `local` y `visitante` — Nombres de equipo separados por `|` (búsqueda parcial)\n\n"
+        "*Ejemplos:*\n"
+        f"`/partido 2014 {_SEASON_EXAMPLE} 28 Real Madrid | Barcelona`\n"
+        f"`/partido 2021 {_SEASON_EXAMPLE} 10 Arsenal | Chelsea`"
     ),
     "compare": (
         "📋 *Comando:* `/compare`\n\n"

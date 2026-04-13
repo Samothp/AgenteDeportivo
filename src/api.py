@@ -30,7 +30,7 @@ load_dotenv()
 from .agent import SportsAgent
 from .config import AgentConfig
 from .constants import COMPETITION_NAMES
-from .data_loader import get_db_path, list_available_teams
+from .data_loader import get_db_path, list_available_teams, lookup_match_id
 
 # ---------------------------------------------------------------------------
 # 12.3 — Autenticación X-API-Key
@@ -117,7 +117,10 @@ class JornadaRequest(BaseRequest):
 
 
 class PartidoRequest(BaseRequest):
-    match_id: int = Field(..., description="ID del partido (id_event en la DB local)")
+    match_id: Optional[int] = Field(None, description="ID del partido (id_event en la DB local). Alternativa a jornada+equipos.")
+    jornada: Optional[int] = Field(None, ge=1, description="Número de jornada (alternativa a match_id).")
+    equipo_local: Optional[str] = Field(None, description="Nombre parcial del equipo local (alternativa a match_id).")
+    equipo_visitante: Optional[str] = Field(None, description="Nombre parcial del equipo visitante (alternativa a match_id).")
 
 
 class JugadorRequest(BaseRequest):
@@ -239,9 +242,39 @@ def report_jornada(request: Request, req: JornadaRequest, _auth: None = Depends(
 def report_partido(request: Request, req: PartidoRequest, _auth: None = Depends(_require_api_key)):
     """
     Genera la ficha técnica de un partido concreto (estadísticas cara a cara).
-    Obtén el `match_id` consultando la DB local.
+
+    Puedes identificar el partido de dos formas:
+    - Con `match_id` (id_event en la DB local).
+    - Con `jornada` + `equipo_local` + `equipo_visitante` (búsqueda parcial, insensible a mayúsculas).
     """
-    agent = _build_agent(req, match_id=req.match_id)
+    _check_db(req.competition, req.season)
+
+    # Resolver match_id si se proporcionaron jornada + equipos
+    if req.match_id is not None:
+        resolved_id = req.match_id
+    elif req.jornada is not None and req.equipo_local and req.equipo_visitante:
+        resolved_id = lookup_match_id(
+            req.competition, req.season, req.jornada, req.equipo_local, req.equipo_visitante
+        )
+        if resolved_id is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"No se encontró ningún partido en la jornada {req.jornada} entre "
+                    f"'{req.equipo_local}' (local) y '{req.equipo_visitante}' (visitante). "
+                    "Comprueba los nombres de los equipos y la jornada."
+                ),
+            )
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Debes proporcionar 'match_id' o bien los tres campos: "
+                "'jornada', 'equipo_local' y 'equipo_visitante'."
+            ),
+        )
+
+    agent = _build_agent(req, match_id=resolved_id)
     return _run(agent)
 
 

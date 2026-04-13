@@ -180,6 +180,40 @@ def list_available_teams(competition_id: int, season: str) -> List[str]:
     return sorted(teams.tolist())
 
 
+def lookup_match_id(
+    competition_id: int,
+    season: str,
+    jornada: int,
+    equipo_local: str,
+    equipo_visitante: str,
+) -> Optional[int]:
+    """Busca el id_event de un partido dado jornada + equipos (búsqueda parcial, insensible a mayúsculas).
+
+    Devuelve el id_event como int, o None si no se encuentra ningún partido.
+    Si hay más de una coincidencia, devuelve la primera.
+    """
+    db_path = get_db_path(competition_id, season)
+    if not db_path.exists():
+        return None
+
+    usecols = ['id_event', 'jornada', 'local_team', 'visitante_team']
+    df = pd.read_csv(db_path, usecols=usecols)
+    df = df.dropna(subset=['id_event', 'jornada', 'local_team', 'visitante_team'])
+
+    local_lower = equipo_local.strip().lower()
+    visitante_lower = equipo_visitante.strip().lower()
+
+    mask = (
+        (df['jornada'].astype(int) == int(jornada))
+        & (df['local_team'].str.lower().str.contains(local_lower, regex=False))
+        & (df['visitante_team'].str.lower().str.contains(visitante_lower, regex=False))
+    )
+    matches = df[mask]
+    if matches.empty:
+        return None
+    return int(matches.iloc[0]['id_event'])
+
+
 def load_multiple_seasons(
     csv_path: str,
     competition_id: int,

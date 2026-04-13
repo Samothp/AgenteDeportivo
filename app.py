@@ -1144,8 +1144,28 @@ with tab_jornada:
     _tab_run_and_display("Jornada", {"matchday": int(_jornada)})
 
 with tab_partido:
-    _match_id = st.number_input("ID del partido (id_event)", min_value=1, value=1, step=1, key="partido_id")
-    _tab_run_and_display("Partido", {"match_id": int(_match_id)})
+    _partido_jornada = st.number_input("Jornada", min_value=1, max_value=38, value=1, step=1, key="partido_jornada")
+    _col_local, _col_visit = st.columns(2)
+    if _teams:
+        _partido_local = _col_local.selectbox("Equipo local", _teams, index=0, key="partido_local")
+        _partido_visit = _col_visit.selectbox("Equipo visitante", _teams, index=min(1, len(_teams) - 1), key="partido_visitante")
+    else:
+        _partido_local = _col_local.text_input("Equipo local (nombre parcial)", key="partido_local_text")
+        _partido_visit = _col_visit.text_input("Equipo visitante (nombre parcial)", key="partido_visitante_text")
+
+    # Resolver match_id a partir de jornada + equipos
+    if _partido_local and _partido_visit:
+        from src.data_loader import lookup_match_id as _lookup_mid
+        _resolved_mid = _lookup_mid(competition, season, int(_partido_jornada), _partido_local, _partido_visit)
+        if _resolved_mid is None:
+            st.warning(
+                f"No se encontró ningún partido en la jornada {int(_partido_jornada)} entre "
+                f"**{_partido_local}** (local) y **{_partido_visit}** (visitante). "
+                "Comprueba los nombres y la jornada."
+            )
+        else:
+            st.caption(f"Partido encontrado — id_event: `{_resolved_mid}`")
+            _tab_run_and_display("Partido", {"match_id": _resolved_mid})
 
 with tab_jugador:
     if _teams:
