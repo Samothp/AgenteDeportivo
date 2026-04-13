@@ -250,6 +250,7 @@ def report_partido(request: Request, req: PartidoRequest, _auth: None = Depends(
     _check_db(req.competition, req.season)
 
     # Resolver match_id si se proporcionaron jornada + equipos
+    resolved_id: Optional[int] = None
     if req.match_id is not None:
         resolved_id = req.match_id
     elif req.jornada is not None and req.equipo_local and req.equipo_visitante:
