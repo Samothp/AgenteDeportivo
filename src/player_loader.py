@@ -88,8 +88,12 @@ def _players_csv_path(competition_id: int, season: str) -> Path:
 
 def _slugify_team(team: str) -> str:
     """Convierte el nombre del equipo a slug para usar en nombre de archivo."""
+    import unicodedata
     import re
-    return re.sub(r'[^a-z0-9]+', '_', team.lower()).strip('_')
+
+    # Normaliza acentos ("Atlético" -> "atletico") para evitar duplicados de archivo.
+    normalized = unicodedata.normalize("NFKD", team).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r'[^a-z0-9]+', '_', normalized.lower()).strip('_')
 
 
 def _players_team_csv_path(competition_id: int, season: str, team: str) -> Path:
